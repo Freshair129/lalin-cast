@@ -1,0 +1,11 @@
+# Permission for installing a signature-verified Lalin Cast update.
+
+[[permission]]
+identifier = "allow-cast-update-install"
+description = "Enables the cast_update_install command without any pre-configured scope."
+commands.allow = ["cast_update_install"]
+
+[[permission]]
+identifier = "deny-cast-update-install"
+description = "Denies the cast_update_install command."
+commands.deny = ["cast_update_install"]

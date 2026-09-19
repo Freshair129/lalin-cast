@@ -1,0 +1,8 @@
+src-tauri/target/
+reference/vacuumtube/node_modules/
+reference/vacuumtube/dist/
+reference/vacuumtube/out/
+*.key
+*.key.pub
+.env
+.env.*

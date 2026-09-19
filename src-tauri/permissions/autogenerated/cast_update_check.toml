@@ -1,0 +1,11 @@
+# Permission for checking the signed Lalin Cast update manifest.
+
+[[permission]]
+identifier = "allow-cast-update-check"
+description = "Enables the cast_update_check command without any pre-configured scope."
+commands.allow = ["cast_update_check"]
+
+[[permission]]
+identifier = "deny-cast-update-check"
+description = "Denies the cast_update_check command."
+commands.deny = ["cast_update_check"]

@@ -1,0 +1,53 @@
+name: Release Lalin Cast
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify updater secret presence
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY is not configured"
+          }
+          Write-Host "Lalin Cast updater signing secret is present"
+
+      - name: Run Rust checks
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Build signed Tauri release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: .
+          tagName: v__VERSION__
+          releaseName: Lalin Cast v__VERSION__
+          releaseBody: "Signed Windows x64 release for Lalin Cast."
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
