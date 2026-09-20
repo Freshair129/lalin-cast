@@ -162,6 +162,26 @@ p[hidden] {
   margin-top: 4px;
 }
 
+.field-legend {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
+}
+
+.profile-group {
+  margin-top: 4px;
+}
+
+.profile-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-buttons button {
+  flex: 1 1 auto;
+}
+
 .text-field span,
 .select-field span {
   font-size: 13px;
@@ -329,4 +349,14 @@ button.secondary {
 
 button.secondary:hover {
   border-color: var(--accent);
+}
+
+button.secondary.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  margin-top: 12px;
+}
+
+button.secondary.danger:hover {
+  background: var(--danger-bg);
 }
