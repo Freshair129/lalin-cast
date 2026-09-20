@@ -30,15 +30,6 @@
               <span id="language-en-label"></span>
             </label>
           </fieldset>
-
-          <label class="checkbox-row">
-            <input type="checkbox" id="fullscreen-toggle" />
-            <span id="fullscreen-label"></span>
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" id="keep-on-top-toggle" />
-            <span id="keep-on-top-label"></span>
-          </label>
         </section>
 
         <section aria-labelledby="tv-heading">
@@ -54,6 +45,45 @@
           <button id="open-setup-btn" type="button" class="secondary"></button>
         </section>
 
+        <section aria-labelledby="playback-heading">
+          <h2 id="playback-heading"></h2>
+
+          <label class="select-field" for="sleep-timer-select">
+            <span id="sleep-timer-label"></span>
+          </label>
+          <select id="sleep-timer-select"></select>
+          <p id="sleep-timer-remaining" class="countdown-line" hidden role="timer" aria-live="off"></p>
+
+          <label class="select-field" for="codec-filter-select">
+            <span id="codec-filter-label"></span>
+          </label>
+          <select id="codec-filter-select"></select>
+          <p id="codec-filter-note" class="note-line"></p>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="hardware-decoding-toggle" />
+            <span id="hardware-decoding-label"></span>
+          </label>
+          <p id="hardware-decoding-note" class="note-line" role="status" aria-live="polite"></p>
+        </section>
+
+        <section aria-labelledby="display-heading">
+          <h2 id="display-heading"></h2>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="fullscreen-toggle" />
+            <span id="fullscreen-label"></span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="keep-on-top-toggle" />
+            <span id="keep-on-top-label"></span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="mini-player-toggle" />
+            <span id="mini-player-label"></span>
+          </label>
+        </section>
+
         <section aria-labelledby="controls-heading">
           <h2 id="controls-heading"></h2>
 
@@ -64,6 +94,10 @@
           <label class="checkbox-row">
             <input type="checkbox" id="pause-on-blur-toggle" />
             <span id="pause-on-blur-label"></span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="touch-overlay-toggle" />
+            <span id="touch-overlay-label"></span>
           </label>
 
           <table id="controls-table" class="controls-table">

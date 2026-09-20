@@ -17,6 +17,11 @@
  *       pauseOnBlur: boolean,
  *       controllerEnabled: boolean,
  *       setupCompleted: boolean,
+ *       sleepTimerMinutes: 0 | 15 | 30 | 60 | 90 | 120,
+ *       codecFilter: "off" | "h264",
+ *       hardwareDecoding: boolean,
+ *       touchOverlay: boolean,
+ *       miniPlayer: boolean,
  *     },
  *     dial: {
  *       state: "starting" | "ready" | "degraded" | "disabled",
@@ -24,24 +29,38 @@
  *       port: number | null,
  *       message: string | null,
  *     },
+ *     sleepRemainingSeconds: number | null,
+ *     hardwareDecodingRestartRequired: boolean,
  *   };
  *
  * Commands (the host rejects these unless window.label() === "settings"):
- *   settings_get()                                -> SettingsSnapshot (= { settings, dial })
+ *   settings_get()                                -> SettingsSnapshot (= { settings, dial, sleepRemainingSeconds, hardwareDecodingRestartRequired })
  *   settings_set(key: string, value: JsonValue)    -> SettingsSnapshot
  *     Whitelisted keys only ("language", "dialFriendlyName", "fullscreen",
- *     "keepOnTop", "pauseOnBlur", "controllerEnabled", "setupCompleted");
- *     an unknown key or wrong value type rejects. On success the returned
- *     snapshot is the new source of truth for every control on this page;
- *     on failure nothing changed server-side, so controls are re-rendered
- *     from the last known-good `settings`/`dial` already held in memory.
+ *     "keepOnTop", "pauseOnBlur", "controllerEnabled", "setupCompleted",
+ *     "sleepTimerMinutes", "codecFilter", "hardwareDecoding", "touchOverlay",
+ *     "miniPlayer"); an unknown key, a wrong value type, or a value outside
+ *     the allowed set (e.g. a sleep timer minute count that is not one of
+ *     {0, 15, 30, 60, 90, 120}) rejects. On success the returned snapshot is
+ *     the new source of truth for every control on this page; on failure
+ *     nothing changed server-side, so controls are re-rendered from the last
+ *     known-good `settings`/`dial`/`sleepRemainingSeconds`/
+ *     `hardwareDecodingRestartRequired` already held in memory.
  *   settings_open_setup()                          -> void (opens the `setup` window)
  *   settings_check_updates()                       -> void (result appears in the `update` window)
  *
  * Every control on this page calls `settings_set` the moment its value
  * changes (no separate "Save" button) and re-renders itself from whatever
  * snapshot comes back, per the "Settings window" contract in
- * docs/plans/W3_CONTROLS_PLAN.md.
+ * docs/plans/W3_CONTROLS_PLAN.md, extended by docs/plans/W4_PLAYBACK_PLAN.md.
+ *
+ * While this window is open and the page is visible (`!document.hidden`),
+ * a 5-second refresh loop calls `settings_get` on its own and repaints the
+ * DIAL status line, the sleep-timer countdown and the mini-player toggle so
+ * they stay live even when those values change from elsewhere (tray menu,
+ * media-window keybind, the sleep timer itself expiring). The DIAL name
+ * field is never overwritten by this loop while it has keyboard focus, so
+ * it cannot clobber what the user is in the middle of typing.
  *
  * No inline <script>, no inline event handlers (on*=), no external
  * resources. This file is a plain classic script (no import/export) so it
@@ -61,8 +80,6 @@ const STRINGS = {
       languageLegend: "ภาษา",
       languageTh: "ไทย",
       languageEn: "English",
-      fullscreen: "เต็มจอ",
-      keepOnTop: "อยู่บนสุดเสมอ",
     },
     tv: {
       heading: "ทีวีและมือถือ",
@@ -76,10 +93,26 @@ const STRINGS = {
         unknown: "ไม่ทราบสถานะ",
       },
     },
+    playback: {
+      heading: "การเล่น",
+      sleepTimerLabel: "ตั้งเวลาปิดอัตโนมัติ",
+      sleepTimerRemainingPrefix: "เหลือเวลา ",
+      codecFilterLabel: "ตัวกรองรูปแบบวิดีโอ (Codec)",
+      codecFilterNote: "หมายเหตุ: มีผลหลังโหลดหน้าใหม่",
+      hardwareDecodingLabel: "ถอดรหัสวิดีโอด้วยฮาร์ดแวร์",
+      hardwareDecodingNote: "หมายเหตุ: มีผลหลังเปิดแอปใหม่",
+    },
+    display: {
+      heading: "หน้าจอ",
+      fullscreen: "เต็มจอ",
+      keepOnTop: "อยู่บนสุดเสมอ",
+      miniPlayerLabel: "โหมดมินิเพลเยอร์",
+    },
     controls: {
       heading: "การควบคุม",
       controllerLabel: "เปิดใช้งานจอยเกม (Gamepad)",
       pauseOnBlurLabel: "หยุดวิดีโอเมื่อหน้าต่างเสียโฟกัส",
+      touchOverlayLabel: "แสดงปุ่มสัมผัสบนหน้าจอ",
     },
     updates: {
       heading: "อัปเดตและเกี่ยวกับ",
@@ -106,8 +139,6 @@ const STRINGS = {
       languageLegend: "Language",
       languageTh: "ไทย",
       languageEn: "English",
-      fullscreen: "Fullscreen",
-      keepOnTop: "Keep on top",
     },
     tv: {
       heading: "TV and phone",
@@ -121,10 +152,26 @@ const STRINGS = {
         unknown: "Unknown status",
       },
     },
+    playback: {
+      heading: "Playback",
+      sleepTimerLabel: "Sleep timer",
+      sleepTimerRemainingPrefix: "Remaining ",
+      codecFilterLabel: "Video codec filter",
+      codecFilterNote: "Note: applies after the next reload",
+      hardwareDecodingLabel: "Hardware video decoding",
+      hardwareDecodingNote: "Note: applies after restarting the app",
+    },
+    display: {
+      heading: "Display",
+      fullscreen: "Fullscreen",
+      keepOnTop: "Keep on top",
+      miniPlayerLabel: "Mini-player mode",
+    },
     controls: {
       heading: "Controls",
       controllerLabel: "Enable controller (gamepad)",
       pauseOnBlurLabel: "Pause video when the window loses focus",
+      touchOverlayLabel: "Show on-screen touch controls",
     },
     updates: {
       heading: "Updates and about",
@@ -160,6 +207,7 @@ const CONTROLS_TABLE = {
   rows: [
     ["เปิดการตั้งค่า / Open settings", "Ctrl+O", "R3 (กดแท่งขวา) / R3 (right-stick click)"],
     ["สลับเต็มจอ / Toggle fullscreen", "F11", "—"],
+    ["สลับมินิเพลเยอร์ / Toggle mini-player", "Ctrl+Shift+M", "—"],
     ["กดปุ่มยืนยันค้าง / Long-press confirm", "Shift+Enter", "กดปุ่มยืนยันค้าง / Hold confirm button"],
     ["ย้อนกลับ / Back", "คลิกขวา / Right-click", "ปุ่มย้อนกลับ / Back button"],
     ["ปรับระดับเสียง / Volume", "+ / −", "—"],
@@ -171,12 +219,37 @@ const CONTROLS_TABLE = {
   ],
 };
 
+// Sleep timer and codec filter option labels are shown bilingually, same
+// rationale as CONTROLS_TABLE above: they are short, fixed-vocabulary
+// choices rather than page chrome, so they do not need to be rebuilt when
+// the window's language changes.
+const SLEEP_TIMER_OPTIONS = [
+  { value: 0, label: "ปิด / Off" },
+  { value: 15, label: "15 นาที / 15 min" },
+  { value: 30, label: "30 นาที / 30 min" },
+  { value: 60, label: "60 นาที / 60 min" },
+  { value: 90, label: "90 นาที / 90 min" },
+  { value: 120, label: "120 นาที / 120 min" },
+];
+
+const CODEC_FILTER_OPTIONS = [
+  { value: "off", label: "ไม่กรอง / Off" },
+  { value: "h264", label: "จำกัดเฉพาะ H.264 / H.264 only" },
+];
+
 const SETTINGS_KEYS = {
   fullscreen: "fullscreen",
   keepOnTop: "keepOnTop",
   controllerEnabled: "controllerEnabled",
   pauseOnBlur: "pauseOnBlur",
+  sleepTimerMinutes: "sleepTimerMinutes",
+  codecFilter: "codecFilter",
+  hardwareDecoding: "hardwareDecoding",
+  touchOverlay: "touchOverlay",
+  miniPlayer: "miniPlayer",
 };
+
+const REFRESH_INTERVAL_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // DOM helpers (operate on a `doc` param so tests can pass a stub)
@@ -244,7 +317,7 @@ function hasTauriApi(win) {
 
 function getState(win) {
   if (!win.__lalinSettingsState__) {
-    win.__lalinSettingsState__ = { wired: false };
+    win.__lalinSettingsState__ = { wired: false, refreshTimerId: null };
   }
   return win.__lalinSettingsState__;
 }
@@ -256,6 +329,27 @@ function getState(win) {
 function showError(doc, message) {
   setText(doc, "settings-error", message || "");
   setHidden(doc, "settings-error", !message);
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot merging — shared by the settings_set response handler and the
+// background settings_get refresh loop. Only overwrites the top-level
+// fields that are actually present on `snapshot`, since `sleepRemainingSeconds`
+// (nullable) and `hardwareDecodingRestartRequired` (can legitimately be
+// `false`) cannot be distinguished from "absent" with a truthy check.
+// ---------------------------------------------------------------------------
+
+function mergeSnapshot(data, snapshot) {
+  const s = snapshot || {};
+  if (s.settings) data.settings = s.settings;
+  if (s.dial) data.dial = s.dial;
+  if (Object.prototype.hasOwnProperty.call(s, "sleepRemainingSeconds")) {
+    data.sleepRemainingSeconds = s.sleepRemainingSeconds;
+  }
+  if (Object.prototype.hasOwnProperty.call(s, "hardwareDecodingRestartRequired")) {
+    data.hardwareDecodingRestartRequired = s.hardwareDecodingRestartRequired;
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +371,18 @@ function buildControlsTableBody(doc) {
   });
 }
 
+function buildSelectOptions(doc, selectId, options) {
+  const select = byId(doc, selectId);
+  if (!select || typeof doc.createElement !== "function") return;
+  while (select.firstChild) select.removeChild(select.firstChild);
+  options.forEach((opt) => {
+    const optionEl = doc.createElement("option");
+    optionEl.value = String(opt.value);
+    optionEl.textContent = opt.label;
+    select.appendChild(optionEl);
+  });
+}
+
 // Static chrome: headings, button/field labels, and the cheat-sheet table.
 // Independent of `settings`/`dial`, so it only needs to run once per load
 // (the window's `lang` does not change without reopening it), but is cheap
@@ -288,16 +394,28 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "language-legend", strings.general.languageLegend);
   setText(doc, "language-th-label", strings.general.languageTh);
   setText(doc, "language-en-label", strings.general.languageEn);
-  setText(doc, "fullscreen-label", strings.general.fullscreen);
-  setText(doc, "keep-on-top-label", strings.general.keepOnTop);
 
   setText(doc, "tv-heading", strings.tv.heading);
   setText(doc, "dial-name-label", strings.tv.dialNameLabel);
   setText(doc, "open-setup-btn", strings.tv.openSetupBtn);
 
+  setText(doc, "playback-heading", strings.playback.heading);
+  setText(doc, "sleep-timer-label", strings.playback.sleepTimerLabel);
+  setText(doc, "codec-filter-label", strings.playback.codecFilterLabel);
+  setText(doc, "codec-filter-note", strings.playback.codecFilterNote);
+  setText(doc, "hardware-decoding-label", strings.playback.hardwareDecodingLabel);
+  buildSelectOptions(doc, "sleep-timer-select", SLEEP_TIMER_OPTIONS);
+  buildSelectOptions(doc, "codec-filter-select", CODEC_FILTER_OPTIONS);
+
+  setText(doc, "display-heading", strings.display.heading);
+  setText(doc, "fullscreen-label", strings.display.fullscreen);
+  setText(doc, "keep-on-top-label", strings.display.keepOnTop);
+  setText(doc, "mini-player-label", strings.display.miniPlayerLabel);
+
   setText(doc, "controls-heading", strings.controls.heading);
   setText(doc, "controller-label", strings.controls.controllerLabel);
   setText(doc, "pause-on-blur-label", strings.controls.pauseOnBlurLabel);
+  setText(doc, "touch-overlay-label", strings.controls.touchOverlayLabel);
   setText(doc, "controls-table-caption", CONTROLS_TABLE.caption);
   setText(doc, "controls-col-action", CONTROLS_TABLE.columns[0]);
   setText(doc, "controls-col-keyboard", CONTROLS_TABLE.columns[1]);
@@ -341,21 +459,72 @@ function renderDial(doc, strings, dial) {
   setText(doc, "dial-status", dialStateLabel(strings, dial));
 }
 
-// Control state: rebuilt from `data.settings`/`data.dial` — called on init
-// and again every time a `settings_set` call resolves or rejects, so it is
-// always the single source of truth painted onto the controls (on
-// rejection, `data` still holds the last known-good values, so this
-// naturally reverts any control the user had just toggled).
+// mm:ss for the sleep-timer countdown. Returns null (nothing to show) for
+// anything that isn't a finite, non-negative number, which covers both
+// `sleepRemainingSeconds: null` (no timer running) and a missing/malformed
+// value from a stub snapshot.
+function formatRemaining(seconds) {
+  if (typeof seconds !== "number" || !isFinite(seconds) || seconds < 0) return null;
+  const total = Math.floor(seconds);
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  return String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+}
+
+function renderCountdown(doc, strings, remainingSeconds) {
+  const formatted = formatRemaining(remainingSeconds);
+  if (formatted == null) {
+    setHidden(doc, "sleep-timer-remaining", true);
+    setText(doc, "sleep-timer-remaining", "");
+    return;
+  }
+  setHidden(doc, "sleep-timer-remaining", false);
+  setText(doc, "sleep-timer-remaining", strings.playback.sleepTimerRemainingPrefix + formatted);
+}
+
+function renderHardwareDecodingNote(doc, strings, restartRequired) {
+  setText(doc, "hardware-decoding-note", strings.playback.hardwareDecodingNote);
+  setAttr(doc, "hardware-decoding-note", "data-level", restartRequired ? "warn" : "info");
+}
+
+// The DIAL name field is never overwritten while the user has it focused —
+// both for a normal settings_set response (they may already be editing the
+// next name) and, more importantly, for the background refresh loop, which
+// must not clobber an in-progress edit just because a poll happened to land
+// mid-keystroke.
+function renderDialNameInput(doc, value) {
+  const input = byId(doc, "dial-name-input");
+  if (!input) return;
+  if (doc.activeElement === input) return;
+  setValue(doc, "dial-name-input", value);
+}
+
+// Control state: rebuilt from `data.settings`/`data.dial`/
+// `data.sleepRemainingSeconds`/`data.hardwareDecodingRestartRequired` —
+// called on init, again every time a `settings_set` call resolves or
+// rejects (on rejection `data` still holds the last known-good values, so
+// this naturally reverts any control the user had just toggled), and again
+// on every tick of the 5-second background refresh loop.
 function renderDynamic(doc, strings, data) {
   const settings = (data && data.settings) || {};
   setChecked(doc, "language-th", settings.language === "th");
   setChecked(doc, "language-en", settings.language !== "th");
+  renderDialNameInput(doc, settings.dialFriendlyName || "");
+  renderDial(doc, strings, data && data.dial);
+
+  setValue(doc, "sleep-timer-select", settings.sleepTimerMinutes != null ? settings.sleepTimerMinutes : 0);
+  renderCountdown(doc, strings, data && data.sleepRemainingSeconds);
+  setValue(doc, "codec-filter-select", settings.codecFilter || "off");
+  setChecked(doc, "hardware-decoding-toggle", !!settings.hardwareDecoding);
+  renderHardwareDecodingNote(doc, strings, !!(data && data.hardwareDecodingRestartRequired));
+
   setChecked(doc, "fullscreen-toggle", !!settings.fullscreen);
   setChecked(doc, "keep-on-top-toggle", !!settings.keepOnTop);
+  setChecked(doc, "mini-player-toggle", !!settings.miniPlayer);
+
   setChecked(doc, "controller-toggle", !!settings.controllerEnabled);
   setChecked(doc, "pause-on-blur-toggle", !!settings.pauseOnBlur);
-  setValue(doc, "dial-name-input", settings.dialFriendlyName || "");
-  renderDial(doc, strings, data && data.dial);
+  setChecked(doc, "touch-overlay-toggle", !!settings.touchOverlay);
 }
 
 function renderNoTauri(doc, strings) {
@@ -367,7 +536,8 @@ function renderNoTauri(doc, strings) {
 }
 
 // ---------------------------------------------------------------------------
-// settings_set wiring — shared by every toggle/radio/field on this page.
+// settings_set wiring — shared by every toggle/radio/select/field on this
+// page.
 // ---------------------------------------------------------------------------
 
 function afterSettingsSet(doc, win, invokePromise) {
@@ -377,13 +547,11 @@ function afterSettingsSet(doc, win, invokePromise) {
 
   return invokePromise
     .then((snapshot) => {
-      const s = snapshot || {};
-      if (s.settings) data.settings = s.settings;
-      if (s.dial) data.dial = s.dial;
+      mergeSnapshot(data, snapshot);
       // A language change is reflected in the snapshot; adopt it so the page
       // relabels itself immediately instead of waiting to be reopened.
-      if (s.settings && (s.settings.language === "th" || s.settings.language === "en")) {
-        data.lang = s.settings.language;
+      if (data.settings && (data.settings.language === "th" || data.settings.language === "en")) {
+        data.lang = data.settings.language;
       }
       win.__LALIN_SETTINGS__ = data;
       const nextStrings = STRINGS[langOf(data)];
@@ -414,6 +582,19 @@ function wireBooleanToggle(doc, win, elementId, key) {
   if (!el) return;
   el.addEventListener("change", () => {
     afterSettingsSet(doc, win, win.__TAURI__.core.invoke("settings_set", { key, value: !!el.checked }));
+  });
+}
+
+// `transform` converts the select's (always-string) `.value` into the JSON
+// value `settings_set` expects, e.g. parsing "15" into the number 15 for
+// `sleepTimerMinutes`. Omit it for string-valued selects like `codecFilter`.
+function wireSelectControl(doc, win, elementId, key, transform) {
+  const el = byId(doc, elementId);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    const raw = el.value;
+    const value = typeof transform === "function" ? transform(raw) : raw;
+    afterSettingsSet(doc, win, win.__TAURI__.core.invoke("settings_set", { key, value }));
   });
 }
 
@@ -494,6 +675,39 @@ function wireCheckUpdates(doc, win) {
 }
 
 // ---------------------------------------------------------------------------
+// Background refresh loop — settings_get every 5s while the window is open
+// and the page is visible, so the DIAL status, sleep-timer countdown and
+// mini-player toggle stay live without the user touching anything. A
+// transient failure here is silent (no inline error): explicit control
+// actions still surface their own errors via afterSettingsSet, and a single
+// missed poll self-heals on the next tick.
+// ---------------------------------------------------------------------------
+
+function refreshTick(doc, win) {
+  if (!win || !hasTauriApi(win)) return;
+  if (doc.hidden) return;
+
+  win.__TAURI__.core
+    .invoke("settings_get")
+    .then((snapshot) => {
+      const data = win.__LALIN_SETTINGS__ || {};
+      mergeSnapshot(data, snapshot);
+      win.__LALIN_SETTINGS__ = data;
+      renderDynamic(doc, STRINGS[langOf(data)], data);
+    })
+    .catch(() => {
+      // Silent by design — see comment above.
+    });
+}
+
+function startRefreshLoop(doc, win) {
+  const state = getState(win);
+  if (state.refreshTimerId != null) return;
+  if (typeof win.setInterval !== "function") return;
+  state.refreshTimerId = win.setInterval(() => refreshTick(doc, win), REFRESH_INTERVAL_MS);
+}
+
+// ---------------------------------------------------------------------------
 // Escape closes the window directly (no dedicated command — same pattern as
 // fallback/update.js's Later/close buttons).
 // ---------------------------------------------------------------------------
@@ -534,13 +748,20 @@ function init(doc, win) {
     wireLanguageRadios(doc, win);
     wireBooleanToggle(doc, win, "fullscreen-toggle", SETTINGS_KEYS.fullscreen);
     wireBooleanToggle(doc, win, "keep-on-top-toggle", SETTINGS_KEYS.keepOnTop);
+    wireBooleanToggle(doc, win, "mini-player-toggle", SETTINGS_KEYS.miniPlayer);
     wireBooleanToggle(doc, win, "controller-toggle", SETTINGS_KEYS.controllerEnabled);
     wireBooleanToggle(doc, win, "pause-on-blur-toggle", SETTINGS_KEYS.pauseOnBlur);
+    wireBooleanToggle(doc, win, "touch-overlay-toggle", SETTINGS_KEYS.touchOverlay);
+    wireBooleanToggle(doc, win, "hardware-decoding-toggle", SETTINGS_KEYS.hardwareDecoding);
+    wireSelectControl(doc, win, "sleep-timer-select", SETTINGS_KEYS.sleepTimerMinutes, (raw) => parseInt(raw, 10));
+    wireSelectControl(doc, win, "codec-filter-select", SETTINGS_KEYS.codecFilter);
     wireDialName(doc, win);
     wireOpenSetup(doc, win);
     wireCheckUpdates(doc, win);
     wireEscape(doc, win);
   }
+
+  startRefreshLoop(doc, win);
 
   renderStaticLabels(doc, strings, data);
   renderDynamic(doc, strings, data);
@@ -556,7 +777,7 @@ function boot() {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { init, hasTauriApi };
+  module.exports = { init, hasTauriApi, formatRemaining };
 }
 
 boot();
