@@ -43,6 +43,33 @@ jobs:
         shell: pwsh
         run: node --check src-tauri/injected.js
 
+  arm64-check:
+    name: ARM64 cross-compile check (experimental)
+    # Wave 4 U4 (docs/plans/W4_PLAYBACK_PLAN.md): confirms the ARM64 target
+    # keeps compiling as the codebase changes, ahead of the experimental
+    # ARM64 leg in release.yml. No ARM64 runner is used or needed — this only
+    # type-checks a cross-compile from the x64 host, so it cannot run tests.
+    # continue-on-error keeps a real ARM64 regression from blocking PRs/CI
+    # while the target has no dedicated runner to verify behavior on.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+
+      - name: rustup target add aarch64-pc-windows-msvc
+        shell: pwsh
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - name: cargo check --target aarch64-pc-windows-msvc
+        shell: pwsh
+        run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-pc-windows-msvc
+
   supply-chain:
     name: Supply-chain audit (cargo-deny)
     # EmbarkStudios/cargo-deny-action is a Docker container action (verified

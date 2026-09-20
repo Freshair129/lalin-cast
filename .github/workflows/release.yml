@@ -9,9 +9,30 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    name: Build Windows x64
+  build:
+    name: Build ${{ matrix.label }} (${{ matrix.target }})
     runs-on: windows-latest
+    # `experimental: true` (arm64) must not cancel the stable x64 leg if it
+    # fails, and must not block the release on an arm64 failure either.
+    # continue-on-error alone does not stop GitHub Actions' matrix fail-fast
+    # from cancelling sibling jobs, so fail-fast: false is required alongside
+    # it (see U4 notes / GitHub Actions matrix docs).
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      # Both legs read-modify-write the SAME latest.json release asset
+      # (tauri-action merges by platform key — see U4 notes). Running them
+      # concurrently risks a lost update if two jobs read the asset before
+      # either writes it back, so the matrix is serialized.
+      max-parallel: 1
+      matrix:
+        include:
+          - label: x64
+            target: x86_64-pc-windows-msvc
+            experimental: false
+          - label: arm64
+            target: aarch64-pc-windows-msvc
+            experimental: true
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -25,6 +46,10 @@ jobs:
           toolchain: stable
           components: clippy
 
+      - name: rustup target add ${{ matrix.target }}
+        shell: pwsh
+        run: rustup target add ${{ matrix.target }}
+
       - name: Verify updater secret presence
         shell: pwsh
         run: |
@@ -34,6 +59,7 @@ jobs:
           Write-Host "Lalin Cast updater signing secret is present"
 
       - name: Run Rust checks
+        if: ${{ !matrix.experimental }}
         shell: pwsh
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
@@ -41,6 +67,7 @@ jobs:
           cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Run Rust lint (clippy)
+        if: ${{ !matrix.experimental }}
         shell: pwsh
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
@@ -61,11 +88,13 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $commit = $env:GITHUB_SHA
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Lalin Cast release"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Lalin Cast release — ${{ matrix.label }}"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Tag: ``$tag``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Commit: ``$commit``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifacts: Windows x64 NSIS installer (.exe), updater signature (.sig), latest.json"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Target: ``${{ matrix.target }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Experimental (continue-on-error): ``${{ matrix.experimental }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifacts: Windows ${{ matrix.label }} NSIS installer (.exe), updater signature (.sig), latest.json"
 
       - name: Build signed Tauri release
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
@@ -75,9 +104,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: .
+          args: --target ${{ matrix.target }}
           tagName: v__VERSION__
           releaseName: Lalin Cast v__VERSION__
-          releaseBody: "Signed Windows x64 release for Lalin Cast."
+          releaseBody: "Signed Windows release for Lalin Cast (x64 stable; arm64 experimental)."
           releaseDraft: true
           prerelease: false
+          # tauri-action's upload-version-json.ts (read at the pinned SHA,
+          # see packaging notes / U4 stream report) downloads the existing
+          # latest.json release asset, if any, merges its `platforms` map
+          # into memory, sets only this run's `${os}-${arch}[-bundle]` keys,
+          # and re-uploads the merged file — it does not overwrite the whole
+          # file. Both x64 and arm64 legs can safely upload the updater JSON;
+          # `max-parallel: 1` above avoids a lost-update race between them.
           uploadUpdaterJson: true

@@ -1,0 +1,43 @@
+# Lalin Cast — winget installer manifest (TEMPLATE, not yet submitted)
+#
+# See Lalin.LalinCast.yaml for the PackageIdentifier proposal note, and
+# packaging/winget/README.md for how to fill {{VERSION}}, {{INSTALLER_URL}}
+# and {{INSTALLER_SHA256}} and validate before submitting.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: Lalin.LalinCast
+PackageVersion: "{{VERSION}}"
+Platform:
+  - Windows.Desktop
+# Lowest Windows 10 build with WebView2 Runtime generally preinstalled, used
+# as a conservative floor for this template — re-check against the Tauri
+# version and WebView2 requirements in use at submission time.
+MinimumOSVersion: 10.0.17763.0
+InstallerType: nsis
+# Tauri's NSIS bundler defaults to a per-user install (no elevation) unless
+# `bundle.windows.nsis.installMode` is set otherwise in
+# src-tauri/tauri.conf.json (unset as of this template — verify against the
+# actual built installer before submitting; change to `machine` if that
+# changes). NSIS installers built by Tauri accept the standard NSIS `/S`
+# silent switch.
+Scope: user
+InstallerSwitches:
+  Silent: "/S"
+  SilentWithProgress: "/S"
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerUrl: "{{INSTALLER_URL}}"
+    InstallerSha256: "{{INSTALLER_SHA256}}"
+# No arm64 entry yet: the arm64 release leg (.github/workflows/release.yml,
+# job `build`, matrix leg `arm64`) is `experimental: true` /
+# `continue-on-error: true` and not yet a supported release target (see
+# docs/plans/W4_PLAYBACK_PLAN.md, U4). Add an `Architecture: arm64` entry
+# with its own InstallerUrl/InstallerSha256 here once arm64 builds are
+# verified and promoted out of experimental status.
+ManifestType: installer
+ManifestVersion: 1.6.0
