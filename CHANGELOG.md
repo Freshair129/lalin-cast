@@ -110,6 +110,18 @@ version number.
   fallback ถ้าไม่พบส่วนนั้น) / GitHub Release notes are now extracted directly from the `## [<version>]`
   section of `CHANGELOG.md` (with a fallback when that section is missing)
 
+#### Wave 7 — Deep link and DIAL hardening (`docs/plans/W7_DEEPLINK_PLAN.md`)
+
+- `lalin-cast://` URL scheme (`lalin-cast://watch?v=<id>` และ `lalin-cast://playlist?list=<id>`) ผ่าน
+  crate `tauri-plugin-deep-link` ที่ผู้ก่อตั้งอนุมัติ ตรวจ id เดิมเหมือนลิงก์ https และแปลงเป็น
+  `DeepLink` เดิมก่อนใช้งานเสมอ / the `lalin-cast://` URL scheme
+  (`lalin-cast://watch?v=<id>` and `lalin-cast://playlist?list=<id>`) via the founder-approved
+  `tauri-plugin-deep-link` crate, validated with the existing id checks and always converted to the
+  existing `DeepLink` before use, the same as an https link
+- ตัวเลือกเปิด/ปิด (`deepLinkScheme`, ปิดเป็นค่าเริ่มต้น) ในหน้าตั้งค่า สำหรับจดทะเบียน/ยกเลิก scheme
+  `lalin-cast://` แบบ opt-in / an opt-in toggle (`deepLinkScheme`, off by default) in the settings
+  window to register or unregister the `lalin-cast://` scheme
+
 ### Changed
 
 #### Wave 2 — Living-room readiness (`docs/plans/W2_LIVING_ROOM_PLAN.md`)
@@ -128,6 +140,17 @@ version number.
 
 - หน้าตั้งค่า refresh สถานะ DIAL และตัวนับถอยหลังทุก 5 วินาที ผ่าน `settings_get` / the settings window
   now refreshes DIAL status and countdowns every 5 seconds via `settings_get`
+
+#### Wave 7 — Deep link and DIAL hardening (`docs/plans/W7_DEEPLINK_PLAN.md`)
+
+- **การเปลี่ยนพฤติกรรมของ DIAL discovery:** `is_dial_search` ตรวจ header `MAN` ของคำขอ SSDP M-SEARCH
+  เข้มขึ้น ต้องมีค่าเทียบเท่า `ssdp:discover` (มีหรือไม่มีเครื่องหมายคำพูดคู่ก็ได้ case-insensitive)
+  ควบคู่กับ `ST` เดิม มิฉะนั้นจะถูกทิ้ง — ผู้ที่อัปเกรดควรยืนยัน human gate H22 (การค้นหาจาก YouTube app
+  บนมือถือ) ก่อน tag เวอร์ชันถัดไป / **DIAL discovery behavior change:** `is_dial_search` now enforces
+  a stricter check on the SSDP M-SEARCH `MAN` header — it must equal `ssdp:discover` (with or without
+  surrounding double quotes, case-insensitive) alongside the existing `ST` check, or the datagram is
+  dropped; anyone upgrading should confirm human gate H22 (mobile YouTube app discovery) before the
+  next tag
 
 ### Security
 
@@ -164,3 +187,16 @@ version number.
   arguments; no secret is ever printed to the log
 - `scripts/lifecycle-driver.ps1` อ่าน `lifecycle.json` อย่างเดียว ไม่เขียนหรือแก้ไขไฟล์ใด ๆ / `scripts/lifecycle-driver.ps1`
   only reads `lifecycle.json` — it never writes to or modifies any file
+
+#### Wave 7 — Deep link and DIAL hardening (`docs/plans/W7_DEEPLINK_PLAN.md`)
+
+- การจดทะเบียน `lalin-cast://` เป็น opt-in เสมอ (ปิดเป็นค่าเริ่มต้น) และเขียนเฉพาะ
+  `HKCU\Software\Classes\lalin-cast` ของบัญชีผู้ใช้ปัจจุบัน — ไม่ใช้สิทธิ์ผู้ดูแลระบบ ไม่แตะ
+  `HKLM` / registering `lalin-cast://` is always opt-in (off by default) and writes only to the
+  current user's `HKCU\Software\Classes\lalin-cast` — no administrator rights, no `HKLM` touched
+- ไม่มีหน้าต่างใด (รวมถึงหน้ารีโมท `youtube.com`) ได้รับ permission ของปลั๊กอิน deep-link — capability
+  `src-tauri/capabilities/default.json` ไม่เปลี่ยนแปลง และการจด/ยกเลิก/ตรวจ scheme ทำผ่าน
+  `settings_get`/`settings_set` ฝั่ง Rust เท่านั้น / no window (including the remote `youtube.com`
+  page) is granted any deep-link plugin permission — the
+  `src-tauri/capabilities/default.json` capability is unchanged, and registering, unregistering, or
+  checking the scheme happens only through the Rust-side `settings_get`/`settings_set` commands

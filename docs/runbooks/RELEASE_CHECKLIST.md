@@ -1,7 +1,7 @@
 ---
-version: "0.1.1b"
+version: "0.1.2b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T00:30:00+07:00,LALIN"
+last_update: "2026-09-21T02:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -53,6 +53,20 @@ tag — if any item is not done, **do not tag**:
         later gates a wave adds (e.g. H13–H17 from wave 5) must also be closed if that wave's
         features are included in this release — see each wave plan's human-gates table under
         `docs/plans/`
+- [ ] **human gates H22–H23 ปิดครบแล้ว** (`docs/plans/W7_DEEPLINK_PLAN.md`) — ถ้าฟีเจอร์ wave 7 รวมอยู่
+      ในรุ่นนี้ — **human gates H22–H23 are both closed** (`docs/plans/W7_DEEPLINK_PLAN.md`) — if
+      wave 7's features are included in this release:
+  - [ ] H22 — ยืนยันว่าโทรศัพท์ (iPhone/Android YouTube app) ยังค้นหา Lalin Cast เจอผ่าน DIAL หลังการ
+        ตรวจ header `MAN` ของ SSDP M-SEARCH เข้มขึ้น — ถ้าหาไม่เจอ ให้ย้อนการเปลี่ยนแปลงนี้ทันทีก่อน tag
+        — confirm phones (iPhone/Android YouTube app) still discover Lalin Cast over DIAL after the
+        stricter SSDP M-SEARCH `MAN` header check — if discovery fails, revert this change before
+        tagging
+  - [ ] H23 — ยืนยันว่าลิงก์ `lalin-cast://` เปิดแอป Lalin Cast ได้จริงจาก Windows Explorer หรือเบราว์เซอร์
+        เมื่อเปิดตัวเลือก `deepLinkScheme` ไว้ **และ** เมื่อปิดตัวเลือกนี้ลง scheme ที่จดทะเบียนไว้จะหาย
+        ไปจากระบบ (เปิดลิงก์แล้วไม่มีแอปใดถูกเรียก) — confirm a `lalin-cast://` link really opens the
+        Lalin Cast app from Windows Explorer or a browser when the `deepLinkScheme` setting is on,
+        **and** that turning the setting back off removes the registered association (opening the
+        link no longer launches any app)
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -183,3 +197,4 @@ to go to winget (not required for every release) — follow the full procedure i
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Created the release checklist runbook (pre-tag human gates, tagging, post-tag verification, winget manifest step, post-release follow-up) for wave 5 (U4) | uncommitted | LALIN |
 | 0.1.1b | 2026-09-21 | candidate | Added the "CHANGELOG section for the version must exist before tagging" pre-tag item for wave 6 (U4), matching `release.yml`'s new CHANGELOG-derived release body | uncommitted | LALIN |
+| 0.1.2b | 2026-09-21 | candidate | Added the pre-tag human gates H22 (DIAL discovery after the stricter SSDP `MAN` check) and H23 (`lalin-cast://` opens the app and the opt-in toggle removes the association) for wave 7 (U3) | uncommitted | LALIN |
