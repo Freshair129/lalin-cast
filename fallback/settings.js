@@ -22,6 +22,7 @@
  *       hardwareDecoding: boolean,
  *       touchOverlay: boolean,
  *       miniPlayer: boolean,
+ *       startWithWindows: boolean,
  *     },
  *     dial: {
  *       state: "starting" | "ready" | "degraded" | "disabled",
@@ -39,20 +40,24 @@
  *     Whitelisted keys only ("language", "dialFriendlyName", "fullscreen",
  *     "keepOnTop", "pauseOnBlur", "controllerEnabled", "setupCompleted",
  *     "sleepTimerMinutes", "codecFilter", "hardwareDecoding", "touchOverlay",
- *     "miniPlayer"); an unknown key, a wrong value type, or a value outside
- *     the allowed set (e.g. a sleep timer minute count that is not one of
- *     {0, 15, 30, 60, 90, 120}) rejects. On success the returned snapshot is
- *     the new source of truth for every control on this page; on failure
- *     nothing changed server-side, so controls are re-rendered from the last
- *     known-good `settings`/`dial`/`sleepRemainingSeconds`/
- *     `hardwareDecodingRestartRequired` already held in memory.
+ *     "miniPlayer", "startWithWindows"); an unknown key, a wrong value type,
+ *     or a value outside the allowed set (e.g. a sleep timer minute count
+ *     that is not one of {0, 15, 30, 60, 90, 120}) rejects. On success the
+ *     returned snapshot is the new source of truth for every control on this
+ *     page; on failure nothing changed server-side, so controls are
+ *     re-rendered from the last known-good `settings`/`dial`/
+ *     `sleepRemainingSeconds`/`hardwareDecodingRestartRequired` already held
+ *     in memory.
  *   settings_open_setup()                          -> void (opens the `setup` window)
  *   settings_check_updates()                       -> void (result appears in the `update` window)
+ *   settings_diagnostics()                         -> string (plain-text diagnostics snapshot;
+ *     contains no device id, URL, deep link, TV code, cookie or token)
  *
  * Every control on this page calls `settings_set` the moment its value
  * changes (no separate "Save" button) and re-renders itself from whatever
  * snapshot comes back, per the "Settings window" contract in
- * docs/plans/W3_CONTROLS_PLAN.md, extended by docs/plans/W4_PLAYBACK_PLAN.md.
+ * docs/plans/W3_CONTROLS_PLAN.md, extended by docs/plans/W4_PLAYBACK_PLAN.md
+ * and docs/plans/W5_DESKTOP_PLAN.md.
  *
  * While this window is open and the page is visible (`!document.hidden`),
  * a 5-second refresh loop calls `settings_get` on its own and repaints the
@@ -80,6 +85,7 @@ const STRINGS = {
       languageLegend: "ภาษา",
       languageTh: "ไทย",
       languageEn: "English",
+      startWithWindowsLabel: "เริ่ม Lalin Cast อัตโนมัติเมื่อเข้าสู่ระบบ Windows",
     },
     tv: {
       heading: "ทีวีและมือถือ",
@@ -122,10 +128,15 @@ const STRINGS = {
       unofficialText:
         "Lalin Cast เป็นซอฟต์แวร์อิสระที่ไม่เป็นทางการ ไม่ได้เป็นส่วนหนึ่งของ ไม่ได้รับการรับรอง และไม่มีความเกี่ยวข้องกับ Google, YouTube หรือเจ้าของแพลตฟอร์มใด ๆ",
       legalFilesText: "เอกสาร: PRIVACY.md · TERMS.md · THIRD_PARTY_NOTICES.md",
+      copyDiagnosticsBtn: "คัดลอกข้อมูลวินิจฉัย",
+      diagnosticsNote:
+        "ข้อความวินิจฉัยมีเวอร์ชันแอป ระบบปฏิบัติการและ WebView2 สถานะ DIAL และ IP ในเครือข่ายภายใน (LAN) และค่าตั้งต่าง ๆ — ไม่มีข้อมูลบัญชีหรือรหัสทีวี",
+      diagnosticsOutputLabel: "ข้อความวินิจฉัย",
     },
     settingsErrorPrefix: "บันทึกการตั้งค่าไม่สำเร็จ: ",
     openSetupErrorPrefix: "เปิดตัวช่วยตั้งค่าไม่สำเร็จ: ",
     checkUpdatesErrorPrefix: "ตรวจสอบอัปเดตไม่สำเร็จ: ",
+    diagnosticsErrorPrefix: "ดึงข้อมูลวินิจฉัยไม่สำเร็จ: ",
     unknownError: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
     noTauri: {
       title: "ใช้งานหน้านี้ไม่ได้",
@@ -139,6 +150,7 @@ const STRINGS = {
       languageLegend: "Language",
       languageTh: "ไทย",
       languageEn: "English",
+      startWithWindowsLabel: "Start Lalin Cast automatically when Windows starts",
     },
     tv: {
       heading: "TV and phone",
@@ -181,10 +193,15 @@ const STRINGS = {
       unofficialText:
         "Lalin Cast is unofficial, independent software. It is not affiliated with, endorsed by, or associated with Google, YouTube, or any platform owner.",
       legalFilesText: "Documents: PRIVACY.md · TERMS.md · THIRD_PARTY_NOTICES.md",
+      copyDiagnosticsBtn: "Copy diagnostics",
+      diagnosticsNote:
+        "The diagnostics text includes the app version, OS and WebView2, DIAL status and your LAN IP address, and your settings — it does not include any account information or TV code.",
+      diagnosticsOutputLabel: "Diagnostics text",
     },
     settingsErrorPrefix: "Could not save settings: ",
     openSetupErrorPrefix: "Could not open network setup: ",
     checkUpdatesErrorPrefix: "Could not check for updates: ",
+    diagnosticsErrorPrefix: "Could not get diagnostics: ",
     unknownError: "Unknown error",
     noTauri: {
       title: "This page can't be used",
@@ -216,8 +233,19 @@ const CONTROLS_TABLE = {
     ["คัดลอกลิงก์วิดีโอ / Copy video link", "Ctrl+Shift+C", "—"],
     ["นำทาง / Navigate", "ลูกศร / Arrow keys", "ปุ่มทิศทาง/แท่งซ้าย / D-pad or left stick"],
     ["ยืนยัน/เลือก / Confirm/select", "Enter", "ปุ่มยืนยัน / Confirm button"],
+    ["ความเร็วเล่น ช้าลง/เร็วขึ้น / Playback speed down/up", "Shift+, / Shift+.", "—"],
+    ["แสดงผังคีย์ลัด / Show help overlay", "? / F1", "—"],
   ],
 };
+
+// Bilingual, fixed-vocabulary strings shown regardless of the window's
+// active UI language, same rationale as CONTROLS_TABLE above. Wording is
+// pinned by the "Settings window (ขยาย)" contract in
+// docs/plans/W5_DESKTOP_PLAN.md.
+const START_WITH_WINDOWS_NOTE =
+  "เพิ่ม Lalin Cast ในรายการเริ่มต้นของ Windows (registry Run key ของบัญชีนี้) มีผลตั้งแต่การเข้าสู่ระบบครั้งถัดไป / Adds Lalin Cast to this account's Windows startup (registry Run key); takes effect at the next sign-in";
+const DIAGNOSTICS_COPIED_TEXT = "คัดลอกแล้ว / Copied";
+const DIAGNOSTICS_MANUAL_COPY_TEXT = "เลือกข้อความแล้วคัดลอกเอง / Select the text and copy it";
 
 // Sleep timer and codec filter option labels are shown bilingually, same
 // rationale as CONTROLS_TABLE above: they are short, fixed-vocabulary
@@ -247,6 +275,7 @@ const SETTINGS_KEYS = {
   hardwareDecoding: "hardwareDecoding",
   touchOverlay: "touchOverlay",
   miniPlayer: "miniPlayer",
+  startWithWindows: "startWithWindows",
 };
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -394,6 +423,8 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "language-legend", strings.general.languageLegend);
   setText(doc, "language-th-label", strings.general.languageTh);
   setText(doc, "language-en-label", strings.general.languageEn);
+  setText(doc, "start-with-windows-label", strings.general.startWithWindowsLabel);
+  setText(doc, "start-with-windows-note", START_WITH_WINDOWS_NOTE);
 
   setText(doc, "tv-heading", strings.tv.heading);
   setText(doc, "dial-name-label", strings.tv.dialNameLabel);
@@ -427,6 +458,9 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "version-line", strings.updates.versionLabel + ((data && data.version) || ""));
   setText(doc, "unofficial-text", strings.updates.unofficialText);
   setText(doc, "legal-files-text", strings.updates.legalFilesText);
+  setText(doc, "copy-diagnostics-btn", strings.updates.copyDiagnosticsBtn);
+  setText(doc, "diagnostics-note", strings.updates.diagnosticsNote);
+  setAttr(doc, "diagnostics-output", "aria-label", strings.updates.diagnosticsOutputLabel);
 }
 
 function dialStateLabel(strings, dial) {
@@ -509,6 +543,7 @@ function renderDynamic(doc, strings, data) {
   const settings = (data && data.settings) || {};
   setChecked(doc, "language-th", settings.language === "th");
   setChecked(doc, "language-en", settings.language !== "th");
+  setChecked(doc, "start-with-windows-toggle", !!settings.startWithWindows);
   renderDialNameInput(doc, settings.dialFriendlyName || "");
   renderDial(doc, strings, data && data.dial);
 
@@ -675,6 +710,64 @@ function wireCheckUpdates(doc, win) {
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostics snapshot — settings_diagnostics fills the readonly textarea
+// (hidden until it has text), then a best-effort clipboard copy reports
+// success/manual-copy in #diagnostics-result. Never overwritten by the
+// background refresh loop below: refreshTick()/renderDynamic() do not touch
+// `diagnostics-output`, `diagnostics-result` or their `hidden`/`value`
+// state, so a poll landing mid-copy cannot clobber this button's output.
+// ---------------------------------------------------------------------------
+
+// Resolves `true` when the text was copied to the clipboard, `false` when
+// the Clipboard API is unavailable or the copy was rejected (e.g. no user
+// gesture, permission denied) — either way the caller falls back to the
+// manual-copy message, never throwing.
+function copyDiagnosticsToClipboard(win, text) {
+  const nav = win && win.navigator;
+  if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== "function") {
+    return Promise.resolve(false);
+  }
+  return nav.clipboard
+    .writeText(text)
+    .then(() => true)
+    .catch(() => false);
+}
+
+function wireCopyDiagnostics(doc, win) {
+  const btn = byId(doc, "copy-diagnostics-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    const data = win.__LALIN_SETTINGS__ || {};
+    const strings = STRINGS[langOf(data)];
+
+    btn.disabled = true;
+    setHidden(doc, "diagnostics-result", true);
+    setText(doc, "diagnostics-result", "");
+    showError(doc, "");
+
+    win.__TAURI__.core
+      .invoke("settings_diagnostics")
+      .then((text) => {
+        const value = text == null ? "" : String(text);
+        setValue(doc, "diagnostics-output", value);
+        setHidden(doc, "diagnostics-output", value.length === 0);
+
+        return copyDiagnosticsToClipboard(win, value).then((copied) => {
+          setText(doc, "diagnostics-result", copied ? DIAGNOSTICS_COPIED_TEXT : DIAGNOSTICS_MANUAL_COPY_TEXT);
+          setHidden(doc, "diagnostics-result", false);
+        });
+      })
+      .catch((err) => {
+        showError(doc, strings.diagnosticsErrorPrefix + stringifyError(err, strings));
+      })
+      .then(() => {
+        btn.disabled = false;
+      });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Background refresh loop — settings_get every 5s while the window is open
 // and the page is visible, so the DIAL status, sleep-timer countdown and
 // mini-player toggle stay live without the user touching anything. A
@@ -753,11 +846,13 @@ function init(doc, win) {
     wireBooleanToggle(doc, win, "pause-on-blur-toggle", SETTINGS_KEYS.pauseOnBlur);
     wireBooleanToggle(doc, win, "touch-overlay-toggle", SETTINGS_KEYS.touchOverlay);
     wireBooleanToggle(doc, win, "hardware-decoding-toggle", SETTINGS_KEYS.hardwareDecoding);
+    wireBooleanToggle(doc, win, "start-with-windows-toggle", SETTINGS_KEYS.startWithWindows);
     wireSelectControl(doc, win, "sleep-timer-select", SETTINGS_KEYS.sleepTimerMinutes, (raw) => parseInt(raw, 10));
     wireSelectControl(doc, win, "codec-filter-select", SETTINGS_KEYS.codecFilter);
     wireDialName(doc, win);
     wireOpenSetup(doc, win);
     wireCheckUpdates(doc, win);
+    wireCopyDiagnostics(doc, win);
     wireEscape(doc, win);
   }
 

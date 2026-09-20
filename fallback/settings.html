@@ -30,6 +30,12 @@
               <span id="language-en-label"></span>
             </label>
           </fieldset>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="start-with-windows-toggle" />
+            <span id="start-with-windows-label"></span>
+          </label>
+          <p id="start-with-windows-note" class="note-line"></p>
         </section>
 
         <section aria-labelledby="tv-heading">
@@ -122,6 +128,11 @@
           <p id="version-line" class="muted"></p>
           <p id="unofficial-text" class="muted"></p>
           <p id="legal-files-text" class="muted"></p>
+
+          <button id="copy-diagnostics-btn" type="button" class="secondary"></button>
+          <textarea id="diagnostics-output" class="diagnostics-output" readonly hidden spellcheck="false"></textarea>
+          <p id="diagnostics-result" class="muted" hidden role="status" aria-live="polite"></p>
+          <p id="diagnostics-note" class="note-line"></p>
         </section>
       </div>
 
