@@ -118,6 +118,10 @@ pub enum Key {
     /// so they share a label (mirrors [`NetworkSetup`](Key::NetworkSetup)).
     OpenSettings,
     SettingsWindowTitle,
+    /// Shared label for the media window's `mini-player` menu item and the
+    /// tray's `tray-mini` item — both toggle the same mini-player mode, so
+    /// they share a label (mirrors [`OpenSettings`](Key::OpenSettings)).
+    MiniPlayer,
     StatusWindowTitle,
     /// Shown in the `status` window when the startup connectivity probe
     /// fails.
@@ -155,6 +159,8 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (En, OpenSettings) => "Settings",
         (Th, SettingsWindowTitle) => "การตั้งค่า Lalin Cast",
         (En, SettingsWindowTitle) => "Lalin Cast Settings",
+        (Th, MiniPlayer) => "โหมดมินิเพลเยอร์",
+        (En, MiniPlayer) => "Mini player",
         (Th, StatusWindowTitle) => "สถานะ Lalin Cast",
         (En, StatusWindowTitle) => "Lalin Cast Status",
         (Th, StatusOfflineMessage) => "ไม่พบการเชื่อมต่ออินเทอร์เน็ต — ตรวจสอบเครือข่ายแล้วลองอีกครั้ง",
@@ -239,6 +245,7 @@ mod tests {
             Key::SetupWindowTitle,
             Key::OpenSettings,
             Key::SettingsWindowTitle,
+            Key::MiniPlayer,
             Key::StatusWindowTitle,
             Key::StatusOfflineMessage,
             Key::StatusBlockedSurfaceMessage,
