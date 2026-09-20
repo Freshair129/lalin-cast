@@ -11,14 +11,17 @@
   //     controllerEnabled: boolean,
   //     pauseOnBlur: boolean,
   //     deepLink: string | null,
+  //     codecFilter: "off" | "h264",
+  //     touchOverlay: boolean,
   //   };
   //
   // Rust -> page events this file listens for:
-  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur }
+  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay }
   //   "lalin-cast-deeplink" payload { url }
+  //   "lalin-cast-sleep"    payload { minutes } (wave 4 — see docs/plans/W4_PLAYBACK_PLAN.md)
   //
   // page -> Rust events this file emits:
-  //   "lalin-cast-shell" payload { action: "open-settings" | "toggle-fullscreen" }
+  //   "lalin-cast-shell" payload { action: "open-settings" | "toggle-fullscreen" | "toggle-mini" }
   //
   // This file is a single `include_str!`-ed script, organized into
   // delimited sections. Most of it ports small modules from VacuumTube
@@ -43,7 +46,10 @@
     lang: "th",
     controllerEnabled: true,
     pauseOnBlur: false,
-    deepLink: null
+    deepLink: null,
+    // Wave 4 additions (docs/plans/W4_PLAYBACK_PLAN.md, "ค่าคงที่และ contract"):
+    codecFilter: "off",
+    touchOverlay: true
   });
 
   // Reads window.__LALIN_PREFS__ with the documented defaults, tolerating a
@@ -55,26 +61,35 @@
       lang: raw.lang === "en" ? "en" : DEFAULT_PREFS.lang,
       controllerEnabled: raw.controllerEnabled === false ? false : DEFAULT_PREFS.controllerEnabled,
       pauseOnBlur: raw.pauseOnBlur === true ? true : DEFAULT_PREFS.pauseOnBlur,
-      deepLink: typeof raw.deepLink === "string" && raw.deepLink.length > 0 ? raw.deepLink : DEFAULT_PREFS.deepLink
+      deepLink: typeof raw.deepLink === "string" && raw.deepLink.length > 0 ? raw.deepLink : DEFAULT_PREFS.deepLink,
+      codecFilter: raw.codecFilter === "h264" ? "h264" : DEFAULT_PREFS.codecFilter,
+      touchOverlay: raw.touchOverlay === false ? false : DEFAULT_PREFS.touchOverlay
     };
   };
 
   // Merges a `lalin-cast-prefs` payload ({ lang, controllerEnabled,
-  // pauseOnBlur }, no `deepLink` field — that only ever arrives once, via
-  // __LALIN_PREFS__ or a `lalin-cast-deeplink` event) onto the previous
-  // prefs, ignoring unknown/malformed fields.
+  // pauseOnBlur, codecFilter, touchOverlay }, no `deepLink` field — that only
+  // ever arrives once, via __LALIN_PREFS__ or a `lalin-cast-deeplink` event)
+  // onto the previous prefs, ignoring unknown/malformed fields. Note that a
+  // later `codecFilter` change is only ever *stored* here — per contract it
+  // takes effect on the next page load, since installCodecFilter() (below)
+  // only ever runs once, synchronously, from boot().
   const applyPrefsUpdate = (prev, payload) => {
     const base = prev && typeof prev === "object" ? prev : DEFAULT_PREFS;
     const next = {
       lang: base.lang,
       controllerEnabled: base.controllerEnabled,
       pauseOnBlur: base.pauseOnBlur,
-      deepLink: base.deepLink
+      deepLink: base.deepLink,
+      codecFilter: base.codecFilter,
+      touchOverlay: base.touchOverlay
     };
     if (payload && typeof payload === "object") {
       if (payload.lang === "en" || payload.lang === "th") next.lang = payload.lang;
       if (typeof payload.controllerEnabled === "boolean") next.controllerEnabled = payload.controllerEnabled;
       if (typeof payload.pauseOnBlur === "boolean") next.pauseOnBlur = payload.pauseOnBlur;
+      if (payload.codecFilter === "h264" || payload.codecFilter === "off") next.codecFilter = payload.codecFilter;
+      if (typeof payload.touchOverlay === "boolean") next.touchOverlay = payload.touchOverlay;
     }
     return next;
   };
@@ -377,6 +392,65 @@
       const hash = deepLinkToHash(payload?.url);
       if (hash) win.location.assign(hash);
     });
+  };
+
+  // -------------------------------------------------------------------------
+  // Codec filter
+  //
+  // Provenance: reference/vacuumtube/src/preload/modules/h264ify.js (itself
+  // adapted from https://github.com/erkserkserks/h264ify, MIT) — adapted for
+  // Lalin Cast. Wraps `HTMLMediaElement.prototype.canPlayType` and
+  // `window.MediaSource.isTypeSupported` so YouTube's own adaptive player
+  // never selects a VP8/VP9/AV1 stream, falling back to H.264 — useful on
+  // iGPUs/HTPCs with no hardware decoder for the newer codecs. Two
+  // differences from upstream: upstream exposes four independent toggles
+  // (webm/vp8/vp9/av1, each a bare `type.includes(...)` substring check);
+  // Lalin Cast's contract (docs/plans/W4_PLAYBACK_PLAN.md) collapses this to
+  // the single `codecFilter` pref ("off"|"h264"), which blocks vp8/vp9/av01
+  // together (matching upstream's own default config, which ships all three
+  // enabled) and leaves plain "webm" alone; instead of upstream's webm
+  // toggle, the pattern also matches the four-part `vp08`/`vp09` codec ids
+  // YouTube uses for VP8/VP9 in both WebM and MP4 containers. And the two wrapped functions return
+  // spec-correct "unsupported" values (`false` for `isTypeSupported`, which
+  // is defined to return a boolean; `""` for `canPlayType`, one of its three
+  // defined return values) instead of upstream's blanket `''` for both.
+  // -------------------------------------------------------------------------
+
+  // Covers both the short tokens and the four-part forms YouTube hands
+  // MediaSource (`vp09.00.10.08`, `vp08...`), which upstream only caught via
+  // its separate webm-container toggle.
+  const CODEC_BLOCK_PATTERN = /(vp08|vp09|vp8|vp9|av01)/i;
+
+  // Pure: does `filter` allow this MediaSource/canPlayType `type` string?
+  // "off" (or any value other than the documented "h264") allows everything.
+  const codecAllowed = (type, filter) => {
+    if (filter !== "h264") return true;
+    return !CODEC_BLOCK_PATTERN.test(typeof type === "string" ? type : "");
+  };
+
+  // Installs the two overrides on `win` when `filter === "h264"`; installs
+  // nothing at all (leaves both APIs completely untouched) for any other
+  // value, per contract. Called once, synchronously, from boot() — before
+  // any page script gets a chance to run its own codec capability probing,
+  // since this whole file is registered as the media window's
+  // `initialization_script` (see the file-level comment at the top).
+  const installCodecFilter = (win, filter) => {
+    if (filter !== "h264") return;
+    if (!win || typeof win !== "object") return;
+
+    const mediaSource = win.MediaSource;
+    if (mediaSource && typeof mediaSource.isTypeSupported === "function") {
+      const original = mediaSource.isTypeSupported.bind(mediaSource);
+      mediaSource.isTypeSupported = (type) => (codecAllowed(type, filter) ? original(type) : false);
+    }
+
+    const proto = win.HTMLMediaElement && win.HTMLMediaElement.prototype;
+    if (proto && typeof proto.canPlayType === "function") {
+      const original = proto.canPlayType;
+      proto.canPlayType = function overriddenCanPlayType(type) {
+        return codecAllowed(type, filter) ? original.call(this, type) : "";
+      };
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -684,6 +758,14 @@
     // toggle below, since its modifiers are a strict superset of that one's.
     if (ctrl && shift && lower === "c") return "copy-url";
 
+    // Ctrl+Shift+M (Lalin Cast wave 4 addition, not ported from VacuumTube —
+    // see docs/plans/W4_PLAYBACK_PLAN.md). createKeybindHandler's dispatch
+    // for this action calls e.stopImmediatePropagation(), matching the
+    // toggle-fullscreen case below, so this never also reaches the volume
+    // section's plain-"M" mute binding registered after it on the same
+    // document/capture phase.
+    if (ctrl && shift && lower === "m") return "toggle-mini";
+
     // Ctrl+O (settings/index.js lines 409-411).
     if (ctrl && lower === "o") return "open-settings";
 
@@ -816,6 +898,7 @@
   const createKeybindHandler = (doc, win, callbacks) => {
     const onOpenSettings = (callbacks && callbacks.onOpenSettings) || (() => {});
     const onToggleFullscreen = (callbacks && callbacks.onToggleFullscreen) || (() => {});
+    const onToggleMini = (callbacks && callbacks.onToggleMini) || (() => {});
     const longPress = createLongPressEnterPatch(doc, win);
 
     const handler = (e) => {
@@ -839,6 +922,11 @@
           e.preventDefault();
           e.stopImmediatePropagation();
           onToggleFullscreen();
+          break;
+        case "toggle-mini":
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          onToggleMini();
           break;
         case "copy-url":
           copyShareUrlFromKeypress(win);
@@ -1085,6 +1173,266 @@
   const startVolumeSync = (win, volumeControl) => win.setInterval(() => volumeControl.sync(), VOLUME_SYNC_INTERVAL_MS);
 
   // -------------------------------------------------------------------------
+  // Touch overlay
+  //
+  // Provenance: reference/vacuumtube/src/preload/modules/touch-support.js —
+  // adapted for Lalin Cast. Upstream's directional/select/back circular
+  // buttons, its `simulateKeyDown`/`simulateKeyUp` dispatch (the same
+  // `document.dispatchEvent(new Event(...))` + manual `.keyCode` technique
+  // this file's `dispatchSyntheticKey()` — defined in the Controller section
+  // above — already implements for the controller and mouse sections; reused
+  // here rather than duplicated), and its "only create once a touch has
+  // actually happened" gating are all ported. Differences: upstream's
+  // `config.touch_overlay` toggle becomes the `touchOverlay` pref from
+  // `window.__LALIN_PREFS__` / `lalin-cast-prefs`; upstream's idle-timeout
+  // auto-hide (hide 3s after the last touch, regardless of the config
+  // toggle) is not ported — Lalin Cast's overlay instead simply tracks the
+  // pref directly, so it stays visible for as long as `touchOverlay` is on
+  // and hides/shows immediately when that pref changes via
+  // `lalin-cast-prefs`, rather than on an idle timer; and a `playPause`
+  // button is added (upstream only offers back/select/directions), since
+  // Lalin Cast's touch overlay is meant to fully replace a physical remote
+  // on handheld devices. It dispatches keyCode 179 (`VK_MEDIA_PLAY_PAUSE`,
+  // the standard hardware media-key code — the same code a TV remote's own
+  // dedicated play/pause button sends), since no polled gamepad button is
+  // documented upstream as a dedicated play/pause key for the Controller
+  // section above to already have a keyCode for. Upstream's native-scrollbar
+  // feature-switch override (`enableTouchSupport` pushed onto
+  // `configOverrides.tectonicConfigOverrides`) is not ported — it patches an
+  // internal Leanback config object this file has no access to, and is out
+  // of scope per docs/plans/W4_PLAYBACK_PLAN.md.
+  // -------------------------------------------------------------------------
+
+  const TOUCH_OVERLAY_ID = "lalin-cast-touch-overlay";
+  const TOUCH_STYLE_ID = "lalin-cast-touch-style";
+  const TOUCH_BUTTON_CLASS = "lalin-cast-touch-button";
+
+  // Button id -> keyCode dispatched via dispatchSyntheticKey(). back/ok/the
+  // four directions match touch-support.js's touchKeyCodeMap and this file's
+  // own GAMEPAD_KEY_CODE_MAP (27/13/38/40/37/39) exactly; playPause (179) is
+  // this port's own addition — see the provenance note above.
+  const TOUCH_KEY_CODE_MAP = Object.freeze({
+    back: 27,
+    ok: 13,
+    up: 38,
+    down: 40,
+    left: 37,
+    right: 39,
+    playPause: 179
+  });
+
+  const TOUCH_OVERLAY_CSS = `
+#${TOUCH_OVERLAY_ID} {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+}
+.${TOUCH_BUTTON_CLASS} {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+}
+.${TOUCH_BUTTON_CLASS}-up { left: 76px; bottom: 168px; }
+.${TOUCH_BUTTON_CLASS}-down { left: 76px; bottom: 32px; }
+.${TOUCH_BUTTON_CLASS}-left { left: 8px; bottom: 100px; }
+.${TOUCH_BUTTON_CLASS}-right { left: 144px; bottom: 100px; }
+.${TOUCH_BUTTON_CLASS}-ok { left: 76px; bottom: 100px; }
+.${TOUCH_BUTTON_CLASS}-back { right: 88px; bottom: 32px; }
+.${TOUCH_BUTTON_CLASS}-playPause { right: 8px; bottom: 32px; width: 72px; height: 72px; }
+`;
+
+  // Pure: the button spec the overlay renders from — id/label/keyCode for
+  // back, ok, the four directions, and playPause. No DOM. `lang` follows the
+  // same "th"|"en" convention as the rest of this file's prefs.
+  const touchButtons = (lang) => {
+    const en = lang === "en";
+    return [
+      { id: "up", label: en ? "Up" : "ขึ้น", keyCode: TOUCH_KEY_CODE_MAP.up },
+      { id: "down", label: en ? "Down" : "ลง", keyCode: TOUCH_KEY_CODE_MAP.down },
+      { id: "left", label: en ? "Left" : "ซ้าย", keyCode: TOUCH_KEY_CODE_MAP.left },
+      { id: "right", label: en ? "Right" : "ขวา", keyCode: TOUCH_KEY_CODE_MAP.right },
+      { id: "ok", label: en ? "OK" : "ตกลง", keyCode: TOUCH_KEY_CODE_MAP.ok },
+      { id: "back", label: en ? "Back" : "ย้อนกลับ", keyCode: TOUCH_KEY_CODE_MAP.back },
+      { id: "playPause", label: en ? "Play/Pause" : "เล่น/หยุด", keyCode: TOUCH_KEY_CODE_MAP.playPause }
+    ];
+  };
+
+  // Lazily builds (on the first touchstart) and shows/hides the on-screen
+  // button overlay. Takes `doc`/`win` as explicit parameters, matching this
+  // file's established convention (see e.g. createVolumeControl above), so
+  // it can be exercised from injected.test.js against the stub DOM.
+  const createTouchOverlay = (doc, win, options) => {
+    const opts = options || {};
+    const getLang = opts.getLang || (() => "th");
+
+    let enabled = Boolean(opts.initialEnabled);
+    let touched = false;
+    let elements = null;
+
+    const ensureStyle = () => {
+      if (doc.getElementById(TOUCH_STYLE_ID)) return;
+      const style = doc.createElement("style");
+      style.id = TOUCH_STYLE_ID;
+      style.textContent = TOUCH_OVERLAY_CSS;
+      const parent = doc.head || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+    };
+
+    const build = () => {
+      if (elements) return elements;
+      ensureStyle();
+
+      const overlay = doc.createElement("div");
+      overlay.id = TOUCH_OVERLAY_ID;
+
+      const buttons = {};
+      touchButtons(getLang()).forEach((spec) => {
+        const button = doc.createElement("div");
+        button.id = `lalin-cast-touch-${spec.id}`;
+        button.className = `${TOUCH_BUTTON_CLASS} ${TOUCH_BUTTON_CLASS}-${spec.id}`;
+        button.textContent = spec.label;
+        if (typeof button.addEventListener === "function") {
+          button.addEventListener("touchstart", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            dispatchSyntheticKey(doc, "keydown", spec.keyCode);
+          });
+          button.addEventListener("touchend", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            dispatchSyntheticKey(doc, "keyup", spec.keyCode);
+          });
+        }
+        overlay.appendChild(button);
+        buttons[spec.id] = button;
+      });
+
+      const parent = doc.body || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(overlay);
+
+      elements = { overlay, buttons };
+      return elements;
+    };
+
+    const render = () => {
+      if (!touched || !enabled) {
+        if (elements && elements.overlay.style) elements.overlay.style.display = "none";
+        return;
+      }
+      const els = build();
+      if (els.overlay.style) els.overlay.style.display = "";
+    };
+
+    return {
+      handleTouchStart() {
+        if (touched) return;
+        touched = true;
+        render();
+      },
+      setEnabled(value) {
+        enabled = Boolean(value);
+        render();
+      },
+      isVisible() {
+        return Boolean(touched && enabled && elements);
+      },
+      getButton(id) {
+        return elements ? elements.buttons[id] || null : null;
+      }
+    };
+  };
+
+  // -------------------------------------------------------------------------
+  // Sleep timer OSD (Lalin Cast addition — no VacuumTube module ports this;
+  // VacuumTube has no sleep timer)
+  //
+  // Listens for the Rust sleep timer's "lalin-cast-sleep" event (see
+  // src-tauri/src/sleep.rs and docs/plans/W4_PLAYBACK_PLAN.md): pauses every
+  // <video> on the page and shows a bilingual OSD of our own for 6 seconds.
+  // -------------------------------------------------------------------------
+
+  const SLEEP_OSD_ID = "lalin-cast-sleep-osd";
+  const SLEEP_OSD_TEXT = "หมดเวลาตั้งนอน — หยุดเล่นแล้ว / Sleep timer: playback paused";
+  const SLEEP_OSD_VISIBLE_MS = 6000;
+
+  const pauseAllVideos = (doc) => {
+    if (!doc || typeof doc.querySelectorAll !== "function") return;
+    const videos = doc.querySelectorAll("video");
+    Array.prototype.forEach.call(videos, (video) => {
+      if (video && typeof video.pause === "function") video.pause();
+    });
+  };
+
+  const createSleepOsd = (doc, win) => {
+    let element = null;
+    let hideTimer = null;
+
+    const ensureElement = () => {
+      if (element) return element;
+      const el = doc.createElement("div");
+      el.id = SLEEP_OSD_ID;
+      el.textContent = SLEEP_OSD_TEXT;
+      if (el.style) {
+        Object.assign(el.style, {
+          position: "fixed",
+          top: "12%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          padding: "16px 28px",
+          borderRadius: "0.75rem",
+          backgroundColor: "rgba(0, 0, 0, 0.75)",
+          color: "#fff",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "18px",
+          textAlign: "center",
+          zIndex: "2147483647"
+        });
+      }
+      const parent = doc.body || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(el);
+      element = el;
+      return element;
+    };
+
+    return {
+      show() {
+        pauseAllVideos(doc);
+        const el = ensureElement();
+        if (el.style) el.style.display = "";
+        if (hideTimer !== null && typeof win.clearTimeout === "function") {
+          win.clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+        if (win && typeof win.setTimeout === "function") {
+          hideTimer = win.setTimeout(() => {
+            if (el.style) el.style.display = "none";
+            hideTimer = null;
+          }, SLEEP_OSD_VISIBLE_MS);
+        }
+      }
+    };
+  };
+
+  // Wired from initPrefsAndDeepLink (Boot section, below) once the Tauri
+  // bridge is ready, mirroring initDeepLinkListener's (win, tauri) shape.
+  const initSleepListener = async (doc, win, tauri) => {
+    if (!tauri?.event?.listen) return;
+    const osd = createSleepOsd(doc, win);
+    await tauri.event.listen("lalin-cast-sleep", () => osd.show());
+  };
+
+  // -------------------------------------------------------------------------
   // Pause on blur
   //
   // Provenance: reference/vacuumtube/src/preload/modules/pause-on-blur.js —
@@ -1130,7 +1478,8 @@
 
   const SHELL_ACTIONS = Object.freeze({
     OPEN_SETTINGS: "open-settings",
-    TOGGLE_FULLSCREEN: "toggle-fullscreen"
+    TOGGLE_FULLSCREEN: "toggle-fullscreen",
+    TOGGLE_MINI: "toggle-mini"
   });
 
   const emitShell = (action) => {
@@ -1151,7 +1500,7 @@
     return bridge();
   };
 
-  const initPrefsAndDeepLink = async (win, state) => {
+  const initPrefsAndDeepLink = async (doc, win, state) => {
     const tauri = await waitForBridge();
     if (!tauri?.event?.listen) return;
 
@@ -1162,6 +1511,7 @@
     });
 
     await initDeepLinkListener(win, tauri);
+    await initSleepListener(doc, win, tauri);
   };
 
   const boot = () => {
@@ -1169,6 +1519,13 @@
     // Same validator as the lalin-cast-deeplink path; the Rust side already
     // validated, this just keeps both entry points symmetric.
     initialDeepLink = prefs.deepLink && deepLinkToHash(prefs.deepLink) ? prefs.deepLink : null;
+
+    // Wave 4: must run before any page script gets a chance to probe codec
+    // support (see the "Codec filter" section above). readPrefs() above
+    // already resolved the documented default, so this runs unconditionally
+    // and synchronously here regardless of whether __LALIN_PREFS__ was even
+    // present.
+    installCodecFilter(window, prefs.codecFilter);
 
     initMark();
     installBridge();
@@ -1184,7 +1541,8 @@
 
     createKeybindHandler(document, window, {
       onOpenSettings: () => emitShell(SHELL_ACTIONS.OPEN_SETTINGS),
-      onToggleFullscreen: () => emitShell(SHELL_ACTIONS.TOGGLE_FULLSCREEN)
+      onToggleFullscreen: () => emitShell(SHELL_ACTIONS.TOGGLE_FULLSCREEN),
+      onToggleMini: () => emitShell(SHELL_ACTIONS.TOGGLE_MINI)
     });
 
     createMouseHandler(document, window);
@@ -1194,12 +1552,19 @@
     createVolumeKeydownHandler(document, window, volumeControl);
     startVolumeSync(window, volumeControl);
 
+    const touchOverlay = createTouchOverlay(document, window, {
+      getLang: () => state.prefs.lang,
+      initialEnabled: state.prefs.touchOverlay
+    });
+    window.addEventListener("touchstart", () => touchOverlay.handleTouchStart(), { passive: true });
+
     state.onPrefsChange = (next) => {
       if (next.controllerEnabled) gamepadController.start();
       else gamepadController.stop();
+      touchOverlay.setEnabled(next.touchOverlay);
     };
 
-    initPrefsAndDeepLink(window, state);
+    initPrefsAndDeepLink(document, window, state);
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1229,7 +1594,18 @@
       createKeybindHandler,
       createVolumeControl,
       createVolumeKeydownHandler,
-      createPauseOnBlurHandler
+      createPauseOnBlurHandler,
+      codecAllowed,
+      installCodecFilter,
+      TOUCH_KEY_CODE_MAP,
+      touchButtons,
+      createTouchOverlay,
+      SLEEP_OSD_ID,
+      SLEEP_OSD_TEXT,
+      SLEEP_OSD_VISIBLE_MS,
+      pauseAllVideos,
+      createSleepOsd,
+      initSleepListener
     };
   }
 

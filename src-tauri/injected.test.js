@@ -35,8 +35,15 @@ const m = require("./injected.js");
 // ---------------------------------------------------------------------------
 
 function makeElement() {
+  // A real EventTarget (Node has this built in) so production code's
+  // `element.addEventListener(...)` calls — used by the wave 4 touch
+  // overlay's buttons — work against this stub exactly like a real DOM
+  // element, on top of the same plain property bag every other section of
+  // injected.js already relies on (id, className, textContent, style,
+  // children, classList, appendChild).
   const classSet = new Set();
-  const el = {
+  const el = new EventTarget();
+  Object.assign(el, {
     id: "",
     className: "",
     textContent: "",
@@ -51,7 +58,7 @@ function makeElement() {
       el.children.push(child);
       return child;
     },
-  };
+  });
   return el;
 }
 
@@ -98,7 +105,16 @@ function createStubWin(options) {
     return win.__rafCalls.length;
   };
   win.cancelAnimationFrame = () => {};
-  win.setTimeout = (...args) => setTimeout(...args);
+  // Schedules for real (nothing currently-passing relies on NOT waiting),
+  // but also records { cb, ms, id } so a test can invoke `cb()` itself
+  // instead of waiting out a multi-second real delay — used by the sleep
+  // OSD's 6s auto-hide test, below.
+  win.__timeoutCalls = [];
+  win.setTimeout = (cb, ms, ...rest) => {
+    const id = setTimeout(cb, ms, ...rest);
+    win.__timeoutCalls.push({ cb, ms, id });
+    return id;
+  };
   win.clearTimeout = (...args) => clearTimeout(...args);
   win.setInterval = (...args) => setInterval(...args);
   win.clearInterval = (...args) => clearInterval(...args);
@@ -148,9 +164,21 @@ const pending = [];
 // ---------------------------------------------------------------------------
 
 pending.push(
+  test("codecAllowed blocks YouTube's four-part vp09/vp08 codec ids and keeps H.264/AAC", () => {
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="vp09.00.10.08"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/mp4; codecs="vp09.00.51.08.01.01.01.01.00"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="vp08.00.10.08"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/mp4; codecs="av01.0.08M.08"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/mp4; codecs="avc1.640028"', "h264"), true);
+    assert.strictEqual(m.codecAllowed('audio/mp4; codecs="mp4a.40.2"', "h264"), true);
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="vp09.00.10.08"', "off"), true);
+  }),
+);
+
+pending.push(
   test("requiring injected.js with no `window` global is a no-op beyond exporting the pure helpers", () => {
     assert.strictEqual(typeof window, "undefined");
-    ["mapGamepadState", "keybindFor", "deepLinkToHash", "clampVolume"].forEach((name) => {
+    ["mapGamepadState", "keybindFor", "deepLinkToHash", "clampVolume", "codecAllowed", "touchButtons"].forEach((name) => {
       assert.strictEqual(typeof m[name], "function", `${name} should be exported`);
     });
   }),
@@ -293,6 +321,15 @@ pending.push(
 );
 
 pending.push(
+  test("keybindFor: Ctrl+Shift+M toggles the mini-player, but not Ctrl+M or Shift+M alone", () => {
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "m", ctrlKey: true, shiftKey: true }), "toggle-mini");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "M", ctrlKey: true, shiftKey: true }), "toggle-mini");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "m", ctrlKey: true, shiftKey: false }), null);
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "m", ctrlKey: false, shiftKey: true }), null);
+  }),
+);
+
+pending.push(
   test("keybindFor: plain C toggles captions, but not with Ctrl/Shift/Meta held", () => {
     assert.strictEqual(m.keybindFor({ type: "keydown", key: "c" }), "toggle-captions");
     assert.strictEqual(m.keybindFor({ type: "keydown", key: "c", ctrlKey: true }), null);
@@ -425,6 +462,59 @@ pending.push(
 );
 
 // ---------------------------------------------------------------------------
+// codecAllowed / installCodecFilter
+// ---------------------------------------------------------------------------
+
+function makeCodecStubWin() {
+  const mediaSource = {
+    isTypeSupported(type) { return typeof type === "string" && type.indexOf("mp4") !== -1; },
+  };
+  const proto = {
+    canPlayType(type) { return typeof type === "string" && type.indexOf("mp4") !== -1 ? "probably" : ""; },
+  };
+  return { MediaSource: mediaSource, HTMLMediaElement: { prototype: proto } };
+}
+
+pending.push(
+  test("codecAllowed: \"off\" allows everything; \"h264\" blocks vp8/vp9/av01 case-insensitively and allows the rest", () => {
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="vp9"', "off"), true);
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="vp9"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="VP8"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/mp4; codecs="av01.0.05M.08"', "h264"), false);
+    assert.strictEqual(m.codecAllowed('video/mp4; codecs="avc1.640028"', "h264"), true);
+    assert.strictEqual(m.codecAllowed('video/webm; codecs="opus"', "h264"), true, "plain webm without vp8/vp9 is not blocked");
+    assert.strictEqual(m.codecAllowed("", "h264"), true);
+    assert.strictEqual(m.codecAllowed(undefined, "h264"), true);
+  }),
+);
+
+pending.push(
+  test("installCodecFilter: \"off\" installs nothing — MediaSource.isTypeSupported and canPlayType are left untouched", () => {
+    const win = makeCodecStubWin();
+    const originalIsSupported = win.MediaSource.isTypeSupported;
+    const originalCanPlay = win.HTMLMediaElement.prototype.canPlayType;
+
+    m.installCodecFilter(win, "off");
+
+    assert.strictEqual(win.MediaSource.isTypeSupported, originalIsSupported);
+    assert.strictEqual(win.HTMLMediaElement.prototype.canPlayType, originalCanPlay);
+  }),
+);
+
+pending.push(
+  test("installCodecFilter: \"h264\" wraps both APIs to reject vp8/vp9/av01 and defer to the original for everything else", () => {
+    const win = makeCodecStubWin();
+    m.installCodecFilter(win, "h264");
+
+    assert.strictEqual(win.MediaSource.isTypeSupported('video/webm; codecs="vp9"'), false);
+    assert.strictEqual(win.MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"'), true);
+
+    assert.strictEqual(win.HTMLMediaElement.prototype.canPlayType('video/webm; codecs="vp8"'), "");
+    assert.strictEqual(win.HTMLMediaElement.prototype.canPlayType('video/mp4; codecs="avc1.640028"'), "probably");
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // readPrefs / applyPrefsUpdate — documented defaults
 // ---------------------------------------------------------------------------
 
@@ -435,6 +525,8 @@ pending.push(
       controllerEnabled: true,
       pauseOnBlur: false,
       deepLink: null,
+      codecFilter: "off",
+      touchOverlay: true,
     });
     assert.deepStrictEqual(m.readPrefs(null), m.readPrefs(undefined));
   }),
@@ -443,19 +535,61 @@ pending.push(
 pending.push(
   test("readPrefs: respects explicit values from a well-formed prefs object", () => {
     assert.deepStrictEqual(
-      m.readPrefs({ lang: "en", controllerEnabled: false, pauseOnBlur: true, deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }),
-      { lang: "en", controllerEnabled: false, pauseOnBlur: true, deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+      m.readPrefs({
+        lang: "en",
+        controllerEnabled: false,
+        pauseOnBlur: true,
+        deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        codecFilter: "h264",
+        touchOverlay: false,
+      }),
+      {
+        lang: "en",
+        controllerEnabled: false,
+        pauseOnBlur: true,
+        deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        codecFilter: "h264",
+        touchOverlay: false,
+      },
     );
   }),
 );
 
 pending.push(
-  test("applyPrefsUpdate: merges a lalin-cast-prefs payload, ignoring unknown/malformed fields and never touching deepLink", () => {
-    const prev = { lang: "th", controllerEnabled: true, pauseOnBlur: false, deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" };
-    const next = m.applyPrefsUpdate(prev, { lang: "en", controllerEnabled: false, pauseOnBlur: true, deepLink: "ignored" });
-    assert.deepStrictEqual(next, { lang: "en", controllerEnabled: false, pauseOnBlur: true, deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+  test("readPrefs: an unrecognized codecFilter value falls back to the documented \"off\" default", () => {
+    assert.strictEqual(m.readPrefs({ codecFilter: "vp9-only" }).codecFilter, "off");
+    assert.strictEqual(m.readPrefs({ codecFilter: "off" }).codecFilter, "off");
+  }),
+);
 
-    const unchanged = m.applyPrefsUpdate(prev, { controllerEnabled: "not-a-boolean", lang: "fr" });
+pending.push(
+  test("applyPrefsUpdate: merges a lalin-cast-prefs payload, ignoring unknown/malformed fields and never touching deepLink", () => {
+    const prev = {
+      lang: "th",
+      controllerEnabled: true,
+      pauseOnBlur: false,
+      deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      codecFilter: "off",
+      touchOverlay: true,
+    };
+    const next = m.applyPrefsUpdate(prev, {
+      lang: "en",
+      controllerEnabled: false,
+      pauseOnBlur: true,
+      deepLink: "ignored",
+      codecFilter: "h264",
+      touchOverlay: false,
+    });
+    assert.deepStrictEqual(next, {
+      lang: "en",
+      controllerEnabled: false,
+      pauseOnBlur: true,
+      deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      codecFilter: "h264",
+      touchOverlay: false,
+    });
+
+    const unchanged = m.applyPrefsUpdate(prev, { controllerEnabled: "not-a-boolean", lang: "fr", codecFilter: "vp9-only", touchOverlay: "nope" });
     assert.deepStrictEqual(unchanged, prev);
   }),
 );
@@ -579,6 +713,25 @@ pending.push(
 
     doc.dispatchEvent(keyEvent({ key: "F11" }));
     assert.strictEqual(toggled, 1);
+  }),
+);
+
+pending.push(
+  test("createKeybindHandler: Ctrl+Shift+M emits toggle-mini and suppresses the volume handler's plain-M mute registered after it", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    let toggled = 0;
+    m.createKeybindHandler(doc, win, { onToggleMini: () => { toggled += 1; } });
+
+    // Registered after createKeybindHandler, on the same doc/capture phase —
+    // exactly boot()'s real ordering — so this proves stopImmediatePropagation
+    // in the "toggle-mini" case actually reaches this handler.
+    const volumeControl = m.createVolumeControl(doc, { win, initialVolume: 50 });
+    m.createVolumeKeydownHandler(doc, win, volumeControl);
+
+    doc.dispatchEvent(keyEvent({ key: "M", ctrlKey: true, shiftKey: true }));
+    assert.strictEqual(toggled, 1);
+    assert.strictEqual(volumeControl.isMuted(), false, "toggle-mini must stop the event before the volume handler's mute fires");
   }),
 );
 
@@ -796,6 +949,214 @@ pending.push(
     synthetic.keyCode = 187; // Start button -> volume up, no .key set
     doc.dispatchEvent(synthetic);
     assert.strictEqual(player.volume, 55);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Touch overlay: its own #lalin-cast-touch-overlay/style, gated by
+// touchstart + the touchOverlay pref; buttons dispatch the shared synthetic
+// key technique
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("touchButtons: back/ok/four directions/playPause, each with a numeric keyCode and TH/EN labels", () => {
+    const th = m.touchButtons("th");
+    assert.deepStrictEqual(th.map((b) => b.id).slice().sort(), ["back", "down", "left", "ok", "playPause", "right", "up"]);
+    th.forEach((b) => {
+      assert.strictEqual(typeof b.keyCode, "number");
+      assert.strictEqual(typeof b.label, "string");
+      assert.ok(b.label.length > 0);
+    });
+    assert.strictEqual(th.find((b) => b.id === "back").keyCode, 27);
+    assert.strictEqual(th.find((b) => b.id === "ok").keyCode, 13);
+    assert.deepStrictEqual(
+      ["up", "down", "left", "right"].map((id) => th.find((b) => b.id === id).keyCode),
+      [38, 40, 37, 39],
+    );
+
+    const en = m.touchButtons("en");
+    assert.notStrictEqual(th.find((b) => b.id === "ok").label, en.find((b) => b.id === "ok").label, "TH/EN labels differ");
+  }),
+);
+
+pending.push(
+  test("createTouchOverlay: never creates the overlay while disabled, even after a touchstart", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { getLang: () => "th", initialEnabled: false });
+
+    overlay.handleTouchStart();
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay"), null);
+    assert.strictEqual(overlay.isVisible(), false);
+  }),
+);
+
+pending.push(
+  test("createTouchOverlay: creates its own overlay + style only after the first touchstart while enabled", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { getLang: () => "th", initialEnabled: true });
+
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay"), null, "not created before any touch");
+
+    overlay.handleTouchStart();
+    assert.ok(doc.getElementById("lalin-cast-touch-overlay"), "created on first touchstart");
+    assert.ok(doc.getElementById("lalin-cast-touch-style"), "creates its own style element");
+    assert.strictEqual(overlay.isVisible(), true);
+
+    const buttonCountAfterFirstTouch = doc.getElementById("lalin-cast-touch-overlay").children.length;
+    overlay.handleTouchStart(); // idempotent: a second touchstart must not rebuild/duplicate the overlay
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay").children.length, buttonCountAfterFirstTouch);
+  }),
+);
+
+pending.push(
+  test("createTouchOverlay: hides on setEnabled(false) and reappears on setEnabled(true), mirroring a lalin-cast-prefs update", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { getLang: () => "th", initialEnabled: true });
+    overlay.handleTouchStart();
+
+    const el = doc.getElementById("lalin-cast-touch-overlay");
+    assert.notStrictEqual(el.style.display, "none");
+
+    overlay.setEnabled(false);
+    assert.strictEqual(el.style.display, "none");
+    assert.strictEqual(overlay.isVisible(), false);
+
+    overlay.setEnabled(true);
+    assert.notStrictEqual(el.style.display, "none");
+    assert.strictEqual(overlay.isVisible(), true);
+  }),
+);
+
+pending.push(
+  test("createTouchOverlay: a pref that is off at the first touch can still show the overlay once turned on later", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { getLang: () => "th", initialEnabled: false });
+
+    overlay.handleTouchStart();
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay"), null);
+
+    overlay.setEnabled(true);
+    assert.ok(doc.getElementById("lalin-cast-touch-overlay"), "the already-registered touch is honored once the pref turns on");
+  }),
+);
+
+pending.push(
+  test("createTouchOverlay buttons dispatch the same synthetic keydown/keyup technique as the controller section", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const seen = [];
+    doc.addEventListener("keydown", (e) => seen.push(["down", e.keyCode]));
+    doc.addEventListener("keyup", (e) => seen.push(["up", e.keyCode]));
+
+    const overlay = m.createTouchOverlay(doc, win, { getLang: () => "th", initialEnabled: true });
+    overlay.handleTouchStart();
+
+    const back = overlay.getButton("back");
+    assert.ok(back, "back button exists");
+    back.dispatchEvent(new Event("touchstart"));
+    assert.deepStrictEqual(seen, [["down", 27]]);
+    back.dispatchEvent(new Event("touchend"));
+    assert.deepStrictEqual(seen, [["down", 27], ["up", 27]]);
+
+    seen.length = 0;
+    const playPause = overlay.getButton("playPause");
+    playPause.dispatchEvent(new Event("touchstart"));
+    assert.deepStrictEqual(seen, [["down", 179]]);
+    playPause.dispatchEvent(new Event("touchend"));
+    assert.deepStrictEqual(seen, [["down", 179], ["up", 179]]);
+
+    seen.length = 0;
+    const ok = overlay.getButton("ok");
+    ok.dispatchEvent(new Event("touchstart"));
+    assert.deepStrictEqual(seen, [["down", 13]]);
+
+    seen.length = 0;
+    const up = overlay.getButton("up");
+    up.dispatchEvent(new Event("touchstart"));
+    assert.deepStrictEqual(seen, [["down", 38]]);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Sleep timer OSD: lalin-cast-sleep pauses every <video> and shows our own
+// bilingual #lalin-cast-sleep-osd for 6s
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("createSleepOsd.show(): pauses every <video> and creates #lalin-cast-sleep-osd with the documented bilingual text", () => {
+    const videoA = { paused: false, pause() { this.paused = true; } };
+    const videoB = { paused: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA, videoB] } });
+    const win = createStubWin();
+
+    const osd = m.createSleepOsd(doc, win);
+    osd.show();
+
+    assert.strictEqual(videoA.paused, true);
+    assert.strictEqual(videoB.paused, true);
+
+    const el = doc.getElementById("lalin-cast-sleep-osd");
+    assert.ok(el, "creates its own OSD element");
+    assert.strictEqual(el.textContent, "หมดเวลาตั้งนอน — หยุดเล่นแล้ว / Sleep timer: playback paused");
+    assert.notStrictEqual(el.style.display, "none");
+  }),
+);
+
+pending.push(
+  test("createSleepOsd.show(): hides itself after the documented 6s, and a second show() re-displays it", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    const win = createStubWin();
+    const osd = m.createSleepOsd(doc, win);
+
+    osd.show();
+    const el = doc.getElementById("lalin-cast-sleep-osd");
+    assert.notStrictEqual(el.style.display, "none");
+
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.strictEqual(scheduled.ms, m.SLEEP_OSD_VISIBLE_MS);
+    win.clearTimeout(scheduled.id); // don't let the real 6s timer also fire
+    scheduled.cb();
+    assert.strictEqual(el.style.display, "none");
+
+    osd.show();
+    assert.notStrictEqual(el.style.display, "none");
+    win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+  }),
+);
+
+pending.push(
+  test("initSleepListener: a lalin-cast-sleep event from Rust pauses videos and shows the OSD", () => {
+    const videoA = { paused: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+
+    const listeners = [];
+    const tauri = { event: { listen: (name, cb) => { listeners.push([name, cb]); return Promise.resolve(); } } };
+
+    return m.initSleepListener(doc, win, tauri).then(() => {
+      assert.strictEqual(listeners.length, 1);
+      assert.strictEqual(listeners[0][0], "lalin-cast-sleep");
+
+      listeners[0][1]({ payload: { minutes: 30 } });
+      assert.strictEqual(videoA.paused, true);
+      const el = doc.getElementById("lalin-cast-sleep-osd");
+      assert.ok(el);
+      win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+    });
+  }),
+);
+
+pending.push(
+  test("initSleepListener: does nothing when the bridge has no event.listen", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    const win = createStubWin();
+    return m.initSleepListener(doc, win, {}).then(() => {
+      assert.strictEqual(doc.getElementById("lalin-cast-sleep-osd"), null);
+    });
   }),
 );
 
