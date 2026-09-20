@@ -62,5 +62,5 @@ order before closing the gate.
 
 `.github/workflows/ci.yml`'s `smoke` job (wave 6 U4) exercises the same `--version` and
 `--lifecycle close --request-id ci-smoke` contract this script drives, directly on a `windows-latest`
-runner, without going through this script — it is `continue-on-error: true` until human gate H20
+runner, without going through this script — it is a blocking check since human gate H20
 confirms two stable runs. See that job's comments for why.
