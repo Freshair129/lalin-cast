@@ -37,6 +37,8 @@ pub struct DiagnosticsSettings {
     pub touch_overlay: bool,
     pub start_with_windows: bool,
     pub mini_player: bool,
+    pub deep_link_scheme: bool,
+    pub deep_link_scheme_registered: bool,
 }
 
 /// Everything [`format_diagnostics`] needs, gathered by `settings_diagnostics`
@@ -93,7 +95,8 @@ fn format_settings_line(settings: &DiagnosticsSettings) -> String {
     format!(
         "settings: fullscreen={} keepOnTop={} pauseOnBlur={} controllerEnabled={} \
          sleepTimerMinutes={} codecFilter={} hardwareDecoding={} \
-         hardwareDecodingRestartRequired={} touchOverlay={} startWithWindows={} miniPlayer={}",
+         hardwareDecodingRestartRequired={} touchOverlay={} startWithWindows={} miniPlayer={} \
+         deepLinkScheme={} deepLinkSchemeRegistered={}",
         settings.fullscreen,
         settings.keep_on_top,
         settings.pause_on_blur,
@@ -105,6 +108,8 @@ fn format_settings_line(settings: &DiagnosticsSettings) -> String {
         settings.touch_overlay,
         settings.start_with_windows,
         settings.mini_player,
+        settings.deep_link_scheme,
+        settings.deep_link_scheme_registered,
     )
 }
 
@@ -209,6 +214,8 @@ mod tests {
             touch_overlay: true,
             start_with_windows: false,
             mini_player: false,
+            deep_link_scheme: false,
+            deep_link_scheme_registered: false,
         }
     }
 
@@ -259,6 +266,8 @@ mod tests {
         assert_eq!(lines[7], "network: private (Wi-Fi)");
         assert!(lines[8].starts_with("settings: fullscreen=false"));
         assert!(lines[8].contains("miniPlayer=false"));
+        assert!(lines[8].contains("deepLinkScheme=false"));
+        assert!(lines[8].contains("deepLinkSchemeRegistered=false"));
         assert_eq!(lines[9], "dialFriendlyName: Lalin Cast");
         assert_eq!(lines[10], "lifecycle: ready (pid 1234)");
         assert_eq!(lines[11], "generatedAt: 1758380400");

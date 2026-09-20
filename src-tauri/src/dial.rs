@@ -724,6 +724,27 @@ fn run_ssdp(socket: UdpSocket, state: RuntimeState) {
     }
 }
 
+/// Pure check for one SSDP `MAN` header value (already split off the
+/// `MAN:` key): trims surrounding whitespace, strips one optional pair of
+/// surrounding double quotes, and compares case-insensitively to
+/// `ssdp:discover`. UPnP requires the quoted form (`MAN: "ssdp:discover"`),
+/// but a number of real DIAL clients send it unquoted — both are accepted
+/// since the goal of this check is dropping datagrams that are not a real
+/// M-SEARCH, not enforcing the UPnP spec to the letter. A single unbalanced
+/// quote, or any trailing text after a matched closing quote, is rejected.
+fn man_header_is_discover(value: &str) -> bool {
+    let trimmed = value.trim();
+    let unquoted = if let Some(rest) = trimmed.strip_prefix('"') {
+        match rest.strip_suffix('"') {
+            Some(inner) => inner,
+            None => return false,
+        }
+    } else {
+        trimmed
+    };
+    unquoted.eq_ignore_ascii_case("ssdp:discover")
+}
+
 fn is_dial_search(message: &[u8]) -> bool {
     let text = String::from_utf8_lossy(message);
     let mut lines = text.lines();
@@ -733,16 +754,24 @@ fn is_dial_search(message: &[u8]) -> bool {
         return false;
     }
 
-    lines.any(|line| {
+    let mut has_valid_st = false;
+    let mut has_valid_man = false;
+    for line in lines {
         let Some((key, value)) = line.split_once(':') else {
-            return false;
+            continue;
         };
-        key.eq_ignore_ascii_case("ST")
-            && (value.trim().eq_ignore_ascii_case("ssdp:all")
-                || value
-                    .trim()
-                    .eq_ignore_ascii_case("urn:dial-multiscreen-org:service:dial:1"))
-    })
+        if key.eq_ignore_ascii_case("ST") {
+            let value = value.trim();
+            if value.eq_ignore_ascii_case("ssdp:all")
+                || value.eq_ignore_ascii_case("urn:dial-multiscreen-org:service:dial:1")
+            {
+                has_valid_st = true;
+            }
+        } else if key.eq_ignore_ascii_case("MAN") && man_header_is_discover(value) {
+            has_valid_man = true;
+        }
+    }
+    has_valid_st && has_valid_man
 }
 
 fn ssdp_response(state: &RuntimeState) -> String {
@@ -993,10 +1022,10 @@ fn xml_escape(value: &str) -> String {
 mod tests {
     use super::{
         current_status, degraded_status, device_description, disabled_status, http_bind_addr,
-        is_dial_search, read_http_request, ready_status, request_reload, sanitize_friendly_name,
-        ssdp_response, starting_status, status_changed, DialInfo, DialState, DialStateKind,
-        HttpReadError, Route, RuntimeState, DEFAULT_FRIENDLY_NAME, MAX_BODY_BYTES,
-        MAX_HEADER_BYTES,
+        is_dial_search, man_header_is_discover, read_http_request, ready_status, request_reload,
+        sanitize_friendly_name, ssdp_response, starting_status, status_changed, DialInfo,
+        DialState, DialStateKind, HttpReadError, Route, RuntimeState, DEFAULT_FRIENDLY_NAME,
+        MAX_BODY_BYTES, MAX_HEADER_BYTES,
     };
     use std::collections::HashMap;
     use std::io::Write;
@@ -1049,8 +1078,8 @@ mod tests {
 
     #[test]
     fn accepts_dial_m_search_and_rejects_other_ssdp_messages() {
-        let search = b"M-SEARCH * HTTP/1.1\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n\r\n";
-        let all = b"M-SEARCH * HTTP/1.1\r\nST: ssdp:all\r\n\r\n";
+        let search = b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n\r\n";
+        let all = b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nST: ssdp:all\r\n\r\n";
         let notify = b"NOTIFY * HTTP/1.1\r\nNT: ssdp:all\r\n\r\n";
         assert!(is_dial_search(search));
         assert!(is_dial_search(all));
@@ -1288,14 +1317,63 @@ mod tests {
     }
 
     #[test]
-    fn accepts_m_search_even_with_an_incorrect_man_header() {
-        // `is_dial_search` only inspects the request line and `ST`; a wrong
-        // or missing `MAN` header is not currently part of the whitelist
-        // check — documented here so a future change to add MAN validation
-        // is a deliberate, visible diff rather than a silent behavior
-        // change.
+    fn rejects_m_search_even_with_a_valid_st_when_the_man_header_is_wrong() {
+        // Wave 7 tightened `is_dial_search` to require a valid `MAN` header
+        // in addition to the request line and `ST` — this is a deliberate
+        // behavior change from the wave 6 characterization test this
+        // replaces (`accepts_m_search_even_with_an_incorrect_man_header`).
         let wrong_man = b"M-SEARCH * HTTP/1.1\r\nMAN: wrong-value\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n\r\n";
-        assert!(is_dial_search(wrong_man));
+        assert!(!is_dial_search(wrong_man));
+    }
+
+    #[test]
+    fn rejects_m_search_with_no_man_header_at_all() {
+        let no_man = b"M-SEARCH * HTTP/1.1\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n\r\n";
+        assert!(!is_dial_search(no_man));
+    }
+
+    #[test]
+    fn accepts_m_search_with_a_quoted_man_header() {
+        let quoted = b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nST: ssdp:all\r\n\r\n";
+        assert!(is_dial_search(quoted));
+    }
+
+    #[test]
+    fn accepts_m_search_with_an_unquoted_man_header() {
+        let unquoted = b"M-SEARCH * HTTP/1.1\r\nMAN: ssdp:discover\r\nST: ssdp:all\r\n\r\n";
+        assert!(is_dial_search(unquoted));
+    }
+
+    #[test]
+    fn accepts_m_search_with_an_upper_case_man_header() {
+        let upper = b"M-SEARCH * HTTP/1.1\r\nMAN: \"SSDP:DISCOVER\"\r\nST: ssdp:all\r\n\r\n";
+        assert!(is_dial_search(upper));
+    }
+
+    #[test]
+    fn rejects_m_search_with_trailing_junk_after_the_closing_quote() {
+        let trailing =
+            b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\" extra\r\nST: ssdp:all\r\n\r\n";
+        assert!(!is_dial_search(trailing));
+    }
+
+    #[test]
+    fn rejects_m_search_with_a_single_unbalanced_quote() {
+        let unbalanced = b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\r\nST: ssdp:all\r\n\r\n";
+        assert!(!is_dial_search(unbalanced));
+    }
+
+    #[test]
+    fn man_header_is_discover_matches_the_documented_cases() {
+        assert!(man_header_is_discover("\"ssdp:discover\""));
+        assert!(man_header_is_discover("ssdp:discover"));
+        assert!(man_header_is_discover("  \"SSDP:DISCOVER\"  "));
+        assert!(man_header_is_discover(" ssdp:discover "));
+        assert!(!man_header_is_discover("\"ssdp:discover\" extra"));
+        assert!(!man_header_is_discover("\"ssdp:discover"));
+        assert!(!man_header_is_discover("ssdp:discover\""));
+        assert!(!man_header_is_discover("wrong-value"));
+        assert!(!man_header_is_discover(""));
     }
 
     #[test]
@@ -1308,7 +1386,7 @@ mod tests {
     fn accepts_an_oversized_m_search_packet_with_padding_after_a_valid_st() {
         let padding = format!("X-Pad: {}\r\n", "a".repeat(8000));
         let packet = format!(
-            "M-SEARCH * HTTP/1.1\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n{padding}\r\n"
+            "M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n{padding}\r\n"
         );
         assert!(is_dial_search(packet.as_bytes()));
     }
