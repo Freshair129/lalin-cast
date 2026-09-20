@@ -17,10 +17,13 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout tagged source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+          components: clippy
 
       - name: Verify updater secret presence
         shell: pwsh
@@ -37,8 +40,35 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml
           cargo check --manifest-path src-tauri/Cargo.toml
 
+      - name: Run Rust lint (clippy)
+        shell: pwsh
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: (H4 placeholder, disabled) Sign Windows binaries with Authenticode
+        if: false
+        shell: pwsh
+        # Disabled until human gate H4 (docs/plans/H0_RELEASE_READINESS_PLAN.md)
+        # completes: a code-signing certificate must be purchased first. Once
+        # acquired, wire the real signing command here (or via
+        # `bundle.windows.signCommand` in src-tauri/tauri.conf.json, owned by
+        # S4) and remove `if: false`. Do not add signing secrets to this
+        # workflow until H4 is done.
+        run: |
+          Write-Host "Authenticode signing placeholder — enable after H4 (certificate purchase)."
+
+      - name: Write release job summary
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $commit = $env:GITHUB_SHA
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Lalin Cast release"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Tag: ``$tag``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Commit: ``$commit``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifacts: Windows x64 NSIS installer (.exe), updater signature (.sig), latest.json"
+
       - name: Build signed Tauri release
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY }}
@@ -50,4 +80,4 @@ jobs:
           releaseBody: "Signed Windows x64 release for Lalin Cast."
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true

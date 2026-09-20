@@ -1,0 +1,73 @@
+# cargo-deny configuration for Lalin Cast.
+#
+# Checked in CI by .github/workflows/ci.yml via EmbarkStudios/cargo-deny-action
+# (pinned SHA, see that file) against src-tauri/Cargo.toml / Cargo.lock.
+#
+# Schema matches cargo-deny 0.20.x (the version bundled with the pinned
+# cargo-deny-action release): the old `[licenses] version = 2` /
+# `[advisories] vulnerability = "..."` style fields no longer exist —
+# vulnerabilities and unsound advisories are always hard errors now, and
+# `unmaintained` takes a scope ("all"/"workspace"/"transitive"/"none")
+# rather than a deny/warn/allow lint level. See docs/plans/H0_RELEASE_READINESS_PLAN.md
+# (S3 section) for the policy this file implements and notes on where the
+# current cargo-deny schema no longer has a literal "warn" knob for a field
+# the plan names.
+
+[sources]
+# crates.io only — anything from an unknown registry or a git source fails
+# the check. (allow-registry defaults to crates.io when unset.)
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    # Not in the plan's literal list. Added because webpki-root-certs (a
+    # real transitive dependency of the rustls/TLS stack already resolved
+    # in src-tauri/Cargo.lock) is licensed solely under CDLA-Permissive-2.0
+    # (a permissive Mozilla-root-store data license), which is a single
+    # (non-OR) license expression, so it must be explicitly allowed or the
+    # check fails. Confirmed via `cargo metadata` on 2026-09-20.
+    "CDLA-Permissive-2.0",
+    # OpenSSL is intentionally NOT in this list: a `cargo metadata` scan of
+    # every package in src-tauri/Cargo.lock (519 packages) found no crate
+    # declaring the "OpenSSL" SPDX license, so it is not "necessary" per the
+    # plan's "OpenSSL (ถ้าจำเป็น)" note. Add it back if a future dependency
+    # requires it.
+]
+
+[licenses.private]
+# Do not fail the check over the lalin-cast workspace crate's own license
+# expression — it is an unpublished application binary, not a published
+# library. This only takes effect once src-tauri/Cargo.toml sets
+# `publish = false` on the [package] table; until then `cargo deny check
+# licenses` will still flag the lalin-cast crate itself as unlicensed.
+# NOTE (openQuestion for orchestrator/S4): src-tauri/Cargo.toml currently has
+# no `license`/`license-file` field and no `publish = false`, so this check
+# will fail on the root crate until S4 adds one of those. S3 cannot edit
+# src-tauri/Cargo.toml (out of ownership).
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+
+[advisories]
+# Vulnerability advisories are always hard errors in this cargo-deny
+# version (matches the plan's "vulnerability deny" intent; there is no
+# separate field to set anymore).
+# "unmaintained warn" from the plan is expressed as narrowly as this schema
+# allows: only fail if an unmaintained advisory applies to a *direct*
+# workspace dependency, so noise from the wider transitive graph does not
+# block CI, while unmaintained direct dependencies are still visible.
+unmaintained = "workspace"
