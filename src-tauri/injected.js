@@ -22,6 +22,9 @@
   //
   // page -> Rust events this file emits:
   //   "lalin-cast-shell" payload { action: "open-settings" | "toggle-fullscreen" | "toggle-mini" }
+  //   "lalin-cast-media" payload { state: "playing" | "paused" | "idle", title: string } (wave 5 —
+  //     see docs/plans/W5_DESKTOP_PLAN.md, "Now-playing"). The wave 5 "toggle-help" keybind is
+  //     handled entirely on the page (see "Help overlay", below) and emits nothing to Rust.
   //
   // This file is a single `include_str!`-ed script, organized into
   // delimited sections. Most of it ports small modules from VacuumTube
@@ -29,7 +32,10 @@
   // ported section opens with a comment naming its upstream path(s). The
   // DIAL bridge / device-id sync / surface-detection section predates wave 3
   // and keeps its existing behavior unchanged aside from wiring the deep
-  // link value described below.
+  // link value described below. The playback-speed, help-overlay, and
+  // now-playing sections (wave 5) are Lalin Cast originals — no VacuumTube
+  // module offers any of the three, so each opens with its own note saying
+  // so instead of a provenance path.
   //
   // Pure helpers are exported via `module.exports` (guarded by `typeof
   // module`) so `src-tauri/injected.test.js` can `require()` this file from
@@ -737,7 +743,12 @@
   // Classifies one input (a real keydown/mousedown, normalized to a plain
   // object) into a named action, or null. `prefs` is accepted for parity
   // with the documented signature; no binding here is currently gated by a
-  // pref (unlike the controller and volume sections).
+  // pref (unlike the controller and volume sections). `input.code` (the
+  // physical key, e.g. "Period") is optional — wave 5's speed/help bindings
+  // below check it before falling back to `input.key` (the produced
+  // character), so they still work on keyboard layouts where Shift+Period/
+  // Comma/Slash does not produce ">"/"<"/"?" — see docs/plans/W5_DESKTOP_PLAN.md,
+  // "Playback speed" / "Help overlay".
   const keybindFor = (input, prefs) => {
     void prefs;
     if (!input || typeof input !== "object") return null;
@@ -749,6 +760,7 @@
     if (input.type !== "keydown") return null;
 
     const key = typeof input.key === "string" ? input.key : "";
+    const code = typeof input.code === "string" ? input.code : "";
     const lower = key.toLowerCase();
     const ctrl = Boolean(input.ctrlKey);
     const shift = Boolean(input.shiftKey);
@@ -778,6 +790,20 @@
     // "C", matching upstream's exact guard (ctrl/shift/meta excluded; Alt is
     // not checked upstream either).
     if (!ctrl && !shift && !meta && lower === "c") return "toggle-captions";
+
+    // Playback speed (Lalin Cast wave 5 addition, not ported from
+    // VacuumTube — see docs/plans/W5_DESKTOP_PLAN.md, "Playback speed"; no
+    // upstream module offers a speed control at all). No Ctrl/Meta, matching
+    // the documented "(ไม่มี modifier อื่น)" for the sibling toggle-help
+    // binding below.
+    if (!ctrl && !meta && shift && (code === "Period" || key === ">")) return "speed-up";
+    if (!ctrl && !meta && shift && (code === "Comma" || key === "<")) return "speed-down";
+
+    // Help overlay (Lalin Cast wave 5 addition, same doc — no upstream
+    // module). "?" is produced by Shift+Slash on a US layout; F1 toggles it
+    // too, but only completely bare (no Ctrl/Shift/Meta at all).
+    if (!ctrl && !meta && shift && (code === "Slash" || key === "?")) return "toggle-help";
+    if (!ctrl && !shift && !meta && key === "F1") return "toggle-help";
 
     return null;
   };
@@ -899,12 +925,17 @@
     const onOpenSettings = (callbacks && callbacks.onOpenSettings) || (() => {});
     const onToggleFullscreen = (callbacks && callbacks.onToggleFullscreen) || (() => {});
     const onToggleMini = (callbacks && callbacks.onToggleMini) || (() => {});
+    // Wave 5 additions — see docs/plans/W5_DESKTOP_PLAN.md.
+    const onSpeedUp = (callbacks && callbacks.onSpeedUp) || (() => {});
+    const onSpeedDown = (callbacks && callbacks.onSpeedDown) || (() => {});
+    const onToggleHelp = (callbacks && callbacks.onToggleHelp) || (() => {});
     const longPress = createLongPressEnterPatch(doc, win);
 
     const handler = (e) => {
       const action = keybindFor({
         type: "keydown",
         key: e.key,
+        code: e.code,
         ctrlKey: e.ctrlKey,
         shiftKey: e.shiftKey,
         altKey: e.altKey,
@@ -947,6 +978,21 @@
         case "longpress-enter":
           // No discrete dispatch here — the continuous Shift/Enter hold
           // state is tracked independently by `longPress`, above.
+          break;
+        case "speed-up":
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          onSpeedUp();
+          break;
+        case "speed-down":
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          onSpeedDown();
+          break;
+        case "toggle-help":
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          onToggleHelp();
           break;
         default:
           break;
@@ -1473,6 +1519,536 @@
   };
 
   // -------------------------------------------------------------------------
+  // Playback speed (Lalin Cast addition — no VacuumTube module ports this;
+  // VacuumTube has no playback-speed control)
+  //
+  // `desiredRate` is a session-only value (never persisted, no pref): the
+  // speed-up/speed-down keybinds step it through the fixed `SPEED_RATES`
+  // table via the pure `nextRate()` below and apply it to every <video> on
+  // the page. Because setting `video.playbackRate` itself fires a
+  // `ratechange` event, `applying` (below) distinguishes a change we just
+  // caused (ignored — otherwise we'd immediately "adopt" our own write back
+  // as if it were external) from a `ratechange` we did not cause — e.g. the
+  // user picking a speed from YouTube's own player menu — which this
+  // section always adopts as the new `desiredRate` rather than fighting it,
+  // the same "adopt, don't fight" pattern the Volume section above already
+  // uses for a level changed elsewhere (a phone remote via DIAL, YouTube's
+  // own UI).
+  // -------------------------------------------------------------------------
+
+  const SPEED_RATES = Object.freeze([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]);
+  const SPEED_OSD_ID = "lalin-cast-speed-osd";
+  const SPEED_STYLE_ID = "lalin-cast-speed-style";
+  const SPEED_OSD_VISIBLE_MS = 1500;
+
+  const SPEED_OSD_CSS = `
+#${SPEED_OSD_ID} {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  border-radius: 0.75rem;
+  background-color: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  z-index: 2147483647;
+  display: none;
+}
+`;
+
+  // Index of the SPEED_RATES entry closest to `value`. Ties (equidistant
+  // from two entries) keep the lower/earlier one, since the comparison
+  // below only replaces the current best on a strictly smaller difference.
+  const nearestRateIndex = (value) => {
+    let bestIndex = 0;
+    let bestDiff = Math.abs(SPEED_RATES[0] - value);
+    for (let i = 1; i < SPEED_RATES.length; i += 1) {
+      const diff = Math.abs(SPEED_RATES[i] - value);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIndex = i;
+      }
+    }
+    return bestIndex;
+  };
+
+  // Pure: the next rate one step `"up"`/`"down"` from `current`. When
+  // `current` is already one of SPEED_RATES, this steps to the adjacent
+  // entry, clamping at the first/last entry (an "up" at 2 or a "down" at 0.5
+  // both return unchanged). When `current` is NOT one of SPEED_RATES (an
+  // adopted external rate the table doesn't contain, e.g. 1.6), this instead
+  // snaps to the nearest table entry and does not also step — the next
+  // press then continues stepping from that normalized value. `direction`
+  // other than `"down"` (i.e. anything including `"up"`) steps up, matching
+  // this file's established `mapGamepadState`-style "the meaningful branch
+  // is named, everything else falls through" convention.
+  const nextRate = (current, direction) => {
+    const value = typeof current === "number" && Number.isFinite(current) ? current : 1;
+    const index = SPEED_RATES.indexOf(value);
+    if (index === -1) return SPEED_RATES[nearestRateIndex(value)];
+    const nextIndex = direction === "down" ? index - 1 : index + 1;
+    return SPEED_RATES[Math.max(0, Math.min(SPEED_RATES.length - 1, nextIndex))];
+  };
+
+  // "1×" / "1.5×" — Number#toString() already drops trailing zeros for every
+  // entry in SPEED_RATES, so no extra formatting is needed.
+  const formatRate = (rate) => `${rate}×`;
+
+  const createSpeedOsd = (doc, win) => {
+    let element = null;
+    let hideTimer = null;
+
+    const ensureStyle = () => {
+      if (doc.getElementById(SPEED_STYLE_ID)) return;
+      const style = doc.createElement("style");
+      style.id = SPEED_STYLE_ID;
+      style.textContent = SPEED_OSD_CSS;
+      const parent = doc.head || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+    };
+
+    const ensureElement = () => {
+      if (element) return element;
+      ensureStyle();
+      const el = doc.createElement("div");
+      el.id = SPEED_OSD_ID;
+      if (el.style) el.style.display = "none";
+      const parent = doc.body || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(el);
+      element = el;
+      return element;
+    };
+
+    return {
+      show(rate) {
+        const el = ensureElement();
+        el.textContent = formatRate(rate);
+        if (el.style) el.style.display = "";
+        if (hideTimer !== null && typeof win.clearTimeout === "function") {
+          win.clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+        if (win && typeof win.setTimeout === "function") {
+          hideTimer = win.setTimeout(() => {
+            if (el.style) el.style.display = "none";
+            hideTimer = null;
+          }, SPEED_OSD_VISIBLE_MS);
+        }
+      }
+    };
+  };
+
+  // Wires desiredRate application/adoption to `doc` and returns the
+  // increase()/decrease() entry points the speed-up/speed-down keybinds
+  // call. `getVideos`/`osd` are overridable (matching this file's established
+  // `doc`/`win`-parameter convention) so injected.test.js can exercise this
+  // against stub videos without a real DOM.
+  const createSpeedControl = (doc, win, options) => {
+    const opts = options || {};
+    const getVideos = opts.getVideos || (() => {
+      if (typeof doc.querySelectorAll !== "function") return [];
+      return Array.prototype.slice.call(doc.querySelectorAll("video"));
+    });
+    const osd = opts.osd || createSpeedOsd(doc, win);
+
+    let desiredRate = 1;
+    // True only for the duration of our own applyToVideo() write below —
+    // lets onRateChange tell a ratechange fired *synchronously* by our own
+    // write apart from one we did not cause. A real HTMLMediaElement fires
+    // ratechange as a queued task instead, by which time this flag is
+    // already clear again; that (asynchronous) echo is caught by the
+    // rate === desiredRate check in onRateChange, so both timings are
+    // covered.
+    let applying = false;
+
+    const applyToVideo = (video) => {
+      if (!video) return;
+      applying = true;
+      try {
+        video.playbackRate = desiredRate;
+      } finally {
+        applying = false;
+      }
+    };
+
+    const applyToAll = () => {
+      (getVideos() || []).forEach(applyToVideo);
+    };
+
+    // Adopts a ratechange we did not cause (YouTube's own speed menu) as the
+    // new desiredRate. Not adopted, deliberately:
+    //   - a rate that already equals desiredRate — the queued echo of our
+    //     own applyToVideo() write (see `applying` above), or a no-op;
+    //   - a ratechange while the element has no media yet (readyState 0):
+    //     the HTML media load algorithm resets playbackRate to the default
+    //     and fires ratechange BEFORE loadedmetadata whenever YouTube moves
+    //     on to the next video, and adopting that reset would defeat the
+    //     re-apply in onLoadedMetadata below.
+    const onRateChange = (e) => {
+      if (applying) return;
+      const video = e && e.target;
+      const rate = video ? Number(video.playbackRate) : NaN;
+      if (!Number.isFinite(rate)) return;
+      if (rate === desiredRate) return;
+      if (Number(video.readyState) === 0) return;
+      desiredRate = rate;
+    };
+
+    // Only re-applies desiredRate to a freshly loaded <video> when it is not
+    // the platform default (1) — matches the documented "เฉพาะเมื่อ
+    // desiredRate !== 1" so a session that never touched speed never writes
+    // playbackRate at all.
+    const onLoadedMetadata = (e) => {
+      if (desiredRate === 1) return;
+      applyToVideo(e && e.target);
+    };
+
+    doc.addEventListener("ratechange", onRateChange, true);
+    doc.addEventListener("loadedmetadata", onLoadedMetadata, true);
+
+    const setDesired = (rate) => {
+      desiredRate = rate;
+      applyToAll();
+      osd.show(rate);
+    };
+
+    return {
+      increase() { setDesired(nextRate(desiredRate, "up")); },
+      decrease() { setDesired(nextRate(desiredRate, "down")); },
+      getDesiredRate() { return desiredRate; }
+    };
+  };
+
+  // -------------------------------------------------------------------------
+  // Help overlay (Lalin Cast addition — no VacuumTube module ports this;
+  // VacuumTube has no help overlay)
+  //
+  // A single bilingual keyboard+controller cheat sheet, built lazily (on
+  // first toggle) from the pure `helpRows()` below — no `innerHTML` anywhere,
+  // every row is `createElement`/`textContent`. Toggled by the `toggle-help`
+  // keybind (handled by createKeybindHandler, above, like every other
+  // keybind action); closing itself (Escape, a second `?`/F1, a backdrop
+  // click) is handled by this section's own capture-phase keydown listener
+  // plus a click listener on the overlay's own backdrop element, since none
+  // of those are `keybindFor` actions.
+  // -------------------------------------------------------------------------
+
+  const HELP_OVERLAY_ID = "lalin-cast-help";
+  const HELP_STYLE_ID = "lalin-cast-help-style";
+  const HELP_PANEL_CLASS = "lalin-cast-help-panel";
+  const HELP_TITLE_CLASS = "lalin-cast-help-title";
+  const HELP_ROW_CLASS = "lalin-cast-help-row";
+  const HELP_ACTION_CLASS = "lalin-cast-help-action";
+  const HELP_KEY_CLASS = "lalin-cast-help-key";
+  const HELP_CONTROLLER_CLASS = "lalin-cast-help-controller";
+
+  const HELP_STYLE_CSS = `
+#${HELP_OVERLAY_ID} {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.7);
+  font-family: system-ui, sans-serif;
+  color: #fff;
+}
+.${HELP_PANEL_CLASS} {
+  background-color: rgba(20, 20, 20, 0.95);
+  border-radius: 1rem;
+  padding: 24px 32px;
+  max-width: 640px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.${HELP_TITLE_CLASS} { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+.${HELP_ROW_CLASS} {
+  display: flex;
+  gap: 20px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 16px;
+}
+.${HELP_ACTION_CLASS} { flex: 1 1 40%; }
+.${HELP_KEY_CLASS} { flex: 1 1 30%; opacity: 0.85; }
+.${HELP_CONTROLLER_CLASS} { flex: 1 1 30%; opacity: 0.85; }
+`;
+
+  const HELP_TITLE_TEXT = Object.freeze({
+    th: "ปุ่มลัดคีย์บอร์ดและคอนโทรลเลอร์",
+    en: "Keyboard & controller shortcuts"
+  });
+
+  // Pure: the rows the help overlay renders, in the order the keyboard
+  // shortcuts table appears in README.md — one row per binding documented
+  // there (Ctrl+O, F11, Ctrl+Shift+M, Shift+Enter, right-click, +/-, M, C,
+  // Ctrl+Shift+C) plus the two wave 5 additions (speed, this overlay
+  // itself), each with its controller equivalent from README.md's
+  // "Controller mapping" table where one exists ("—" otherwise). `th`/`en`
+  // always return the same number of rows with no empty cell — no DOM, safe
+  // to call from injected.test.js directly.
+  const HELP_ROWS_TH = Object.freeze([
+    { action: "เปิดการตั้งค่า", keyboard: "Ctrl+O", controller: "R3" },
+    { action: "สลับเต็มจอ", keyboard: "F11", controller: "—" },
+    { action: "สลับหน้าต่างเล็ก (mini-player)", keyboard: "Ctrl+Shift+M", controller: "—" },
+    { action: "กด Enter ค้าง", keyboard: "Shift+Enter", controller: "—" },
+    { action: "ย้อนกลับ", keyboard: "คลิกขวา", controller: "B / ○ (Circle)" },
+    { action: "เพิ่ม/ลดเสียง", keyboard: "+ / -", controller: "Menu/Start · View/Back" },
+    { action: "ปิดเสียง", keyboard: "M", controller: "L3" },
+    { action: "เปิด-ปิดคำบรรยาย", keyboard: "C", controller: "—" },
+    { action: "คัดลอกลิงก์วิดีโอ/เพลย์ลิสต์", keyboard: "Ctrl+Shift+C", controller: "—" },
+    { action: "ปรับความเร็วเล่น ช้าลง/เร็วขึ้น", keyboard: "Shift+, / Shift+.", controller: "—" },
+    { action: "เปิด/ปิดผังคีย์นี้", keyboard: "? / F1", controller: "—" }
+  ]);
+
+  const HELP_ROWS_EN = Object.freeze([
+    { action: "Open settings", keyboard: "Ctrl+O", controller: "R3" },
+    { action: "Toggle fullscreen", keyboard: "F11", controller: "—" },
+    { action: "Toggle mini-player", keyboard: "Ctrl+Shift+M", controller: "—" },
+    { action: "Long-press Enter", keyboard: "Shift+Enter", controller: "—" },
+    { action: "Back", keyboard: "Right-click", controller: "B / ○ (Circle)" },
+    { action: "Volume up / down", keyboard: "+ / -", controller: "Menu/Start · View/Back" },
+    { action: "Mute", keyboard: "M", controller: "L3" },
+    { action: "Toggle captions", keyboard: "C", controller: "—" },
+    { action: "Copy video/playlist link", keyboard: "Ctrl+Shift+C", controller: "—" },
+    { action: "Playback speed slower/faster", keyboard: "Shift+, / Shift+.", controller: "—" },
+    { action: "Toggle this help", keyboard: "? / F1", controller: "—" }
+  ]);
+
+  const helpRows = (lang) => (lang === "en" ? HELP_ROWS_EN : HELP_ROWS_TH).slice();
+
+  const isEscapeKey = (e) => Boolean(e) && (e.key === "Escape" || e.keyCode === 27);
+
+  // Arrow keys + Enter, matched by both `.key` (a real keyboard event) and
+  // `.keyCode` (the synthetic events the controller/mouse sections above
+  // dispatch for D-pad/left-stick navigation and the A button), so a
+  // gamepad cannot navigate the page underneath the overlay either.
+  const HELP_NAV_KEYS = Object.freeze({ ArrowUp: true, ArrowDown: true, ArrowLeft: true, ArrowRight: true, Enter: true });
+  const HELP_NAV_KEYCODES = Object.freeze({ 37: true, 38: true, 39: true, 40: true, 13: true });
+
+  const isHelpNavKey = (e) => {
+    if (!e) return false;
+    if (typeof e.key === "string" && HELP_NAV_KEYS[e.key]) return true;
+    return typeof e.keyCode === "number" && Boolean(HELP_NAV_KEYCODES[e.keyCode]);
+  };
+
+  // Builds (lazily, on first toggle) and shows/hides the overlay. `getLang`
+  // follows this file's established "th"|"en" convention (see e.g.
+  // touchButtons() above).
+  const createHelpOverlay = (doc, win, options) => {
+    const opts = options || {};
+    const getLang = opts.getLang || (() => "th");
+
+    let helpOpen = false;
+    let elements = null;
+
+    const ensureStyle = () => {
+      if (doc.getElementById(HELP_STYLE_ID)) return;
+      const style = doc.createElement("style");
+      style.id = HELP_STYLE_ID;
+      style.textContent = HELP_STYLE_CSS;
+      const parent = doc.head || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+    };
+
+    const build = () => {
+      if (elements) return elements;
+      ensureStyle();
+
+      const overlay = doc.createElement("div");
+      overlay.id = HELP_OVERLAY_ID;
+      if (typeof overlay.setAttribute === "function") {
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+      }
+      if (overlay.style) overlay.style.display = "none";
+
+      const panel = doc.createElement("div");
+      panel.className = HELP_PANEL_CLASS;
+
+      const title = doc.createElement("div");
+      title.className = HELP_TITLE_CLASS;
+      const lang = getLang() === "en" ? "en" : "th";
+      title.textContent = HELP_TITLE_TEXT[lang];
+      panel.appendChild(title);
+
+      helpRows(lang).forEach((row) => {
+        const line = doc.createElement("div");
+        line.className = HELP_ROW_CLASS;
+
+        const action = doc.createElement("span");
+        action.className = HELP_ACTION_CLASS;
+        action.textContent = row.action;
+
+        const keyboard = doc.createElement("span");
+        keyboard.className = HELP_KEY_CLASS;
+        keyboard.textContent = row.keyboard;
+
+        const controller = doc.createElement("span");
+        controller.className = HELP_CONTROLLER_CLASS;
+        controller.textContent = row.controller;
+
+        line.appendChild(action);
+        line.appendChild(keyboard);
+        line.appendChild(controller);
+        panel.appendChild(line);
+      });
+
+      overlay.appendChild(panel);
+
+      if (typeof overlay.addEventListener === "function") {
+        overlay.addEventListener("click", (e) => {
+          // Backdrop click: only when the click landed on the overlay
+          // itself, not a descendant of it (i.e. inside the panel) — the
+          // same "e.target === the element the listener is on" technique
+          // as any standard modal backdrop.
+          if (e && e.target === overlay) setOpen(false);
+        });
+      }
+
+      const parent = doc.body || doc.documentElement;
+      if (parent && typeof parent.appendChild === "function") parent.appendChild(overlay);
+
+      elements = { overlay, panel };
+      return elements;
+    };
+
+    const render = () => {
+      if (!elements) return;
+      if (elements.overlay.style) elements.overlay.style.display = helpOpen ? "flex" : "none";
+    };
+
+    const setOpen = (value) => {
+      helpOpen = Boolean(value);
+      build();
+      render();
+    };
+
+    const onKeyDown = (e) => {
+      if (!helpOpen) return;
+      if (isEscapeKey(e)) {
+        // stopImmediatePropagation (not just preventDefault) so YouTube's
+        // own Escape handling — page navigation — never runs; the same
+        // technique no-f11's F11 handling and toggle-mini/toggle-fullscreen
+        // above already use. This also closes the overlay when the
+        // controller's B button fires its synthetic Escape (see the
+        // Controller section above), since that dispatch also sets
+        // `.keyCode = 27`.
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+        if (typeof e.preventDefault === "function") e.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (isHelpNavKey(e)) {
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+        if (typeof e.preventDefault === "function") e.preventDefault();
+      }
+      // Every other key passes through untouched while open.
+    };
+
+    doc.addEventListener("keydown", onKeyDown, true);
+
+    return {
+      toggle() { setOpen(!helpOpen); },
+      open() { setOpen(true); },
+      close() { setOpen(false); },
+      isOpen() { return helpOpen; }
+    };
+  };
+
+  // -------------------------------------------------------------------------
+  // Now-playing (Lalin Cast addition — no VacuumTube module ports this;
+  // VacuumTube has no now-playing title. Rust side: MediaTitleState /
+  // window_title() — see docs/plans/W5_DESKTOP_PLAN.md, "Now-playing")
+  //
+  // Capture-phase play/pause/ended/emptied listeners on `doc`, catching
+  // every <video> on the page including ones created after this file ran
+  // (capturing happens on the way down to the target regardless of whether
+  // the event itself bubbles, and "play"/"pause"/"ended"/"emptied" do not).
+  // Title always comes from the standard `navigator.mediaSession` API —
+  // never YouTube's own DOM, per contract — trimmed and length-capped the
+  // same way initSurfaceDetection() above already caps `document.title`.
+  // -------------------------------------------------------------------------
+
+  const MEDIA_TITLE_MAX_LENGTH = 200;
+
+  // Pure: which lalin-cast-media `state` a given media event type maps to,
+  // or null for anything else.
+  const mediaStateFor = (type) => {
+    if (type === "play") return "playing";
+    if (type === "pause") return "paused";
+    if (type === "ended" || type === "emptied") return "idle";
+    return null;
+  };
+
+  // Reads navigator.mediaSession.metadata.title, trimmed and capped at 200
+  // characters, or "" when absent/malformed/unreadable. Never touches the
+  // DOM.
+  const readMediaTitle = (win) => {
+    try {
+      const nav = win && win.navigator;
+      const raw = nav && nav.mediaSession && nav.mediaSession.metadata && nav.mediaSession.metadata.title;
+      return typeof raw === "string" ? raw.trim().slice(0, MEDIA_TITLE_MAX_LENGTH) : "";
+    } catch {
+      return "";
+    }
+  };
+
+  // Wires the four listeners and returns the raw handler (mainly so
+  // injected.test.js can call it directly without needing a real event to
+  // propagate through `doc`). `emit` defaults to the Tauri bridge, matching
+  // emitShell() below, but is overridable — this file's established
+  // testability convention (see e.g. createSpeedControl's `osd` option
+  // above) — so tests can capture payloads instead of needing a live bridge.
+  const createMediaSignal = (doc, win, options) => {
+    const opts = options || {};
+    const emit = opts.emit || ((state, title) => {
+      const tauri = bridge();
+      if (!tauri?.event?.emit) return Promise.resolve();
+      return tauri.event.emit("lalin-cast-media", { state, title }).catch(() => {});
+    });
+
+    const send = (state) => emit(state, readMediaTitle(win));
+
+    // The one pending 2 s re-read (below), so a later event can cancel it.
+    let pendingReread = null;
+    const cancelReread = () => {
+      if (pendingReread !== null && win && typeof win.clearTimeout === "function") {
+        win.clearTimeout(pendingReread);
+      }
+      pendingReread = null;
+    };
+
+    const handler = (e) => {
+      const state = mediaStateFor(e && e.type);
+      if (!state) return;
+      // Any newer event supersedes a pending re-read, so a pause/ended/
+      // emptied within 2 s of play never gets a trailing "playing" sent
+      // after it (which would leave the tray's now-playing line stale).
+      cancelReread();
+      send(state);
+      // One delayed re-read 2s after "play": navigator.mediaSession's
+      // metadata is frequently only populated a short moment after playback
+      // actually starts, so the immediate send() above can still carry the
+      // previous (or empty) title.
+      if (state === "playing" && win && typeof win.setTimeout === "function") {
+        pendingReread = win.setTimeout(() => {
+          pendingReread = null;
+          send("playing");
+        }, 2000);
+      }
+    };
+
+    ["play", "pause", "ended", "emptied"].forEach((type) => doc.addEventListener(type, handler, true));
+
+    return { handler };
+  };
+
+  // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
 
@@ -1539,14 +2115,23 @@
     });
     if (state.prefs.controllerEnabled) gamepadController.start();
 
+    // Wave 5 additions — see docs/plans/W5_DESKTOP_PLAN.md. Built before
+    // createKeybindHandler below so its callbacks can close over them.
+    const speedControl = createSpeedControl(document, window);
+    const helpOverlay = createHelpOverlay(document, window, { getLang: () => state.prefs.lang });
+
     createKeybindHandler(document, window, {
       onOpenSettings: () => emitShell(SHELL_ACTIONS.OPEN_SETTINGS),
       onToggleFullscreen: () => emitShell(SHELL_ACTIONS.TOGGLE_FULLSCREEN),
-      onToggleMini: () => emitShell(SHELL_ACTIONS.TOGGLE_MINI)
+      onToggleMini: () => emitShell(SHELL_ACTIONS.TOGGLE_MINI),
+      onSpeedUp: () => speedControl.increase(),
+      onSpeedDown: () => speedControl.decrease(),
+      onToggleHelp: () => helpOverlay.toggle()
     });
 
     createMouseHandler(document, window);
     createPauseOnBlurHandler(document, window, () => state.prefs);
+    createMediaSignal(document, window);
 
     const volumeControl = createVolumeControl(document, { win: window });
     createVolumeKeydownHandler(document, window, volumeControl);
@@ -1605,7 +2190,24 @@
       SLEEP_OSD_VISIBLE_MS,
       pauseAllVideos,
       createSleepOsd,
-      initSleepListener
+      initSleepListener,
+      // Wave 5 — see docs/plans/W5_DESKTOP_PLAN.md.
+      SPEED_RATES,
+      SPEED_OSD_ID,
+      SPEED_OSD_VISIBLE_MS,
+      nextRate,
+      formatRate,
+      createSpeedOsd,
+      createSpeedControl,
+      HELP_OVERLAY_ID,
+      helpRows,
+      isEscapeKey,
+      isHelpNavKey,
+      createHelpOverlay,
+      MEDIA_TITLE_MAX_LENGTH,
+      mediaStateFor,
+      readMediaTitle,
+      createMediaSignal
     };
   }
 
