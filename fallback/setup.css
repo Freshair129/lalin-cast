@@ -1,5 +1,5 @@
 /*
- * Lalin Cast — native update window styles.
+ * Lalin Cast — first-run setup wizard window styles.
  * Local file only, no external resources. Dark theme to match the
  * Leanback surface: background #171717, accent #3ea6ff.
  */
@@ -15,6 +15,10 @@
   --accent-text: #0b1620;
   --danger: #ff6b6b;
   --danger-bg: #2a1717;
+  --good: #4bd28f;
+  --warn: #f4c04d;
+  --info: #3ea6ff;
+  --unknown: #a3a3a3;
 }
 
 * {
@@ -50,28 +54,42 @@ body {
 
 main.card {
   width: 100%;
-  max-width: 432px;
+  max-width: 512px;
 }
 
 h1 {
-  margin: 0 0 12px;
+  margin: 0 0 6px;
   font-size: 17px;
   font-weight: 600;
   color: var(--text);
 }
 
-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
 }
 
-section[hidden] {
-  display: none;
+h3 {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+section:first-of-type {
+  margin-top: 14px;
 }
 
 p {
-  margin: 0;
+  margin: 0 0 4px;
   color: var(--text);
 }
 
@@ -80,16 +98,68 @@ p.muted {
   font-size: 13px;
 }
 
-.notes-block {
+p[hidden] {
+  display: none;
+}
+
+.status-line {
+  font-weight: 600;
+  padding-left: 18px;
+  position: relative;
+}
+
+.status-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--unknown);
+}
+
+.status-line[data-level="good"]::before {
+  background: var(--good);
+}
+
+.status-line[data-level="warn"]::before {
+  background: var(--warn);
+}
+
+.status-line[data-level="info"]::before {
+  background: var(--info);
+}
+
+.status-line[data-level="unknown"]::before {
+  background: var(--unknown);
+}
+
+.steps-block {
+  margin-top: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
+}
+
+.steps-block[hidden] {
+  display: none;
+}
+
+.steps-block ol {
+  margin: 0 0 4px;
+  padding-left: 20px;
   color: var(--text-muted);
   font-size: 13px;
-  white-space: pre-wrap;
-  max-height: 96px;
-  overflow-y: auto;
+}
+
+.steps-block li {
+  margin-bottom: 3px;
+}
+
+.steps-block .secondary {
+  margin-top: 8px;
 }
 
 .error-text {
@@ -99,12 +169,42 @@ p.muted {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
+  margin-top: 12px;
+}
+
+.error-text[hidden] {
+  display: none;
 }
 
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 14px;
+}
+
+.footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
 }
 
 button {

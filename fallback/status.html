@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Lalin Cast — Status</title>
+    <link rel="stylesheet" href="status.css" />
+  </head>
+  <body>
+    <main class="card">
+      <div id="main-content">
+        <h1 id="page-title"></h1>
+        <p id="status-message" role="status" aria-live="polite"></p>
+        <p id="retry-result" class="muted" hidden role="status" aria-live="polite"></p>
+        <p id="retry-error" class="error-text" hidden role="status" aria-live="polite"></p>
+
+        <div class="actions">
+          <button id="retry-btn" type="button" class="primary"></button>
+          <button id="quit-btn" type="button" class="secondary"></button>
+        </div>
+      </div>
+
+      <section id="state-no-tauri" hidden>
+        <p id="no-tauri-title" role="status" aria-live="polite"></p>
+        <p id="no-tauri-body" class="muted"></p>
+      </section>
+    </main>
+
+    <script src="status.js"></script>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 /*
- * Lalin Cast — native update window styles.
+ * Lalin Cast — offline / blocked-surface status window styles.
  * Local file only, no external resources. Dark theme to match the
  * Leanback surface: background #171717, accent #3ea6ff.
  */
@@ -50,7 +50,7 @@ body {
 
 main.card {
   width: 100%;
-  max-width: 432px;
+  max-width: 460px;
 }
 
 h1 {
@@ -58,16 +58,6 @@ h1 {
   font-size: 17px;
   font-weight: 600;
   color: var(--text);
-}
-
-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-section[hidden] {
-  display: none;
 }
 
 p {
@@ -78,18 +68,11 @@ p {
 p.muted {
   color: var(--text-muted);
   font-size: 13px;
+  margin-top: 8px;
 }
 
-.notes-block {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  color: var(--text-muted);
-  font-size: 13px;
-  white-space: pre-wrap;
-  max-height: 96px;
-  overflow-y: auto;
+p[hidden] {
+  display: none;
 }
 
 .error-text {
@@ -99,12 +82,13 @@ p.muted {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
+  margin-top: 10px;
 }
 
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 16px;
 }
 
 button {
