@@ -55,13 +55,35 @@ Current scope:
   the pinned VacuumTube reference; real-controller behavior is human gate H8 and not yet
   evidenced — see [Controller and keyboard](#controller-and-keyboard);
 - an optional pause-on-blur setting that pauses playback when the media window loses focus;
+- a sleep timer that pauses every video on the page and shows an on-screen message once its
+  countdown reaches zero, set from the settings window to 15/30/60/90/120 minutes or off — see
+  [Playback](#playback) (real timer-firing behavior is human gate H10);
+- a codec filter that, once set to H.264-only, tells the embedded YouTube page — through the
+  standard `MediaSource`/`HTMLMediaElement.canPlayType` Web APIs only — that it does not support
+  VP8/VP9/AV1, taking effect after the next page reload — see [Playback](#playback) (visible effect
+  in "stats for nerds" is human gate H11);
+- a hardware-decoding toggle for the media window, applied through a WebView2 startup flag and
+  taking effect after restarting the app — see [Playback](#playback) (human gate H11);
+- a mini-player mode — an undecorated, always-on-top window pinned to a screen corner — reachable
+  from the media menu, the tray icon, `Ctrl+Shift+M`, or the settings window; session-only and not
+  persisted across restarts — see [Playback](#playback) (multi-monitor behavior is human gate H10);
+- a touch-control overlay, ported from the pinned VacuumTube reference, that appears after the
+  first detected screen touch — see [Playback](#playback) (real handheld/touchscreen behavior is
+  human gate H10);
 - a native settings window (language, DIAL name, fullscreen, keep-on-top, controller toggle,
-  pause-on-blur, reopen the setup wizard, check for updates) reachable from the media window's
-  menu, the tray icon, `Ctrl+O`, or the controller's R3 button — see [Settings](#settings)
-  (live-apply behavior on a real machine is human gate H9);
+  pause-on-blur, sleep timer, codec filter, hardware decoding, touch overlay, mini-player, reopen
+  the setup wizard, check for updates) reachable from the media window's menu, the tray icon,
+  `Ctrl+O`, or the controller's R3 button — see [Settings](#settings) (live-apply behavior on a
+  real machine is human gate H9);
 - command-line startup flags and a YouTube URL/playlist deep link, including forwarding a link to
   an already-running instance instead of opening a second window — see
   [Command line](#command-line) (deep-link behavior on the real Leanback surface is human gate H7).
+
+Windows x64 is the primary, fully-supported release target. the tagged release workflow also produces an experimental ARM64 build (and CI runs a non-blocking `cargo check` for that target); it
+(`aarch64-pc-windows-msvc`) build as an **experimental**, `continue-on-error` job that is not held
+to the same acceptance gates as x64 yet and may lag behind it (human gate H12). A winget package
+submission is prepared — see [`packaging/winget/README.md`](packaging/winget/README.md) — but has
+not been submitted to `microsoft/winget-pkgs` yet.
 
 If the local settings store is unavailable, the shell uses safe defaults and
 still opens; the failure is not allowed to block the media window.
@@ -135,6 +157,85 @@ turned on or off from the settings window (the "Controller" toggle).
 | `M` | Mute / ปิดเสียง |
 | `C` | Toggle captions / เปิด-ปิดคำบรรยาย |
 | `Ctrl+Shift+C` | Copy the current video/playlist URL to the clipboard, query stripped except `v`/`list` — คัดลอกลิงก์ปัจจุบันโดยตัด query ทิ้งยกเว้น `v`/`list` |
+| `Ctrl+Shift+M` | Toggle mini-player / สลับโหมดหน้าต่างเล็ก — see [Playback](#playback) |
+
+## Playback
+
+**ภาษาไทย:** Lalin Cast มีตัวเลือกการเล่นเพิ่มเติมห้าอย่าง ตั้งค่าได้จากหน้าต่างการตั้งค่า (ดู
+[Settings](#settings)) ทั้งหมดทำงานในเครื่องล้วน ๆ ไม่มีการส่งข้อมูลใดออกนอกเครื่องเพิ่มเติม (ดู
+[`PRIVACY.md`](PRIVACY.md))
+
+**English:** Lalin Cast has five additional playback options, all set from the settings window (see
+[Settings](#settings)) and all entirely local — none of them send anything off the device (see
+[`PRIVACY.md`](PRIVACY.md)).
+
+### Sleep timer / ตัวจับเวลาปิดเล่นอัตโนมัติ
+
+**ภาษาไทย:** ตั้งเวลาปิดเล่นอัตโนมัติได้ที่ 15, 30, 60, 90 หรือ 120 นาที (หรือ "ปิด" เพื่อยกเลิก) จาก
+หน้าต่างการตั้งค่า ซึ่งจะแสดงเวลาที่เหลือแบบนับถอยหลังด้วย เมื่อเวลาหมด Lalin Cast จะหยุดเล่นวิดีโอทุกตัว
+ในหน้าทันทีและแสดงข้อความ "หมดเวลาตั้งนอน — หยุดเล่นแล้ว" บนหน้าจอเป็นเวลา 6 วินาที แล้วรีเซ็ตค่ากลับเป็น
+"ปิด" ให้เอง เปลี่ยนหรือยกเลิกตัวจับเวลาระหว่างทางได้ทุกเมื่อจากหน้าต่างการตั้งค่า
+
+**English:** Set a sleep timer to 15, 30, 60, 90, or 120 minutes (or "off" to cancel it) from the
+settings window, which also shows a live countdown. When it fires, Lalin Cast pauses every video on
+the page immediately and shows an on-screen message ("Sleep timer: playback paused") for 6 seconds,
+then resets the setting back to "off" on its own. The timer can be changed or cancelled at any time
+from the settings window.
+
+### Codec filter / ตัวกรอง codec
+
+**ภาษาไทย:** ตัวกรอง codec (ค่าเริ่มต้น "ปิด") บังคับให้หน้า YouTube ใช้เฉพาะ H.264 โดยทำผ่าน Web API
+มาตรฐานสองตัวคือ `MediaSource.isTypeSupported` และ `HTMLMediaElement.canPlayType` (ดูรายละเอียดที่
+[`PRIVACY.md`](PRIVACY.md)) เป็นประโยชน์กับเครื่องที่มี GPU/iGPU รุ่นเก่าที่ถอดรหัส VP9/AV1 ด้วยฮาร์ดแวร์
+ไม่ได้ดีนัก **มีผลหลังโหลดหน้าใหม่เท่านั้น** — วิดีโอที่กำลังเล่นอยู่จะไม่เปลี่ยนพฤติกรรมทันที ต้องโหลด
+หน้าใหม่หรือเปิดวิดีโอใหม่ก่อน
+
+**English:** The codec filter (default "off") restricts the YouTube page to H.264 by overriding two
+standard Web APIs, `MediaSource.isTypeSupported` and `HTMLMediaElement.canPlayType` (see
+[`PRIVACY.md`](PRIVACY.md) for details) — useful on machines with an older GPU/iGPU that doesn't
+handle hardware-accelerated VP9/AV1 well. **It only takes effect after the page is reloaded** —
+whatever is already playing keeps playing until you reload or open a new video.
+
+### Hardware decoding / การถอดรหัสวิดีโอด้วยฮาร์ดแวร์
+
+**ภาษาไทย:** เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อได้จากหน้าต่างการตั้งค่า
+(ค่าเริ่มต้นเปิด) ปิดไว้เพื่อบังคับถอดรหัสด้วยซอฟต์แวร์แทน ซึ่งอาจช่วยได้บนบางเครื่องที่การถอดรหัสด้วย
+ฮาร์ดแวร์ทำให้ภาพกระตุกหรือเสีย **มีผลหลังเปิดแอปใหม่เท่านั้น** — หน้าต่างการตั้งค่าจะเตือนด้วยสีเมื่อค่าที่
+ตั้งไว้ยังไม่ตรงกับค่าที่ใช้งานอยู่จริง
+
+**English:** Turn hardware-accelerated video decoding for the media window on or off from the
+settings window (on by default). Turning it off forces software decoding instead, which can help on
+machines where hardware decoding causes stutter or corruption. **It only takes effect after
+restarting the app** — the settings window shows a warning color when the saved value doesn't match
+what's currently running.
+
+### Mini-player / โหมดหน้าต่างเล็ก
+
+**ภาษาไทย:** กด `Ctrl+Shift+M`, เลือก "mini-player" จากเมนูหน้าต่างสื่อ, ไอคอนถาด ("tray-mini"), หรือ
+สลับจากหน้าต่างการตั้งค่า เพื่อย่อ Lalin Cast ให้เป็นหน้าต่างเล็กไม่มีกรอบ ลอยอยู่บนสุดที่มุมล่างขวาของจอ
+ปัจจุบัน กดซ้ำเพื่อคืนขนาด/ตำแหน่ง/กรอบหน้าต่างเดิม การเข้าโหมดนี้จะออกจากโหมดเต็มจอก่อนโดยอัตโนมัติถ้า
+กำลังเต็มจออยู่ สถานะนี้อยู่แค่ในเซสชันปัจจุบันเท่านั้น ไม่ถูกบันทึกข้ามการเปิดแอปใหม่
+
+**English:** Press `Ctrl+Shift+M`, choose "mini-player" from the media window's menu, the tray icon
+("tray-mini"), or toggle it from the settings window, to shrink Lalin Cast into a small,
+undecorated, always-on-top window pinned to the current screen's bottom-right corner. Toggle it
+again to restore the previous window size, position, and frame. Entering mini-player automatically
+exits fullscreen first if it was active. This state is session-only and is not remembered across
+app restarts.
+
+### Touch overlay / ปุ่มควบคุมบนหน้าจอสัมผัส
+
+**ภาษาไทย:** เมื่อเปิดตัวเลือก "touch overlay" (ค่าเริ่มต้นเปิด) และแอปตรวจพบการแตะหน้าจอครั้งแรก จะมีปุ่ม
+ควบคุมของ Lalin Cast เองปรากฏขึ้นบนหน้าจอ (ทิศทาง, ตกลง, ย้อนกลับ, เล่น/หยุด) พอร์ตมาจาก VacuumTube — ดู
+[`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md) มีประโยชน์บนอุปกรณ์พกพา (ROG Ally, Legion Go ฯลฯ) ดู
+[`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md) ปิดตัวเลือกนี้ได้จากหน้าต่างการ
+ตั้งค่าเมื่อไรก็ได้
+
+**English:** When "touch overlay" is on (the default) and the app detects the first screen touch,
+Lalin Cast's own on-screen control buttons appear (direction, select, back, play/pause), ported from
+VacuumTube — see [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md). Useful on handhelds (ROG Ally, Legion
+Go, and similar) — see [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md). Can
+be turned off at any time from the settings window.
 
 ## Command line
 
@@ -175,29 +276,41 @@ Picture and handheld (ROG Ally, Legion Go) guide.
 **ภาษาไทย:** หน้าต่างการตั้งค่าเปิดได้จากเมนูของหน้าต่างหลัก (`settings`), ไอคอนถาด (tray), `Ctrl+O`,
 หรือปุ่ม R3 ของคอนโทรลเลอร์ ตั้งค่าได้:
 
+- **การเล่น / Playback** — ตัวจับเวลาปิดเล่นอัตโนมัติ (`sleepTimerMinutes`, พร้อมเวลาที่เหลือแบบนับถอยหลัง),
+  ตัวกรอง codec (`codecFilter`, พร้อมหมายเหตุ "มีผลหลังโหลดใหม่"), การถอดรหัสวิดีโอด้วยฮาร์ดแวร์
+  (`hardwareDecoding`, พร้อมหมายเหตุ "มีผลหลังเปิดแอปใหม่" ที่ขึ้นสีเตือนเมื่อค่ายังไม่ตรงกับค่าที่ใช้งานอยู่
+  จริง) — ดู [Playback](#playback)
+- **หน้าจอ / Display** — เต็มจอ (fullscreen), อยู่ด้านบนเสมอ (keep on top) และโหมดหน้าต่างเล็ก
+  (mini-player, ไม่ persist — สลับได้ด้วย `Ctrl+Shift+M` เช่นกัน)
+- **การควบคุม** — เปิด/ปิดคอนโทรลเลอร์ (`controllerEnabled`, ค่าเริ่มต้นเปิด), หยุดวิดีโอเมื่อหน้าต่างเสีย
+  โฟกัส (`pauseOnBlur`, ค่าเริ่มต้นปิด), ปุ่มควบคุมบนหน้าจอสัมผัส (`touchOverlay`, ค่าเริ่มต้นเปิด)
 - ภาษา (ไทย/English)
 - ชื่อที่แสดงผ่าน DIAL (`dialFriendlyName`) — มีผลทันที มองเห็นได้จากมือถือที่ค้นหาอุปกรณ์
-- เต็มจอ (fullscreen) และอยู่ด้านบนเสมอ (keep on top)
-- เปิด/ปิดคอนโทรลเลอร์ (`controllerEnabled`, ค่าเริ่มต้นเปิด)
-- หยุดวิดีโอเมื่อหน้าต่างเสียโฟกัส (`pauseOnBlur`, ค่าเริ่มต้นปิด)
 - ปุ่มเปิดตัวช่วยติดตั้งเครือข่าย/DIAL อีกครั้ง
 - ปุ่มตรวจสอบการอัปเดต และเลขรุ่นปัจจุบันของแอป
 
-การเปลี่ยนแต่ละค่ามีผลทันทีและบันทึกอัตโนมัติ ไม่ต้องกดปุ่มบันทึกแยก
+การเปลี่ยนแต่ละค่ามีผลทันทีและบันทึกอัตโนมัติ ไม่ต้องกดปุ่มบันทึกแยก (ยกเว้น mini-player ซึ่งเป็นสถานะของ
+เซสชันปัจจุบัน ไม่ persist)
 
 **English:** The settings window opens from the media window's menu (`settings`), the tray icon,
 `Ctrl+O`, or the controller's R3 button. It lets you change:
 
+- **Playback** — the sleep timer (`sleepTimerMinutes`, with a live countdown), the codec filter
+  (`codecFilter`, noted "effective after reload"), and hardware decoding (`hardwareDecoding`, noted
+  "effective after restarting the app" and shown in a warning color when the saved value doesn't
+  match what's currently running) — see [Playback](#playback)
+- **Display** — fullscreen, keep-on-top, and mini-player (not persisted — can also be toggled with
+  `Ctrl+Shift+M`)
+- **Controls** — the controller toggle (`controllerEnabled`, on by default), pause-on-blur
+  (`pauseOnBlur`, off by default), and the touch overlay (`touchOverlay`, on by default)
 - language (Thai/English)
 - the name shown over DIAL (`dialFriendlyName`) — applies immediately, visible right away to
   phones discovering the device
-- fullscreen and keep-on-top
-- the controller toggle (`controllerEnabled`, on by default)
-- pause-on-blur (`pauseOnBlur`, off by default) — pauses playback when the window loses focus
 - a button to reopen the network/DIAL setup wizard
 - a button to check for updates, and the app's current version
 
-Every change applies immediately and saves automatically; there is no separate save button.
+Every change applies immediately and saves automatically; there is no separate save button (except
+mini-player, which is current-session state and is not persisted).
 
 ## Updating
 

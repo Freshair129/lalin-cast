@@ -35,9 +35,16 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `setupCompleted` | ผู้ใช้กด "ไม่ต้องแสดงอีก" ในตัวช่วยติดตั้งครั้งแรก (setup wizard); ถ้าไม่ใช่ `true` ตัวช่วยติดตั้งจะเปิดอีกทุกครั้งที่เริ่มแอป | ไม่ |
 | `controllerEnabled` | เปิด/ปิดการอ่านค่าคอนโทรลเลอร์เกม (Gamepad API) ในหน้า YouTube ค่าเริ่มต้นเปิด | ไม่ |
 | `pauseOnBlur` | หยุดวิดีโอโดยอัตโนมัติเมื่อหน้าต่างสื่อ (media) เสียโฟกัส ค่าเริ่มต้นปิด | ไม่ |
+| `sleepTimerMinutes` | ตั้งเวลาปิดเล่นอัตโนมัติเป็นนาที ค่าที่รับ ∈ {0, 15, 30, 60, 90, 120}; `0` = ปิดใช้งาน/ยกเลิก เมื่อหมดเวลา Rust จะเขียนค่ากลับเป็น `0` เอง — ดูข้อ 7 | ไม่ |
+| `codecFilter` | ตัวกรอง codec ที่หน้า YouTube เห็นผ่าน Web API มาตรฐาน (`off` หรือ `h264`) มีผลหลังโหลดหน้าใหม่เท่านั้น — ดูข้อ 7 | ไม่ |
+| `hardwareDecoding` | เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อ ค่าเริ่มต้นเปิด มีผลหลังเปิดแอปใหม่เท่านั้น — ดูข้อ 7 | ไม่ |
+| `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 7 | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
+
+โหมดหน้าต่างเล็ก (mini-player) ไม่ใช่คีย์ที่บันทึกลงไฟล์นี้ — เป็นสถานะของ session ปัจจุบันเท่านั้น
+ปรากฏในผลลัพธ์ (snapshot) ของหน้าต่างการตั้งค่าเป็นค่า `true`/`false` แต่ไม่ถูกบันทึกข้ามการเปิดแอปใหม่
 
 ถ้าไฟล์การตั้งค่านี้เข้าถึงไม่ได้หรือเสียหาย แอปจะใช้ค่าเริ่มต้นที่ปลอดภัยแทนและยังเปิดใช้งานได้ตามปกติ
 (การตั้งค่าเป็นแบบ best-effort เสมอ)
@@ -111,7 +118,34 @@ Studio launcher) ดูรายละเอียดที่ [`README.md`](REA
 เดียวกันเปิดวิดีโอ/เพลย์ลิสต์นั้นเท่านั้น ถ้า Lalin Cast กำลังรันอยู่แล้ว ลิงก์จากอินสแตนซ์ใหม่จะถูกส่งต่อ
 ให้หน้าต่างเดิมในลักษณะเดียวกัน ไม่มีการส่งลิงก์นี้ออกนอกเครื่อง
 
-## 7. การตรวจสอบอัปเดต
+## 7. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์ และปุ่มสัมผัสบนจอ
+
+ตัวจับเวลาปิดเล่นอัตโนมัติ (sleep timer, คีย์ `sleepTimerMinutes`) ทำงานทั้งหมดในเครื่อง: ตัวจับเวลาเป็น
+เธรด Rust ที่นับถอยหลังในหน่วยความจำ ไม่มีการเชื่อมต่อเครือข่ายใด ๆ เกี่ยวข้อง เมื่อหมดเวลา Rust จะส่ง
+event ไปยังหน้าต่างสื่อในเครื่องเดียวกันเพื่อหยุดเล่นวิดีโอทุกตัวในหน้าและแสดงข้อความบนหน้าจอ (OSD) ของ
+Lalin Cast เอง แล้วเขียนค่าคีย์กลับเป็น `0` ให้เอง ยกเลิกได้ทันทีโดยตั้งค่าเป็น `0` จากหน้าต่างการตั้งค่า
+
+ตัวกรอง codec (`codecFilter`, ค่า `off` หรือ `h264`) เมื่อเปิดใช้ (`h264`) สคริปต์ที่ฉีดเข้าไปในหน้า
+YouTube จะ override ฟังก์ชัน Web API มาตรฐานสองตัวคือ `MediaSource.isTypeSupported` และ
+`HTMLMediaElement.prototype.canPlayType` ให้รายงานว่าไม่รองรับเฉพาะรูปแบบที่มี `vp8`, `vp9` หรือ `av01`
+เท่านั้น (รูปแบบอื่นไม่เปลี่ยนพฤติกรรม) การเปลี่ยนนี้มีผลแค่กับสิ่งที่หน้า YouTube "เห็น" ผ่าน Web API
+มาตรฐานสองตัวนี้เท่านั้น ไม่มีการอ่าน ส่ง หรือบันทึกข้อมูลใด ๆ เพิ่มเติม และไม่เปลี่ยนความสามารถถอดรหัส
+จริงของ WebView2 มีผลหลังโหลดหน้าใหม่เท่านั้น (หน้าที่เปิดค้างอยู่จะไม่เปลี่ยนพฤติกรรมทันที)
+
+การถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (`hardwareDecoding`) เป็นการตั้งค่าแฟล็กเริ่มต้นของ WebView2
+(ค่า default ของ WebView2 บวก `--disable-accelerated-video-decode` เมื่อปิด) สำหรับหน้าต่างสื่อเท่านั้น เป็นการเลือกเส้นทางการเรนเดอร์
+ในเครื่อง ไม่มีข้อมูลใดออกจากเครื่อง มีผลหลังเปิดแอปใหม่เท่านั้น
+
+ปุ่มควบคุมบนหน้าจอสัมผัส (touch overlay, คีย์ `touchOverlay`) เป็นองค์ประกอบ DOM ที่ Lalin Cast สร้างขึ้น
+เองในหน้า ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก และส่ง synthetic key event ด้วยกลไกเดียวกับ
+คอนโทรลเลอร์/คีย์บอร์ด (ดูข้อ 5) — ไม่มีการเก็บหรือส่งข้อมูลตำแหน่งการแตะออกจากเครื่อง ใช้เพียงตัดสินใจว่า
+จะแสดง/ซ่อนปุ่มเท่านั้น
+
+โหมดหน้าต่างเล็ก (mini-player) เป็นสถานะของ session ปัจจุบันเท่านั้น ไม่ถูกบันทึกลงไฟล์การตั้งค่า (ไม่มี
+คีย์ persist ตามที่ระบุในข้อ 2) และไม่มีผลด้านความเป็นส่วนตัวเพิ่มเติม — เป็นเพียงการเปลี่ยนขนาด/ตำแหน่ง/
+กรอบของหน้าต่างที่มีอยู่แล้วเท่านั้น
+
+## 8. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
 latest.json`) เพื่อตรวจสอบว่ามีรุ่นใหม่หรือไม่ ทั้งตอนเปิดแอป (แบบ non-blocking) และเมื่อผู้ใช้กด
@@ -120,7 +154,7 @@ User-Agent) ตามกลไกของโปรโตคอล HTTP เอ�
 ในคำขอนี้ การติดตั้งอัปเดตต้องให้ผู้ใช้กดยืนยันเองเสมอ ไม่มีการติดตั้งอัตโนมัติโดยไม่ถาม ดูรายละเอียด
 เพิ่มเติมที่หัวข้อ "Updating" ใน [`README.md`](README.md)
 
-## 8. หน้า YouTube ในหน้าต่างหลัก
+## 9. หน้า YouTube ในหน้าต่างหลัก
 
 หน้าต่างหลักของ Lalin Cast โหลดหน้า YouTube TV จริงจาก `https://www.youtube.com/tv` ผ่าน remote
 WebView ทุกสิ่งที่เกิดขึ้นภายในหน้านั้น (คุกกี้, การเข้าสู่ระบบบัญชี Google, ประวัติการรับชม, โฆษณา,
@@ -128,14 +162,14 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
 
-## 9. Logging
+## 10. Logging
 
 Lalin Cast ไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV code), คุกกี้, หรือ token/key ใด ๆ ลงไฟล์
 log อย่างถาวร ข้อความ debug/log ระหว่างพัฒนา (ถ้ามี) จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น
 สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง (ข้อ 6) ก็อยู่
 ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
 
-## 10. การลบข้อมูล
+## 11. การลบข้อมูล
 
 เนื่องจากข้อมูลทั้งหมดที่แอปเก็บอยู่ในเครื่องของผู้ใช้เอง การลบข้อมูลทำได้โดยลบโฟลเดอร์ข้อมูลแอปทิ้ง:
 
@@ -147,7 +181,7 @@ log อย่างถาวร ข้อความ debug/log ระหว่�
 สถานะภายในอื่น ๆ ของแอป การลบข้อมูลบัญชี Google/YouTube (ประวัติการรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่าน
 การตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุมของ Lalin Cast
 
-## 11. ติดต่อ
+## 12. ติดต่อ
 
 เนื่องจาก Lalin Cast เป็นโปรเจกต์โอเพนซอร์สอิสระ ช่องทางติดต่อหลักคือ GitHub Issues ของ repository
 นี้ (`github.com/Freshair129/lalin-cast`) ก่อนเผยแพร่ต่อสาธารณะ ผู้ก่อตั้งโปรเจกต์ควรพิจารณาเพิ่มช่องทาง
@@ -193,10 +227,17 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `setupCompleted` | Set when the user checks "Don't show again" in the first-run setup wizard; if not `true`, the wizard opens again every time the app starts | No |
 | `controllerEnabled` | Turns game-controller (Gamepad API) reading on or off in the YouTube page. Defaults to on | No |
 | `pauseOnBlur` | Automatically pauses playback when the media window loses focus. Defaults to off | No |
+| `sleepTimerMinutes` | Sleep-timer duration in minutes; accepted values are {0, 15, 30, 60, 90, 120}. `0` disables/cancels it; when it fires, Rust writes it back to `0` itself — see section 7 | No |
+| `codecFilter` | Which codec the YouTube page is told it supports through the standard Web API (`off` or `h264`); takes effect only after the next page reload — see section 7 | No |
+| `hardwareDecoding` | Turns hardware-accelerated video decoding on or off for the media window. Defaults to on; takes effect only after restarting the app — see section 7 | No |
+| `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 7 | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
 app ignores it.
+
+Mini-player mode is not a key stored in this file — it is current-session state only. It appears as
+a `true`/`false` value in the settings window's snapshot but is not persisted across app restarts.
 
 If this settings file is unreachable or corrupted, the app falls back to safe defaults and still
 opens normally — settings persistence is always best-effort.
@@ -280,7 +321,38 @@ file** — it is only forwarded, in the same process, to the local media window 
 video/playlist. If Lalin Cast is already running, a link from a new instance is forwarded to the
 existing window the same way. This link is never sent off the device.
 
-## 7. Update checks
+## 7. Playback: sleep timer, codec filter, hardware decoding, and touch overlay
+
+The sleep timer (`sleepTimerMinutes`) runs entirely on the device: the timer itself is a Rust thread
+counting down in memory, with no network connection involved. When it fires, Rust sends an event to
+the media window in the same process to pause every video on the page and show Lalin Cast's own
+on-screen message, then writes the key back to `0` itself. It can be cancelled immediately by
+setting it to `0` from the settings window.
+
+The codec filter (`codecFilter`, `off` or `h264`) — when set to `h264` — has the script injected
+into the YouTube page override two standard Web APIs, `MediaSource.isTypeSupported` and
+`HTMLMediaElement.prototype.canPlayType`, so they report no support only for formats containing
+`vp8`, `vp9`, or `av01` (every other format is unaffected). This change only affects what the
+YouTube page "sees" through those two standard APIs — nothing extra is read, sent, or recorded, and
+WebView2's actual decoding capability is unchanged. It only takes effect after the page is reloaded
+(an already-open page keeps its current behavior).
+
+Hardware video decoding (`hardwareDecoding`) sets a WebView2 startup flag
+(WebView2's default arguments plus `--disable-accelerated-video-decode` when off) for the media window only. It is purely a local
+rendering-path choice — no data leaves the device — and only takes effect after the app is
+restarted.
+
+The on-screen touch overlay (`touchOverlay`) is a DOM element Lalin Cast creates itself inside the
+page. It appears after the first detected screen touch (`touchstart`) and dispatches synthetic key
+events through the same mechanism as the controller/keyboard support (see section 5) — no touch
+position data is ever collected or sent off the device; it is used only to decide whether to show or
+hide the buttons.
+
+Mini-player mode is current-session state only. It is never written to the settings file (there is
+no persisted key for it, as noted in section 2) and has no additional privacy implication — it only
+changes the size, position, and frame of the window that already exists.
+
+## 8. Update checks
 
 The app contacts `github.com` (specifically
 `github.com/Freshair129/lalin-cast/releases/latest/download/latest.json`) to check for a new
@@ -290,7 +362,7 @@ User-Agent, per the HTTP protocol itself); no additional personal or usage data 
 Installing an update always requires explicit user confirmation; nothing installs automatically
 without being asked. See the "Updating" section of [`README.md`](README.md) for more detail.
 
-## 8. The YouTube page in the main window
+## 9. The YouTube page in the main window
 
 The main Lalin Cast window loads the real YouTube TV page from `https://www.youtube.com/tv`
 through a remote WebView. Everything that happens inside that page — cookies, Google account
@@ -298,7 +370,7 @@ sign-in, watch history, ads, the recommendation algorithm — is entirely under 
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
 
-## 9. Logging
+## 10. Logging
 
 Lalin Cast does not persistently log personal information (PII), TV pairing codes, cookies, or any
 tokens/keys. Whatever debug/log output exists during development prints only the app's own
@@ -306,7 +378,7 @@ technical state (such as port-bind status or connection status), never user-iden
 The command-line deep link (section 6) falls under this same rule — it is never logged, whether or
 not it passes validation.
 
-## 10. Deleting your data
+## 11. Deleting your data
 
 Because everything the app stores lives on the user's own machine, deleting your data means
 deleting the app's data folder:
@@ -320,7 +392,7 @@ Deleting this folder removes `media-settings.json` (including any `dialDeviceId`
 (watch history, sign-in cookies) must be done through your Google account settings directly, since
 that data is not under Lalin Cast's control.
 
-## 11. Contact
+## 12. Contact
 
 Since Lalin Cast is an independent open-source project, the primary contact channel is GitHub
 Issues on this repository (`github.com/Freshair129/lalin-cast`). Before a public release, the

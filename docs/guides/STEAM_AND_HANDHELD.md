@@ -1,13 +1,13 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:15:00+07:00,LALIN"
+last_update: "2026-09-20T23:50:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
   domain: "product"
   doc_type: "guide"
-  scope: "Adding Lalin Cast to Steam as a non-Steam game, Big Picture, controller support and handheld PC (ROG Ally, Legion Go) usage"
+  scope: "Adding Lalin Cast to Steam as a non-Steam game, Big Picture, controller support, touch overlay, mini-player and hardware decoding on handheld PCs (ROG Ally, Legion Go)"
 ---
 
 # Lalin Cast — Steam และอุปกรณ์พกพา (Handheld) / Steam and Handheld Guide
@@ -16,15 +16,20 @@ attributes:
 
 **CANDIDATE** — คู่มือนี้อธิบายวิธีตั้งค่าตามสัญญา (contract) ของ
 [`docs/plans/W3_CONTROLS_PLAN.md`](../plans/W3_CONTROLS_PLAN.md) (การรองรับคอนโทรลเลอร์, คีย์ลัด,
-ตัวเลือกบรรทัดคำสั่ง) พฤติกรรมจริงบนอุปกรณ์ Steam Deck / ROG Ally / Legion Go จริงยังเป็น human gate
-(H7–H9 ในแผนนั้น) ที่ยังไม่ได้บันทึกหลักฐาน — ขั้นตอนด้านล่างมาจากสัญญาที่ตกลงกันไว้ ไม่ใช่หลักฐานที่
-ทดสอบแล้วบนอุปกรณ์จริงทุกรุ่น
+ตัวเลือกบรรทัดคำสั่ง) และ [`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md) (ตัวจับเวลา
+ปิดเล่น, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มควบคุมบนหน้าจอสัมผัส, โหมดหน้าต่างเล็ก) พฤติกรรมจริง
+บนอุปกรณ์ Steam Deck / ROG Ally / Legion Go จริงยังเป็น human gate (H7–H9 ในแผน wave 3, H10–H11 ในแผน
+wave 4) ที่ยังไม่ได้บันทึกหลักฐาน — ขั้นตอนด้านล่างมาจากสัญญาที่ตกลงกันไว้ ไม่ใช่หลักฐานที่ทดสอบแล้วบน
+อุปกรณ์จริงทุกรุ่น
 
 **CANDIDATE** — this guide follows the contract in
 [`docs/plans/W3_CONTROLS_PLAN.md`](../plans/W3_CONTROLS_PLAN.md) (controller support, keyboard
-shortcuts, command-line options). Real-device behavior on an actual Steam Deck / ROG Ally / Legion
-Go is still an open human gate (H7–H9 in that plan) with no recorded evidence yet — the steps below
-come from the agreed contract, not from testing already done on every device model.
+shortcuts, command-line options) and
+[`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md) (sleep timer, codec filter,
+hardware decoding, touch overlay, mini-player). Real-device behavior on an actual Steam Deck / ROG
+Ally / Legion Go is still an open human gate (H7–H9 in the wave 3 plan, H10–H11 in the wave 4 plan)
+with no recorded evidence yet — the steps below come from the agreed contract, not from testing
+already done on every device model.
 
 ## การเพิ่ม Lalin Cast เป็นเกมที่ไม่ใช่ Steam / Adding Lalin Cast as a non-Steam game
 
@@ -141,8 +146,14 @@ Lalin Cast fix of an upstream slip and is verified under human gate H8.
   ดักอินพุตไว้เอง)** — ชื่อโหมดและพฤติกรรมต่างกันไปตามเฟิร์มแวร์ของแต่ละรุ่น ยังไม่มีการยืนยันพฤติกรรม
   ที่แน่นอนบนอุปกรณ์จริงจากทีม Lalin (human gate H8) ถ้าคอนโทรลเลอร์ในตัวไม่ทำงาน ให้ลองเปลี่ยนโหมดโอ
   เวอร์เลย์ของผู้ผลิต หรือใช้คีย์บอร์ด/ทัชสกรีนของอุปกรณ์แทนชั่วคราว
-- ทัชสกรีนของอุปกรณ์ทำงานผ่านกลไกมาตรฐานของ WebView2 (แตะ = คลิก) เท่านั้น Lalin Cast ยังไม่มี touch
-  overlay ของตัวเอง (ดูข้อจำกัดด้านล่าง)
+- ทัชสกรีนของอุปกรณ์ทำงานผ่านกลไกมาตรฐานของ WebView2 (แตะ = คลิก) เสมอ นอกจากนี้เมื่อเปิดตัวเลือก
+  "touch overlay" ไว้ (ค่าเริ่มต้นเปิด) Lalin Cast จะแสดงปุ่มควบคุมของตัวเอง (ทิศทาง, ตกลง, ย้อนกลับ,
+  เล่น/หยุด) บนหน้าจอหลังตรวจพบการแตะครั้งแรก — เหมาะกับการควบคุม TV UI ด้วยนิ้วโดยตรงโดยไม่ต้องใช้
+  คอนโทรลเลอร์ในตัวเครื่อง ดูรายละเอียดที่หัวข้อ "Touch overlay" ใน [`README.md`](../../README.md#playback)
+- การถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (`hardwareDecoding`, ค่าเริ่มต้นเปิด) มักช่วยประหยัดแบตเตอรี่และลดความร้อน
+  บนอุปกรณ์พกพาเมื่อเทียบกับการถอดรหัสด้วยซอฟต์แวร์ จึงแนะนำให้เปิดไว้ตามค่าเริ่มต้น ปิดเฉพาะเมื่อพบภาพ
+  กระตุกหรือเสียบนอุปกรณ์บางรุ่น (มีผลหลังเปิดแอปใหม่ ดูหัวข้อ "Hardware decoding" ใน
+  [`README.md`](../../README.md#playback))
 
 **English:**
 
@@ -158,15 +169,42 @@ Lalin Cast fix of an upstream slip and is verified under human gate H8.
   and model, and this has not yet been confirmed on real hardware by the Lalin team (human gate
   H8). If the built-in controller doesn't respond, try switching the vendor overlay's mode, or use
   the device's keyboard/touchscreen in the meantime
-- The device's touchscreen works only through WebView2's standard mechanism (tap = click) — Lalin
-  Cast does not have its own touch overlay yet (see limitations below)
+- The device's touchscreen always works through WebView2's standard mechanism (tap = click). On
+  top of that, when the "touch overlay" option is on (the default), Lalin Cast shows its own
+  on-screen control buttons (direction, select, back, play/pause) after the first detected touch —
+  handy for driving the TV UI directly with a finger without reaching for the built-in controller.
+  See the "Touch overlay" section of [`README.md`](../../README.md#playback) for details
+- Hardware decoding (`hardwareDecoding`, on by default) usually saves battery and reduces heat on a
+  handheld compared to software decoding, so leaving it on is recommended. Turn it off only if a
+  specific device shows video stutter or corruption (takes effect after restarting the app — see
+  the "Hardware decoding" section of [`README.md`](../../README.md#playback))
+
+## โหมดหน้าต่างเล็กระหว่างเล่นเกม / Mini-player while gaming
+
+**ภาษาไทย:** บนอุปกรณ์พกพาที่สลับไปมาระหว่างหน้าต่าง (windowed/borderless) ได้ เช่นตอนอยู่ที่ Desktop
+mode ของ ROG Ally/Legion Go หรือบนพีซีทั่วไป กด `Ctrl+Shift+M`, เลือก "mini-player" จากเมนูหน้าต่างสื่อ,
+หรือไอคอนถาด ("tray-mini") เพื่อย่อ Lalin Cast ให้เป็นหน้าต่างเล็กไม่มีกรอบ ลอยอยู่บนสุดที่มุมล่างขวาของจอ
+— เปิดเพลง/สตรีมทิ้งไว้มุมจอระหว่างเล่นเกมอื่นในหน้าต่างแยกได้โดยไม่บังหน้าจอเกม กดซ้ำเพื่อคืนขนาดเดิม
+สถานะนี้อยู่แค่ในเซสชันปัจจุบัน (ไม่ persist ข้ามการเปิดแอปใหม่) ดูรายละเอียดที่หัวข้อ "Mini-player" ใน
+[`README.md`](../../README.md#playback) หมายเหตุ: เกมส่วนใหญ่ที่รันแบบเต็มจอ (exclusive fullscreen) จะ
+บังหน้าต่างอื่นทั้งหมดรวมถึง mini-player ของ Lalin Cast ด้วย — ฟีเจอร์นี้ใช้ได้ดีที่สุดเมื่อเกมรันแบบ
+"borderless windowed" หรือเมื่อสลับกลับมาที่ Desktop ชั่วคราว
+
+**English:** On a handheld that can switch to windowed/borderless mode — for example ROG Ally's or
+Legion Go's desktop mode, or a regular PC — press `Ctrl+Shift+M`, choose "mini-player" from the
+media window's menu, or the tray icon ("tray-mini") to shrink Lalin Cast into a small, undecorated,
+always-on-top window pinned to the screen's bottom-right corner. Leave a stream or song playing in
+that corner while a different game runs in its own window without it covering the game's screen.
+Toggle it again to restore the previous size. This state is session-only (not persisted across app
+restarts) — see the "Mini-player" section of [`README.md`](../../README.md#playback) for details.
+Note: most games that run in exclusive fullscreen cover every other window, including Lalin Cast's
+mini-player — this feature works best with a game in "borderless windowed" mode, or when briefly
+switching back to the desktop.
 
 ## ข้อจำกัดปัจจุบัน / Current limitations
 
 **ภาษาไทย:**
 
-- ยังไม่มี touch overlay ของตัวเอง — การแตะหน้าจอทำงานผ่านกลไกมาตรฐานของ WebView2 เท่านั้น (แตะ = คลิก
-  ธรรมดา) ไม่มีปุ่มควบคุมแบบสัมผัสที่ออกแบบมาสำหรับ TV UI โดยเฉพาะ
 - ยังไม่มี URL scheme `lalin-cast://` — เปิดวิดีโอจากภายนอกได้เฉพาะผ่านพารามิเตอร์บรรทัดคำสั่งเท่านั้น
   (ดู [`README.md`](../../README.md) หัวข้อ "Command line") ยังใช้กับ launcher ที่ต้องการ URL scheme
   ของระบบปฏิบัติการโดยตรงไม่ได้
@@ -179,8 +217,6 @@ Lalin Cast fix of an upstream slip and is verified under human gate H8.
 
 **English:**
 
-- No custom touch overlay yet — touch input works only through WebView2's standard mechanism (tap
-  = click); there is no touch control surface purpose-built for a TV UI
 - No `lalin-cast://` URL scheme yet — external launchers can only open a video through the
   command-line argument (see the "Command line" section of [`README.md`](../../README.md)); a
   launcher that requires an OS-level URL scheme cannot use Lalin Cast directly yet
