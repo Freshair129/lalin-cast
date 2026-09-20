@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Lalin Cast — Rust + Tauri v2 Leanback player"
 authors = ["LALIN"]
 edition = "2021"
+publish = false
 
 [lib]
 name = "lalin_cast_lib"
@@ -22,3 +23,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 socket2 = "0.6"
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Globalization"] }
