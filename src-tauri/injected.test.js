@@ -272,10 +272,22 @@ pending.push(
 
 pending.push(
   test("mapGamepadState: an unmapped button index falls back to the F24 keyCode (135)", () => {
-    const buttons = new Array(4).fill(false);
-    buttons[3] = true; // Y is intentionally absent from GAMEPAD_KEY_CODE_MAP
+    const buttons = new Array(17).fill(false);
+    buttons[16] = true; // outside GAMEPAD_KEY_CODE_MAP and not R3/Y
     const result = m.mapGamepadState(undefined, gamepad(buttons));
-    assert.deepStrictEqual(result.events, [{ type: "down", code: 3, keyCode: m.GAMEPAD_FALLBACK_KEYCODE }]);
+    assert.deepStrictEqual(result.events, [{ type: "down", code: 16, keyCode: m.GAMEPAD_FALLBACK_KEYCODE }]);
+  }),
+);
+
+pending.push(
+  test("mapGamepadState: Y (button 3, wave 6) resolves to the toggle-help action, not a keyCode, and its keyup is silent", () => {
+    const buttons = new Array(4).fill(false);
+    buttons[3] = true;
+    const down = m.mapGamepadState(undefined, gamepad(buttons));
+    assert.deepStrictEqual(down.events, [{ type: "down", action: "toggle-help" }]);
+
+    const up = m.mapGamepadState(down.state, gamepad(new Array(4).fill(false)));
+    assert.deepStrictEqual(up.events, []);
   }),
 );
 
@@ -301,6 +313,7 @@ pending.push(
       [37, 38, 39, 40, 37, 38, 39, 40],
     );
     assert.strictEqual(m.GAMEPAD_SETTINGS_BUTTON, 11);
+    assert.strictEqual(m.GAMEPAD_HELP_BUTTON, 3);
     assert.strictEqual(m.GAMEPAD_FALLBACK_KEYCODE, 135);
   }),
 );
@@ -550,6 +563,7 @@ pending.push(
       deepLink: null,
       codecFilter: "off",
       touchOverlay: true,
+      sleepAtEndOfVideo: false,
     });
     assert.deepStrictEqual(m.readPrefs(null), m.readPrefs(undefined));
   }),
@@ -565,6 +579,7 @@ pending.push(
         deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         codecFilter: "h264",
         touchOverlay: false,
+        sleepAtEndOfVideo: true,
       }),
       {
         lang: "en",
@@ -573,6 +588,7 @@ pending.push(
         deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         codecFilter: "h264",
         touchOverlay: false,
+        sleepAtEndOfVideo: true,
       },
     );
   }),
@@ -594,6 +610,7 @@ pending.push(
       deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       codecFilter: "off",
       touchOverlay: true,
+      sleepAtEndOfVideo: false,
     };
     const next = m.applyPrefsUpdate(prev, {
       lang: "en",
@@ -602,6 +619,7 @@ pending.push(
       deepLink: "ignored",
       codecFilter: "h264",
       touchOverlay: false,
+      sleepAtEndOfVideo: true,
     });
     assert.deepStrictEqual(next, {
       lang: "en",
@@ -610,10 +628,31 @@ pending.push(
       deepLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       codecFilter: "h264",
       touchOverlay: false,
+      sleepAtEndOfVideo: true,
     });
 
-    const unchanged = m.applyPrefsUpdate(prev, { controllerEnabled: "not-a-boolean", lang: "fr", codecFilter: "vp9-only", touchOverlay: "nope" });
+    const unchanged = m.applyPrefsUpdate(prev, {
+      controllerEnabled: "not-a-boolean",
+      lang: "fr",
+      codecFilter: "vp9-only",
+      touchOverlay: "nope",
+      sleepAtEndOfVideo: "nope",
+    });
     assert.deepStrictEqual(unchanged, prev);
+  }),
+);
+
+pending.push(
+  test("readPrefs/applyPrefsUpdate: sleepAtEndOfVideo defaults false and only a strict boolean true is accepted", () => {
+    assert.strictEqual(m.readPrefs(undefined).sleepAtEndOfVideo, false);
+    assert.strictEqual(m.readPrefs({ sleepAtEndOfVideo: "true" }).sleepAtEndOfVideo, false, "non-boolean is ignored");
+    assert.strictEqual(m.readPrefs({ sleepAtEndOfVideo: true }).sleepAtEndOfVideo, true);
+
+    const prev = m.readPrefs(undefined);
+    assert.strictEqual(m.applyPrefsUpdate(prev, { sleepAtEndOfVideo: true }).sleepAtEndOfVideo, true);
+    assert.strictEqual(m.applyPrefsUpdate(prev, { sleepAtEndOfVideo: "true" }).sleepAtEndOfVideo, false, "non-boolean payload is ignored");
+    const armed = m.applyPrefsUpdate(prev, { sleepAtEndOfVideo: true });
+    assert.strictEqual(m.applyPrefsUpdate(armed, {}).sleepAtEndOfVideo, true, "an update with no field keeps the previous value");
   }),
 );
 
@@ -702,6 +741,42 @@ pending.push(
     gp = gamepad([false, false, false, false, false, false, false, false, false, false, false, true]);
     win.__rafCalls.shift()(); // R3 down
     assert.strictEqual(opened, 1);
+  }),
+);
+
+pending.push(
+  test("createGamepadController: Y (button 3, wave 6) toggles help, and only while the controller is actually polling", () => {
+    const doc = createStubDoc();
+    let gp = gamepad([false, false, false, true]); // Y pressed
+    const win = createStubWin({ navigator: { getGamepads: () => [gp] } });
+    let helped = 0;
+    const controller = m.createGamepadController(doc, win, {
+      getEnabled: () => true,
+      onToggleHelp: () => { helped += 1; },
+    });
+
+    controller.start();
+    win.__rafCalls.shift()(); // Y down
+    assert.strictEqual(helped, 1);
+
+    gp = gamepad([false, false, false, false]);
+    win.__rafCalls.shift()(); // Y up -> silent
+    assert.strictEqual(helped, 1);
+
+    controller.stop();
+
+    // Disabled controller (e.g. controllerEnabled=false in prefs): boot()
+    // never even calls start(), so no poll frame is ever scheduled and Y can
+    // never reach onToggleHelp — the same implicit gate R3/open-settings
+    // already relies on.
+    const disabledWin = createStubWin({ navigator: { getGamepads: () => [gamepad([false, false, false, true])] } });
+    const disabledController = m.createGamepadController(doc, disabledWin, {
+      getEnabled: () => false,
+      onToggleHelp: () => { helped += 1; },
+    });
+    disabledController.start();
+    assert.strictEqual(disabledWin.__rafCalls.length, 0);
+    assert.strictEqual(helped, 1, "still 1 — disabled controller never polls at all");
   }),
 );
 
@@ -1184,6 +1259,326 @@ pending.push(
 );
 
 // ---------------------------------------------------------------------------
+// Wave 6 — Remote: remoteActionAllowed, toggleRemotePlayback, createRemoteHandler,
+// initRemoteListener (docs/plans/W6_POLISH_PLAN.md, "Remote"). Lalin Cast
+// original — no VacuumTube module offers a remote play/pause bridge.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("remoteActionAllowed: whitelists exactly {action: \"toggle-play\"} and rejects everything else", () => {
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play" }, null, 0), true);
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play", extra: 1 }, null, 0), true, "extra fields are fine");
+    assert.strictEqual(m.remoteActionAllowed({ action: "close-app" }, null, 0), false);
+    assert.strictEqual(m.remoteActionAllowed({ action: "TOGGLE-PLAY" }, null, 0), false, "case-sensitive");
+    assert.strictEqual(m.remoteActionAllowed(null, null, 0), false);
+    assert.strictEqual(m.remoteActionAllowed(undefined, null, 0), false);
+    assert.strictEqual(m.remoteActionAllowed("toggle-play", null, 0), false, "must be an object, not the bare string");
+    assert.strictEqual(m.remoteActionAllowed({}, null, 0), false);
+  }),
+);
+
+pending.push(
+  test(`remoteActionAllowed: rate-limits to one accepted call per ${"250"}ms`, () => {
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play" }, 1000, 1249), false, "249ms later is still inside the window");
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play" }, 1000, 1250), true, "exactly 250ms later is allowed");
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play" }, 1000, 2000), true);
+    assert.strictEqual(m.remoteActionAllowed({ action: "toggle-play" }, null, 0), true, "no prior call at all is always allowed");
+  }),
+);
+
+pending.push(
+  test("toggleRemotePlayback: pauses every <video> when any one is playing", () => {
+    const videoA = { paused: false, ended: false, pause() { this.paused = true; } };
+    const videoB = { paused: true, ended: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA, videoB] } });
+    m.toggleRemotePlayback(doc);
+    assert.strictEqual(videoA.paused, true);
+    assert.strictEqual(videoB.paused, true);
+  }),
+);
+
+pending.push(
+  test("toggleRemotePlayback: an ended video does not count as \"playing\" — a paused/ended pair still plays the paused one", () => {
+    const ended = { paused: false, ended: true, pause() {} };
+    let played = false;
+    const paused = { paused: true, ended: false, play() { played = true; return Promise.resolve(); } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [ended, paused] } });
+    m.toggleRemotePlayback(doc);
+    assert.strictEqual(played, true);
+  }),
+);
+
+pending.push(
+  test("toggleRemotePlayback: no video playing -> play()s the first paused video and swallows a rejected promise", () => {
+    let played = 0;
+    const videoA = { paused: true, ended: false, play() { played += 1; return Promise.reject(new Error("nope")); } };
+    const videoB = { paused: true, ended: false, play() { played += 1; return Promise.resolve(); } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA, videoB] } });
+    m.toggleRemotePlayback(doc);
+    assert.strictEqual(played, 1, "only the first paused video is played");
+    return new Promise((resolve) => setTimeout(resolve, 0)); // let the swallowed rejection settle
+  }),
+);
+
+pending.push(
+  test("toggleRemotePlayback: no <video> at all is a silent no-op", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    assert.doesNotThrow(() => m.toggleRemotePlayback(doc));
+  }),
+);
+
+pending.push(
+  test("createRemoteHandler: toggle-play in both directions (pause when playing, play when paused)", () => {
+    const videoA = { paused: false, ended: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+    let t = 0;
+    const remote = m.createRemoteHandler(doc, win, { now: () => t });
+
+    remote.handler({ action: "toggle-play" });
+    assert.strictEqual(videoA.paused, true, "playing -> paused");
+
+    t = 1000; // well past the 250ms rate limit
+    let played = false;
+    videoA.play = () => { played = true; videoA.paused = false; return Promise.resolve(); };
+    remote.handler({ action: "toggle-play" });
+    assert.strictEqual(played, true, "paused -> played");
+  }),
+);
+
+pending.push(
+  test("createRemoteHandler: an unknown action does nothing", () => {
+    const videoA = { paused: false, ended: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+    const remote = m.createRemoteHandler(doc, win, { now: () => 0 });
+
+    remote.handler({ action: "close-app" });
+    assert.strictEqual(videoA.paused, false);
+    remote.handler(null);
+    assert.strictEqual(videoA.paused, false);
+  }),
+);
+
+pending.push(
+  test("createRemoteHandler: a second call within 250ms is rate-limited away", () => {
+    let toggles = 0;
+    const doc = createStubDoc({
+      querySelectorAllResults: {
+        video: [{ paused: false, ended: false, pause() { toggles += 1; } }],
+      },
+    });
+    const win = createStubWin();
+    let t = 0;
+    const remote = m.createRemoteHandler(doc, win, { now: () => t });
+
+    remote.handler({ action: "toggle-play" });
+    assert.strictEqual(toggles, 1);
+
+    t = 100; // inside the 250ms window
+    remote.handler({ action: "toggle-play" });
+    assert.strictEqual(toggles, 1, "rate-limited — must not pause a second time");
+
+    t = 250; // exactly at the boundary — allowed
+    remote.handler({ action: "toggle-play" });
+    assert.strictEqual(toggles, 2);
+  }),
+);
+
+pending.push(
+  test("initRemoteListener: listens for lalin-cast-remote and drives toggleRemotePlayback via the bridge-wait pattern", () => {
+    const videoA = { paused: false, ended: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+
+    const listeners = [];
+    const tauri = { event: { listen: (name, cb) => { listeners.push([name, cb]); return Promise.resolve(); } } };
+
+    return m.initRemoteListener(doc, win, tauri).then(() => {
+      assert.strictEqual(listeners.length, 1);
+      assert.strictEqual(listeners[0][0], "lalin-cast-remote");
+
+      listeners[0][1]({ payload: { action: "toggle-play" } });
+      assert.strictEqual(videoA.paused, true);
+    });
+  }),
+);
+
+pending.push(
+  test("initRemoteListener: does nothing when the bridge has no event.listen", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    const win = createStubWin();
+    // No throw and no listener registration — the bridge-wait pattern's early return.
+    return m.initRemoteListener(doc, win, {}).then((result) => {
+      assert.strictEqual(result, undefined);
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 6 — Sleep at end of video: sleepAtEndDecision, createSleepAtEndHandler
+// (docs/plans/W6_POLISH_PLAN.md, "Sleep at end of video (U2)"). Lalin Cast
+// original — no VacuumTube module offers this.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("sleepAtEndDecision: \"ended\" always (re)arms, regardless of prior state", () => {
+    const fromIdle = m.sleepAtEndDecision({ armed: false, deadline: null }, "ended", 1000);
+    assert.strictEqual(fromIdle.action, "arm");
+    assert.strictEqual(fromIdle.state.armed, true);
+    assert.strictEqual(fromIdle.state.deadline, 1000 + m.SLEEP_AT_END_WINDOW_MS);
+
+    const fromArmed = m.sleepAtEndDecision({ armed: true, deadline: 500 }, "ended", 2000);
+    assert.strictEqual(fromArmed.action, "arm");
+    assert.strictEqual(fromArmed.state.deadline, 2000 + m.SLEEP_AT_END_WINDOW_MS, "re-arming resets the deadline");
+  }),
+);
+
+pending.push(
+  test("sleepAtEndDecision: play/playing while armed pauses-and-shows, then disarms", () => {
+    ["play", "playing"].forEach((eventType) => {
+      const armed = { armed: true, deadline: 9000 };
+      const result = m.sleepAtEndDecision(armed, eventType, 4000);
+      assert.strictEqual(result.action, "pause-and-show");
+      assert.strictEqual(result.state.armed, false);
+    });
+  }),
+);
+
+pending.push(
+  test("sleepAtEndDecision: play/playing while NOT armed does nothing", () => {
+    const idle = { armed: false, deadline: null };
+    const result = m.sleepAtEndDecision(idle, "play", 4000);
+    assert.strictEqual(result.action, "none");
+    assert.strictEqual(result.state, idle);
+  }),
+);
+
+pending.push(
+  test("sleepAtEndDecision: \"expire\" while armed disarms silently; while not armed is a no-op", () => {
+    const armed = { armed: true, deadline: 9000 };
+    const expired = m.sleepAtEndDecision(armed, "expire", 9001);
+    assert.strictEqual(expired.action, "disarm");
+    assert.strictEqual(expired.state.armed, false);
+
+    const idle = { armed: false, deadline: null };
+    const noop = m.sleepAtEndDecision(idle, "expire", 9001);
+    assert.strictEqual(noop.action, "none");
+    assert.strictEqual(noop.state, idle);
+  }),
+);
+
+pending.push(
+  test("createSleepAtEndHandler: pref off -> an \"ended\" event never arms (no autoplay-next gets paused)", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    const win = createStubWin();
+    const handler = m.createSleepAtEndHandler(doc, win, { getPref: () => false });
+
+    doc.dispatchEvent(new Event("ended"));
+    assert.strictEqual(handler.getState().armed, false);
+
+    doc.dispatchEvent(new Event("playing"));
+    assert.strictEqual(handler.getState().armed, false, "never armed, so play/playing is a no-op too");
+  }),
+);
+
+pending.push(
+  test("createSleepAtEndHandler: pref on -> autoplay-next (a play within the window) is paused with the OSD shown", () => {
+    const videoA = { paused: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+    const handler = m.createSleepAtEndHandler(doc, win, { getPref: () => true });
+
+    doc.dispatchEvent(new Event("ended"));
+    assert.strictEqual(handler.getState().armed, true);
+
+    doc.dispatchEvent(new Event("playing")); // YouTube's autoplay-next
+    assert.strictEqual(videoA.paused, true, "the newly-playing video is paused");
+    assert.strictEqual(handler.getState().armed, false, "disarmed after pausing");
+
+    const el = doc.getElementById(m.SLEEP_OSD_ID);
+    assert.ok(el, "reuses the wave 4 #lalin-cast-sleep-osd element");
+    assert.strictEqual(el.textContent, m.SLEEP_AT_END_OSD_TEXT);
+    assert.notStrictEqual(el.style.display, "none");
+
+    win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+  }),
+);
+
+pending.push(
+  test("createSleepAtEndHandler: shares the wave 4 OSD instance with initSleepListener — exactly one #lalin-cast-sleep-osd element ever exists", () => {
+    // Repro for the U2 repair round finding: boot() must hoist a single
+    // createSleepOsd() instance and hand it to BOTH initSleepListener (wired
+    // from initPrefsAndDeepLink) and createSleepAtEndHandler via the `osd`
+    // option, so a wave-4 sleep-timer show() and a sleep-at-end
+    // pause-and-show() drive the same DOM node instead of each creating
+    // their own #lalin-cast-sleep-osd and appending a duplicate id.
+    const videoA = { paused: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+
+    const sharedOsd = m.createSleepOsd(doc, win);
+
+    // 1) A wave 4 lalin-cast-sleep event, wired the same way boot() wires it
+    // (initSleepListener given the shared osd instance).
+    const listeners = [];
+    const tauri = { event: { listen: (name, cb) => { listeners.push([name, cb]); return Promise.resolve(); } } };
+    return m.initSleepListener(doc, win, tauri, sharedOsd).then(() => {
+      listeners[0][1]({ payload: { minutes: 30 } });
+      win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+
+      // 2) A sleep-at-end pause-and-show against the SAME doc, using the
+      // same shared osd instance (as boot() now does).
+      const handler = m.createSleepAtEndHandler(doc, win, { getPref: () => true, osd: sharedOsd });
+      doc.dispatchEvent(new Event("ended"));
+      doc.dispatchEvent(new Event("playing"));
+      win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+
+      const matches = doc.body.children.filter((c) => c && c.id === m.SLEEP_OSD_ID);
+      assert.strictEqual(matches.length, 1, "exactly one #lalin-cast-sleep-osd element was appended, not two");
+      assert.strictEqual(matches[0].textContent, m.SLEEP_AT_END_OSD_TEXT, "the shared element shows the latest text");
+    });
+  }),
+);
+
+pending.push(
+  test("createSleepAtEndHandler: no play within the 8s window silently disarms — never stays armed forever", () => {
+    const doc = createStubDoc({ querySelectorAllResults: { video: [] } });
+    const win = createStubWin();
+    const handler = m.createSleepAtEndHandler(doc, win, { getPref: () => true });
+
+    doc.dispatchEvent(new Event("ended"));
+    assert.strictEqual(handler.getState().armed, true);
+
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.strictEqual(scheduled.ms, m.SLEEP_AT_END_WINDOW_MS);
+    win.clearTimeout(scheduled.id); // don't let the real 8s timer also fire
+    scheduled.cb(); // simulate the 8s expiry
+
+    assert.strictEqual(handler.getState().armed, false);
+    assert.strictEqual(doc.getElementById(m.SLEEP_OSD_ID), null, "silent — no OSD shown on a plain expiry");
+  }),
+);
+
+pending.push(
+  test("createSleepAtEndHandler: a play arriving after expiry does nothing (the window already closed)", () => {
+    const videoA = { paused: false, pause() { this.paused = true; } };
+    const doc = createStubDoc({ querySelectorAllResults: { video: [videoA] } });
+    const win = createStubWin();
+    const handler = m.createSleepAtEndHandler(doc, win, { getPref: () => true });
+
+    doc.dispatchEvent(new Event("ended"));
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    win.clearTimeout(scheduled.id);
+    scheduled.cb(); // expire first
+    assert.strictEqual(handler.getState().armed, false);
+
+    doc.dispatchEvent(new Event("play"));
+    assert.strictEqual(videoA.paused, false, "past the window, a play is left alone");
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Wave 5 — Playback speed: nextRate, formatRate, createSpeedOsd, createSpeedControl
 // (docs/plans/W5_DESKTOP_PLAN.md, "Playback speed"). Lalin Cast original —
 // no VacuumTube module offers a speed control.
@@ -1510,6 +1905,16 @@ pending.push(
     ].forEach((expected) => {
       assert.ok(keyboardCells.includes(expected), `missing a row for ${expected}`);
     });
+  }),
+);
+
+pending.push(
+  test("helpRows: the help row's own controller column is \"Y\" in both languages (wave 6)", () => {
+    const th = m.helpRows("th").find((r) => r.keyboard === "? / F1");
+    const en = m.helpRows("en").find((r) => r.keyboard === "? / F1");
+    assert.ok(th && en, "the help row must exist in both languages");
+    assert.strictEqual(th.controller, "Y");
+    assert.strictEqual(en.controller, "Y");
   }),
 );
 
