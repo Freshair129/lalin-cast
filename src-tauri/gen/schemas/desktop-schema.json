@@ -201,6 +201,12 @@
           "markdownDescription": "Enables the settings_check_updates command without any pre-configured scope."
         },
         {
+          "description": "Enables the settings_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-diagnostics",
+          "markdownDescription": "Enables the settings_diagnostics command without any pre-configured scope."
+        },
+        {
           "description": "Enables the settings_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-settings-get",
@@ -271,6 +277,12 @@
           "type": "string",
           "const": "deny-settings-check-updates",
           "markdownDescription": "Denies the settings_check_updates command."
+        },
+        {
+          "description": "Denies the settings_diagnostics command.",
+          "type": "string",
+          "const": "deny-settings-diagnostics",
+          "markdownDescription": "Denies the settings_diagnostics command."
         },
         {
           "description": "Denies the settings_get command.",

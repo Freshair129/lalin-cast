@@ -1,6 +1,9 @@
+mod autostart;
+mod diagnostics;
 mod dial;
 mod i18n;
 mod launch;
+mod lifecycle;
 mod network;
 mod settings;
 mod setup;
@@ -9,6 +12,7 @@ mod status;
 mod surface;
 mod tray;
 mod updater;
+mod window_bounds;
 mod window_mode;
 
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
@@ -70,6 +74,16 @@ const DEEPLINK_EVENT: &str = "lalin-cast-deeplink";
 /// [`register_shell_listener`]).
 const SHELL_EVENT: &str = "lalin-cast-shell";
 const SHELL_RATE_LIMIT: Duration = Duration::from_millis(500);
+
+/// Page → Rust: `{ state: "playing" | "paused" | "idle", title: string }`,
+/// emitted by `injected.js` from `navigator.mediaSession?.metadata?.title`
+/// whenever any `<video>` fires `play`/`pause`/`ended`/`emptied` (Wave 5
+/// now-playing contract). Validated (whitelisted `state`, control
+/// characters stripped, ≤120 characters) and rate-limited like
+/// [`SHELL_EVENT`], via [`register_media_listener`].
+const MEDIA_EVENT: &str = "lalin-cast-media";
+const MEDIA_RATE_LIMIT: Duration = Duration::from_millis(250);
+const MEDIA_TITLE_MAX_CHARS: usize = 120;
 
 /// Builds the "Lalin Cast — {document title}" window title, capped at
 /// [`WINDOW_TITLE_MAX_CHARS`] characters (counted, not bytes, so a capped
@@ -262,6 +276,158 @@ fn register_shell_listener(app: &tauri::AppHandle) {
             ShellAction::OpenSettings => settings::open_settings_window(&app_handle),
             ShellAction::ToggleMini => window_mode::toggle_mini(&app_handle),
         }
+    });
+}
+
+/// One `lalin-cast-media` state value, per the three-value whitelist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MediaPlaybackState {
+    Playing,
+    Paused,
+    Idle,
+}
+
+#[derive(Deserialize)]
+struct RawMediaEventPayload {
+    state: String,
+    title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MediaEvent {
+    state: MediaPlaybackState,
+    title: String,
+}
+
+/// Validates a raw `lalin-cast-media` JSON payload: `state` must be one of
+/// the three whitelisted values; `title` has control characters stripped
+/// and is truncated to [`MEDIA_TITLE_MAX_CHARS`] characters (the page caps
+/// at 200, so a longer title is kept, never dropped). An unknown state or
+/// malformed JSON returns `None`, mirroring
+/// `surface::validate_surface_event`/[`parse_shell_action`].
+fn validate_media_event(payload: &str) -> Option<MediaEvent> {
+    let raw: RawMediaEventPayload = serde_json::from_str(payload).ok()?;
+    let state = match raw.state.as_str() {
+        "playing" => MediaPlaybackState::Playing,
+        "paused" => MediaPlaybackState::Paused,
+        "idle" => MediaPlaybackState::Idle,
+        _ => return None,
+    };
+    let title: String = raw
+        .title
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(MEDIA_TITLE_MAX_CHARS)
+        .collect();
+    Some(MediaEvent { state, title })
+}
+
+/// 250 ms rate limiter for [`MEDIA_EVENT`], shaped exactly like
+/// [`ShellRateLimiter`] (reusing `surface::rate_limit_allows`).
+struct MediaRateLimiter {
+    last: Mutex<Option<Instant>>,
+}
+
+impl MediaRateLimiter {
+    fn new() -> Self {
+        Self {
+            last: Mutex::new(None),
+        }
+    }
+
+    fn allow(&self) -> bool {
+        let now = Instant::now();
+        match self.last.lock() {
+            Ok(mut guard) => {
+                if surface::rate_limit_allows(*guard, now, MEDIA_RATE_LIMIT) {
+                    *guard = Some(now);
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => true,
+        }
+    }
+}
+
+/// Managed: the two title sources the window title / tray "now playing"
+/// line are resolved from (see [`resolve_title_source`]). `media` is set by
+/// [`apply_media_event`] to `Some(title)` only while `state != idle` and
+/// `title` is non-empty — anything else (idle, or an empty title) clears it
+/// back to `None` — so the field itself already encodes "is there a
+/// currently-relevant media title", with no separate playback-state field
+/// needed. `document` is set by the media window's `on_document_title_changed`
+/// hook, unconditionally.
+#[derive(Default)]
+struct MediaTitleInner {
+    media: Option<String>,
+    document: Option<String>,
+}
+
+#[derive(Default)]
+pub(crate) struct MediaTitleState(Mutex<MediaTitleInner>);
+
+/// Pure priority resolution for the window title / tray "now playing" line:
+/// the media title wins whenever one is stored, otherwise the last known
+/// document title, otherwise an empty string (which `window_title` then
+/// turns into the bare app name).
+fn resolve_title_source<'a>(media: Option<&'a str>, document: Option<&'a str>) -> &'a str {
+    media.or(document).unwrap_or("")
+}
+
+/// Applies one validated [`MediaEvent`]: updates [`MediaTitleState`]'s
+/// `media` field, recomputes and sets the `media` window's title, and
+/// pushes the media title (never the document title) to the tray tooltip's
+/// "now playing" line — but only while actually `playing` (never
+/// `paused`/`idle`), per the contract.
+fn apply_media_event(app: &tauri::AppHandle, event: MediaEvent) {
+    let Some(state) = app.try_state::<MediaTitleState>() else {
+        return;
+    };
+    let media_value = if event.state != MediaPlaybackState::Idle && !event.title.trim().is_empty() {
+        Some(event.title)
+    } else {
+        None
+    };
+    let (source, media_title) = {
+        let Ok(mut guard) = state.0.lock() else {
+            return;
+        };
+        guard.media = media_value;
+        (
+            resolve_title_source(guard.media.as_deref(), guard.document.as_deref()).to_owned(),
+            guard.media.clone(),
+        )
+    };
+    if let Some(window) = app.get_webview_window(MEDIA_LABEL) {
+        let _ = window.set_title(&window_title(&source));
+    }
+    // The tray line is the media title only: with no media title, there is
+    // nothing "now playing" worth showing, even though the window title
+    // still falls back to the document title above.
+    let now_playing = if event.state == MediaPlaybackState::Playing {
+        media_title
+    } else {
+        None
+    };
+    tray::set_now_playing(app, now_playing.as_deref());
+}
+
+/// Registers the app-wide listener for [`MEDIA_EVENT`]: validates the
+/// payload, applies the 250 ms rate limiter, and — if both pass — applies
+/// it via [`apply_media_event`].
+fn register_media_listener(app: &tauri::AppHandle) {
+    let limiter = MediaRateLimiter::new();
+    let app_handle = app.clone();
+    app.listen(MEDIA_EVENT, move |event| {
+        let Some(parsed) = validate_media_event(event.payload()) else {
+            return;
+        };
+        if !limiter.allow() {
+            return;
+        }
+        apply_media_event(&app_handle, parsed);
     });
 }
 
@@ -472,7 +638,11 @@ fn build_media_window(
         .inner_size(1200.0, 675.0)
         .min_inner_size(MEDIA_MIN_WIDTH, MEDIA_MIN_HEIGHT)
         .resizable(true)
-        .fullscreen(fullscreen)
+        // Fullscreen is deliberately NOT applied here — see the
+        // `set_fullscreen` call after `window_bounds` restore below, which
+        // must run first so leaving fullscreen later returns to the
+        // restored geometry rather than whatever this builder's default
+        // `inner_size` happened to be.
         .always_on_top(keep_on_top)
         .menu(menu)
         .on_menu_event(|window, event| match event.id().as_ref() {
@@ -532,7 +702,23 @@ fn build_media_window(
         .initialization_script(&prefs_script)
         .initialization_script(INJECTED_SCRIPT)
         .on_document_title_changed(|window, title| {
-            let _ = window.set_title(&window_title(&title));
+            // Stores `title` as the "document" source and resolves the
+            // combined media/document title through the same priority rule
+            // `apply_media_event` uses (media wins while set) — see
+            // `MediaTitleState`'s doc comment.
+            let app = window.app_handle();
+            let source = match app.try_state::<MediaTitleState>() {
+                Some(state) => match state.0.lock() {
+                    Ok(mut guard) => {
+                        guard.document = Some(title);
+                        resolve_title_source(guard.media.as_deref(), guard.document.as_deref())
+                            .to_owned()
+                    }
+                    Err(_) => title,
+                },
+                None => title,
+            };
+            let _ = window.set_title(&window_title(&source));
         });
 
     // `additional_browser_args` is Windows-only (unsupported on
@@ -549,6 +735,16 @@ fn build_media_window(
 
     let window = window_builder.build()?;
 
+    // Restore a saved `windowBounds` (position + size) *before* applying
+    // fullscreen, so that leaving fullscreen later returns to the restored
+    // geometry rather than the builder's default `inner_size` — see
+    // `window_bounds`'s module doc comment and the Wave 5 contract.
+    if let Some(bounds) = window_bounds::saved_bounds_for_restore(&window, app) {
+        let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
+        let _ = window.set_size(tauri::PhysicalSize::new(bounds.width, bounds.height));
+    }
+    let _ = window.set_fullscreen(fullscreen);
+
     // Closing the media window means quitting Lalin Cast even while a helper
     // window (update/setup/status) is still open; Tauri would otherwise keep
     // the process alive with only the tray icon and that helper window.
@@ -559,7 +755,31 @@ fn build_media_window(
         }
     });
 
+    // Separate `on_window_event` registration (window event listeners
+    // accumulate rather than replace one another — see
+    // `tauri_runtime_wry`'s `AddEventListener`) for `windowBounds` saving:
+    // immediately on `CloseRequested`, debounced 1 s on `Moved`/`Resized`.
+    let bounds_app = app.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::CloseRequested { .. } => {
+            window_bounds::save_now(&bounds_app);
+        }
+        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+            window_bounds::schedule_debounced_save(&bounds_app);
+        }
+        _ => {}
+    });
+
     window.show()?;
+    // `build_media_window` only ever runs for the very first launch (a
+    // second instance is handled entirely by the single-instance callback
+    // below), so the fallback here matches the "starting" write's fallback
+    // in `run()`'s setup hook — the same launch, the same request id.
+    let request_id = launch
+        .request_id
+        .clone()
+        .unwrap_or_else(|| "startup".to_owned());
+    lifecycle::write_ready(app, request_id, std::process::id());
     updater::schedule_startup_check(app);
     setup::schedule_auto_open(app);
 
@@ -589,13 +809,28 @@ pub fn run() {
         return;
     }
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // A second launch's args carry the same shape as our own
             // `std::env::args()` (program name at index 0 — see
             // `launch::parse_cli`'s doc comment), so the same parser applies
             // unchanged.
             let launch = launch::parse_cli(&args);
+
+            // `--lifecycle close` forwarded from a second instance: stop,
+            // never focus/deep-link, per the Wave 5 transition table.
+            if let Some(lifecycle::NextState::Stopped) =
+                launch.lifecycle.map(lifecycle::next_state_for)
+            {
+                let request_id = launch
+                    .request_id
+                    .clone()
+                    .unwrap_or_else(|| "cli".to_owned());
+                lifecycle::write_stopped(app, request_id, 0);
+                app.exit(0);
+                return;
+            }
+
             focus_media(app);
             if launch.fullscreen {
                 if let Some(media) = app.get_webview_window(MEDIA_LABEL) {
@@ -608,10 +843,52 @@ pub fn run() {
                 };
                 let _ = app.emit_to(MEDIA_LABEL, DEEPLINK_EVENT, &payload);
             }
+
+            // `--lifecycle launch|focus` forwarded from a second instance:
+            // report `ready` with the forwarded request id once the focus
+            // (and any deep link) above has been applied.
+            if let Some(lifecycle::NextState::Ready) =
+                launch.lifecycle.map(lifecycle::next_state_for)
+            {
+                let request_id = launch.request_id.unwrap_or_else(|| "cli".to_owned());
+                lifecycle::write_ready(app, request_id, std::process::id());
+            }
         }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
+            let handle = app.handle().clone();
+            // Managed before anything below can possibly exit early, so
+            // `RunEvent::Exit`'s `StoppedMarker` check and every
+            // `try_state` lookup in this closure can rely on it being
+            // present regardless of which branch runs.
+            app.manage(lifecycle::StoppedMarker::default());
+            app.manage(lifecycle::LifecycleSummaryState::default());
+
+            // First-launch `--lifecycle close`: write `stopped` and return
+            // before any window/tray/DIAL is built, per the Wave 5
+            // transition table. (A second instance's `close` is handled
+            // entirely by the single-instance callback above; by the time
+            // this `setup` hook runs at all, this process is guaranteed to
+            // be the only instance.)
+            if let Some(lifecycle::NextState::Stopped) =
+                launch_options.lifecycle.map(lifecycle::next_state_for)
+            {
+                let request_id = launch_options
+                    .request_id
+                    .clone()
+                    .unwrap_or_else(|| "cli".to_owned());
+                lifecycle::write_stopped(&handle, request_id, 0);
+                handle.exit(0);
+                return Ok(());
+            }
+
+            let starting_request_id = launch_options
+                .request_id
+                .clone()
+                .unwrap_or_else(|| "startup".to_owned());
+            lifecycle::write_starting(&handle, starting_request_id);
+
             seed_settings(app.handle());
             // Managed early (before the tray/media window exist) so every
             // later call site — menu/tray handlers, `lalin-cast-shell`,
@@ -619,6 +896,19 @@ pub fn run() {
             // `app.state()`/`app.try_state()` regardless of call order.
             app.manage(sleep::SleepState::default());
             app.manage(window_mode::MiniPlayerState::default());
+            app.manage(window_bounds::BoundsSaveState::default());
+            app.manage(status::AutoRetryState::default());
+            app.manage(MediaTitleState::default());
+            app.manage(tray::NowPlayingState::default());
+            // Best-effort: re-add the Run key if the store says it should
+            // be there (idempotent — always writes the current exe path).
+            // Never blocks or fails startup; a failure here only means the
+            // registry value stays whatever it already was.
+            if read_bool_setting_or(app.handle(), "startWithWindows", false) {
+                if let Err(error) = autostart::set_enabled(true) {
+                    eprintln!("Lalin Cast: could not reconcile Windows startup: {error}");
+                }
+            }
             // Built before `dial::start` so the tray's dial-status listener
             // is already registered when the very first
             // `lalin-cast-dial-status` event fires.
@@ -636,8 +926,25 @@ pub fn run() {
             }
             surface::register_surface_listener(app.handle());
             register_shell_listener(app.handle());
+            register_media_listener(app.handle());
             status::schedule_startup_probe(app.handle());
-            build_media_window(app.handle(), &launch_options)?;
+            if let Err(error) = build_media_window(app.handle(), &launch_options) {
+                let request_id = launch_options
+                    .request_id
+                    .clone()
+                    .unwrap_or_else(|| "startup".to_owned());
+                // A fixed message — never the raw error text, which could
+                // embed a filesystem path. `code` is what a driver keys off;
+                // the details still go to stderr as before.
+                eprintln!("Lalin Cast: could not build the media window: {error}");
+                lifecycle::write_failed(
+                    &handle,
+                    request_id,
+                    "media-window",
+                    "the media window could not be created",
+                );
+                return Err(error);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -652,15 +959,35 @@ pub fn run() {
             settings::settings_get,
             settings::settings_set,
             settings::settings_open_setup,
-            settings::settings_check_updates
+            settings::settings_check_updates,
+            diagnostics::settings_diagnostics
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Lalin Cast");
+        .build(tauri::generate_context!())
+        .expect("error while building Lalin Cast");
+
+    // `.build(ctx)?.run(...)` (rather than the previous `.run(ctx)`) so
+    // `RunEvent::Exit` — fired for every exit path (window close, tray
+    // quit, menu quit, a second instance's forwarded `close`) — can write
+    // the final `stopped` state exactly once.
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let already_stopped = app_handle
+                .try_state::<lifecycle::StoppedMarker>()
+                .map(|marker| marker.is_stopped())
+                .unwrap_or(false);
+            if !already_stopped {
+                lifecycle::write_stopped(app_handle, "cli".to_owned(), 0);
+            }
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_shell_action, window_title, ShellAction};
+    use super::{
+        parse_shell_action, resolve_title_source, validate_media_event, window_title,
+        MediaPlaybackState, ShellAction,
+    };
 
     #[test]
     fn falls_back_to_bare_app_name_for_empty_or_whitespace_title() {
@@ -716,5 +1043,74 @@ mod tests {
         assert_eq!(parse_shell_action(r#"{"other":"x"}"#), None);
         // A near-miss of a real action must never fuzzy-match.
         assert_eq!(parse_shell_action(r#"{"action":"toggle-mini "}"#), None);
+    }
+
+    // -- lalin-cast-media (Wave 5 now-playing) --
+
+    #[test]
+    fn validate_media_event_accepts_every_whitelisted_state() {
+        for (raw, expected) in [
+            ("playing", MediaPlaybackState::Playing),
+            ("paused", MediaPlaybackState::Paused),
+            ("idle", MediaPlaybackState::Idle),
+        ] {
+            let payload = format!(r#"{{"state":"{raw}","title":"Some Video"}}"#);
+            let event = validate_media_event(&payload).expect("should validate");
+            assert_eq!(event.state, expected);
+            assert_eq!(event.title, "Some Video");
+        }
+    }
+
+    #[test]
+    fn validate_media_event_rejects_an_unknown_state_or_malformed_payload() {
+        assert_eq!(
+            validate_media_event(r#"{"state":"buffering","title":"x"}"#),
+            None
+        );
+        assert_eq!(validate_media_event("not json"), None);
+        assert_eq!(validate_media_event(""), None);
+        assert_eq!(validate_media_event(r#"{"title":"x"}"#), None);
+    }
+
+    #[test]
+    fn validate_media_event_strips_control_characters_from_the_title() {
+        let payload = "{\"state\":\"playing\",\"title\":\"Some\\tVideo\\r\\n\"}";
+        let event = validate_media_event(payload).expect("should validate");
+        assert_eq!(event.title, "SomeVideo");
+    }
+
+    #[test]
+    fn validate_media_event_truncates_a_title_longer_than_120_characters() {
+        // The page caps at 200; a 121–200 character title must be kept
+        // (truncated), never dropped — and truncation counts characters,
+        // never bytes, so a Thai title is not split mid-character.
+        let long_title = "ก".repeat(200);
+        let payload = format!(r#"{{"state":"playing","title":"{long_title}"}}"#);
+        let event = validate_media_event(&payload).expect("a long title is kept, not dropped");
+        assert_eq!(event.title.chars().count(), 120);
+
+        let max_title = "a".repeat(120);
+        let payload = format!(r#"{{"state":"playing","title":"{max_title}"}}"#);
+        assert_eq!(
+            validate_media_event(&payload).map(|event| event.title),
+            Some(max_title)
+        );
+    }
+
+    #[test]
+    fn resolve_title_source_prefers_media_over_document() {
+        assert_eq!(
+            resolve_title_source(Some("Now Playing"), Some("Document Title")),
+            "Now Playing"
+        );
+    }
+
+    #[test]
+    fn resolve_title_source_falls_back_to_document_then_empty() {
+        assert_eq!(
+            resolve_title_source(None, Some("Document Title")),
+            "Document Title"
+        );
+        assert_eq!(resolve_title_source(None, None), "");
     }
 }

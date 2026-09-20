@@ -8,6 +8,7 @@
     "allow-settings-get",
     "allow-settings-set",
     "allow-settings-open-setup",
-    "allow-settings-check-updates"
+    "allow-settings-check-updates",
+    "allow-settings-diagnostics"
   ]
 }

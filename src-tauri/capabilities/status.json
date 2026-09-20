@@ -5,6 +5,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-close",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "allow-status-retry",
     "allow-status-quit"
   ]

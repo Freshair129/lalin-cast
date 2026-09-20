@@ -26,6 +26,57 @@ const VIDEO_ID_LEN: usize = 11;
 const PLAYLIST_ID_MAX_LEN: usize = 64;
 const FULLSCREEN_FLAG: &str = "--fullscreen";
 const VERSION_FLAG: &str = "--version";
+/// Studio launcher lifecycle flags (Wave 5) — see `docs/plans/W5_DESKTOP_PLAN.md`'s
+/// lifecycle contract. Both take a separate value token; an invalid or
+/// missing value skips just the flag token (the value token, if any, is
+/// then reprocessed on its own — see [`parse_cli`]).
+const LIFECYCLE_FLAG: &str = "--lifecycle";
+const REQUEST_ID_FLAG: &str = "--request-id";
+const REQUEST_ID_MAX_CHARS: usize = 64;
+
+/// One `--lifecycle` value: what a Studio launcher invocation (first launch
+/// or a second-instance relaunch forwarded through the single-instance
+/// plugin) is asking Lalin Cast to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecycleCommand {
+    Launch,
+    Focus,
+    Close,
+}
+
+impl LifecycleCommand {
+    /// Exact, case-sensitive match against the three documented values;
+    /// anything else is not a lifecycle command at all (the flag is skipped
+    /// per the contract, "เหมือน argument ที่ไม่รู้จัก").
+    fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "launch" => Some(Self::Launch),
+            "focus" => Some(Self::Focus),
+            "close" => Some(Self::Close),
+            _ => None,
+        }
+    }
+}
+
+/// Validates a raw `--request-id` value against `[A-Za-z0-9_.-]{1,64}`.
+/// Returns `None` for anything outside that character class or length —
+/// callers fall back to a fixed default (`"cli"` for a forwarded/second-
+/// instance command, `"startup"` for the very first process launch) rather
+/// than ever writing an unvalidated token into `lifecycle.json`.
+pub fn validate_request_id(raw: &str) -> Option<String> {
+    let len = raw.chars().count();
+    if !(1..=REQUEST_ID_MAX_CHARS).contains(&len) {
+        return None;
+    }
+    if raw
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-'))
+    {
+        Some(raw.to_owned())
+    } else {
+        None
+    }
+}
 
 /// A validated deep link into the Leanback YouTube app. Only ever
 /// constructed by [`parse_launch_url`], so every instance already satisfied
@@ -61,6 +112,13 @@ pub struct LaunchOptions {
     /// runs. Checked by `lib.rs::run()`.
     pub version: bool,
     pub deep_link: Option<DeepLink>,
+    /// `--lifecycle launch|focus|close` (Wave 5 Studio launcher contract).
+    pub lifecycle: Option<LifecycleCommand>,
+    /// `--request-id <id>`, already validated by [`validate_request_id`].
+    /// `None` means either the flag was absent or its value failed
+    /// validation — every call site applies its own default (`"cli"` or
+    /// `"startup"`) rather than this module choosing one.
+    pub request_id: Option<String>,
 }
 
 fn is_valid_video_id(value: &str) -> bool {
@@ -122,18 +180,54 @@ pub fn parse_launch_url(raw: &str) -> Option<DeepLink> {
 /// same shape `std::env::args()` and `tauri_plugin_single_instance`'s
 /// forwarded args both have — into [`LaunchOptions`]. The last argument that
 /// parses as a valid launch URL via [`parse_launch_url`] wins; any other
-/// argument (an unrecognized flag, a non-matching string) is silently
+/// bare argument (an unrecognized flag, a non-matching string) is silently
 /// ignored rather than causing a parse error or a panic.
+///
+/// `--lifecycle` and `--request-id` each take a separate value token (any
+/// order, index-based rather than `Iterator::skip`, so a two-token flag can
+/// consume its value): the last occurrence of each wins, and an invalid or
+/// missing value skips only the flag token itself — the would-be value
+/// token is then reprocessed on its own the very next iteration (so e.g.
+/// `--lifecycle --fullscreen` still sets `fullscreen`, matching "ค่าอื่น →
+/// ข้ามทั้ง flag (เหมือน argument ที่ไม่รู้จัก)").
 pub fn parse_cli<S: AsRef<str>>(args: &[S]) -> LaunchOptions {
     let mut options = LaunchOptions::default();
-    for arg in args.iter().skip(1) {
-        let arg = arg.as_ref();
+    let mut index = 1;
+    while index < args.len() {
+        let arg = args[index].as_ref();
         if arg == FULLSCREEN_FLAG {
             options.fullscreen = true;
+            index += 1;
         } else if arg == VERSION_FLAG {
             options.version = true;
-        } else if let Some(deep_link) = parse_launch_url(arg) {
-            options.deep_link = Some(deep_link);
+            index += 1;
+        } else if arg == LIFECYCLE_FLAG {
+            let value = args
+                .get(index + 1)
+                .and_then(|value| LifecycleCommand::parse(value.as_ref()));
+            match value {
+                Some(command) => {
+                    options.lifecycle = Some(command);
+                    index += 2;
+                }
+                None => index += 1,
+            }
+        } else if arg == REQUEST_ID_FLAG {
+            let value = args
+                .get(index + 1)
+                .and_then(|value| validate_request_id(value.as_ref()));
+            match value {
+                Some(id) => {
+                    options.request_id = Some(id);
+                    index += 2;
+                }
+                None => index += 1,
+            }
+        } else {
+            if let Some(deep_link) = parse_launch_url(arg) {
+                options.deep_link = Some(deep_link);
+            }
+            index += 1;
         }
     }
     options
@@ -141,7 +235,9 @@ pub fn parse_cli<S: AsRef<str>>(args: &[S]) -> LaunchOptions {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_cli, parse_launch_url, DeepLink, LaunchOptions};
+    use super::{
+        parse_cli, parse_launch_url, validate_request_id, DeepLink, LaunchOptions, LifecycleCommand,
+    };
 
     #[test]
     fn accepts_every_whitelisted_video_host() {
@@ -315,5 +411,130 @@ mod tests {
     fn parse_cli_never_panics_on_an_empty_argument_list() {
         let args: Vec<String> = Vec::new();
         assert_eq!(parse_cli(&args), LaunchOptions::default());
+    }
+
+    // -- validate_request_id --
+
+    #[test]
+    fn validate_request_id_accepts_the_documented_character_class_and_length() {
+        assert_eq!(
+            validate_request_id("abcXYZ09_.-"),
+            Some("abcXYZ09_.-".to_owned())
+        );
+        assert_eq!(validate_request_id("a"), Some("a".to_owned()));
+        let max = "a".repeat(64);
+        assert_eq!(validate_request_id(&max), Some(max));
+    }
+
+    #[test]
+    fn validate_request_id_rejects_empty_too_long_or_out_of_class_values() {
+        assert_eq!(validate_request_id(""), None);
+        let too_long = "a".repeat(65);
+        assert_eq!(validate_request_id(&too_long), None);
+        assert_eq!(validate_request_id("has space"), None);
+        assert_eq!(validate_request_id("has/slash"), None);
+        assert_eq!(validate_request_id("has<tag>"), None);
+        assert_eq!(validate_request_id("emoji😀"), None);
+    }
+
+    // -- parse_cli: --lifecycle / --request-id --
+
+    #[test]
+    fn parse_cli_recognizes_every_lifecycle_command_as_a_separate_token() {
+        for (raw, expected) in [
+            ("launch", LifecycleCommand::Launch),
+            ("focus", LifecycleCommand::Focus),
+            ("close", LifecycleCommand::Close),
+        ] {
+            let args: Vec<String> = vec![
+                "lalin-cast.exe".to_owned(),
+                "--lifecycle".to_owned(),
+                raw.to_owned(),
+            ];
+            assert_eq!(parse_cli(&args).lifecycle, Some(expected));
+        }
+    }
+
+    #[test]
+    fn parse_cli_skips_a_lifecycle_flag_with_an_unrecognized_value_and_reprocesses_the_value_token()
+    {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--lifecycle".to_owned(),
+            "--fullscreen".to_owned(),
+        ];
+        let options = parse_cli(&args);
+        assert_eq!(options.lifecycle, None);
+        // The value token ("--fullscreen") must be reprocessed as its own
+        // argument rather than silently consumed alongside the bad flag.
+        assert!(options.fullscreen);
+    }
+
+    #[test]
+    fn parse_cli_skips_a_lifecycle_flag_with_no_following_token() {
+        let args: Vec<String> = vec!["lalin-cast.exe".to_owned(), "--lifecycle".to_owned()];
+        assert_eq!(parse_cli(&args).lifecycle, None);
+    }
+
+    #[test]
+    fn parse_cli_the_last_lifecycle_flag_wins() {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--lifecycle".to_owned(),
+            "launch".to_owned(),
+            "--lifecycle".to_owned(),
+            "close".to_owned(),
+        ];
+        assert_eq!(parse_cli(&args).lifecycle, Some(LifecycleCommand::Close));
+    }
+
+    #[test]
+    fn parse_cli_reads_a_valid_request_id() {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--request-id".to_owned(),
+            "studio-42".to_owned(),
+        ];
+        assert_eq!(parse_cli(&args).request_id, Some("studio-42".to_owned()));
+    }
+
+    #[test]
+    fn parse_cli_drops_an_invalid_request_id_and_reprocesses_the_value_token() {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--request-id".to_owned(),
+            "has space".to_owned(),
+        ];
+        let options = parse_cli(&args);
+        assert_eq!(options.request_id, None);
+        // "has space" is not a valid launch URL either, so it is simply
+        // dropped — never a lifecycle/request-id value, never a deep link.
+        assert_eq!(options.deep_link, None);
+    }
+
+    #[test]
+    fn parse_cli_the_last_request_id_wins() {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--request-id".to_owned(),
+            "first".to_owned(),
+            "--request-id".to_owned(),
+            "second".to_owned(),
+        ];
+        assert_eq!(parse_cli(&args).request_id, Some("second".to_owned()));
+    }
+
+    #[test]
+    fn parse_cli_accepts_lifecycle_and_request_id_together_in_any_order() {
+        let args: Vec<String> = vec![
+            "lalin-cast.exe".to_owned(),
+            "--request-id".to_owned(),
+            "studio-7".to_owned(),
+            "--lifecycle".to_owned(),
+            "focus".to_owned(),
+        ];
+        let options = parse_cli(&args);
+        assert_eq!(options.lifecycle, Some(LifecycleCommand::Focus));
+        assert_eq!(options.request_id, Some("studio-7".to_owned()));
     }
 }
