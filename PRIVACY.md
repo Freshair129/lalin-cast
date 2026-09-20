@@ -33,6 +33,8 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `dialDeviceId` | รหัสอุปกรณ์ Leanback/DIAL แบบสุ่ม ใช้ให้แอป YouTube มือถือจำอุปกรณ์นี้ได้ต่อเนื่องระหว่างเซสชัน | ตอบผ่าน DIAL บน LAN เท่านั้น (ดูข้อ 3) ไม่ส่งออกอินเทอร์เน็ต |
 | `dialFriendlyName` | ชื่อที่แสดงเมื่อถูกค้นพบผ่าน DIAL ค่าเริ่มต้นคือ `Lalin Cast` ผู้ใช้ตั้งเองได้ | ตอบผ่าน DIAL บน LAN เท่านั้น |
 | `setupCompleted` | ผู้ใช้กด "ไม่ต้องแสดงอีก" ในตัวช่วยติดตั้งครั้งแรก (setup wizard); ถ้าไม่ใช่ `true` ตัวช่วยติดตั้งจะเปิดอีกทุกครั้งที่เริ่มแอป | ไม่ |
+| `controllerEnabled` | เปิด/ปิดการอ่านค่าคอนโทรลเลอร์เกม (Gamepad API) ในหน้า YouTube ค่าเริ่มต้นเปิด | ไม่ |
+| `pauseOnBlur` | หยุดวิดีโอโดยอัตโนมัติเมื่อหน้าต่างสื่อ (media) เสียโฟกัส ค่าเริ่มต้นปิด | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -84,7 +86,32 @@ M-SEARCH จากอุปกรณ์อื่นบนเครือข่�
 ตัดสินใจแสดงหน้าต่างสถานะเท่านั้น ไม่ถูกส่งออกนอกเครื่อง ไม่ถูกบันทึกถาวร และ Rust จะตรวจสอบรูปแบบของ
 ข้อมูลนี้ซ้ำ (ความยาว, ต้องขึ้นต้นด้วย `https://`) ก่อนใช้งานเสมอ
 
-## 5. การตรวจสอบอัปเดต
+## 5. คอนโทรลเลอร์เกม (Gamepad) และคีย์ลัดคัดลอกลิงก์
+
+เมื่อเปิดใช้ตัวเลือก `controllerEnabled` (ค่าเริ่มต้นเปิด) หน้าต่างสื่อ (media) จะอ่านสถานะปุ่ม/แกนของ
+คอนโทรลเลอร์เกมที่เสียบไว้ ผ่าน Gamepad API มาตรฐานของเบราว์เซอร์ (WebView2) เท่านั้น การอ่านนี้เกิดขึ้น
+**ในเครื่องเท่านั้น** ไม่มีการส่งข้อมูลคอนโทรลเลอร์ ชื่อคอนโทรลเลอร์ หรือรูปแบบการกดปุ่มออกนอกเครื่องไม่ว่า
+ทางใด และไม่ถูกบันทึกลงไฟล์ใด ๆ ปิดตัวเลือกนี้ได้จากหน้าต่างการตั้งค่าเมื่อไรก็ได้ (ดูหัวข้อ "Settings"
+ใน [`README.md`](README.md)) เมื่อปิดแล้วแอปจะไม่ polling สถานะคอนโทรลเลอร์อีก
+
+คีย์ลัด `Ctrl+Shift+C` คัดลอกลิงก์วิดีโอ/เพลย์ลิสต์ที่กำลังดูอยู่ไปยังคลิปบอร์ดของเครื่อง (ผ่าน
+`navigator.clipboard.writeText`) **เฉพาะเมื่อผู้ใช้กดคีย์ผสมนี้เองเท่านั้น** — ไม่มีการเขียนคลิปบอร์ด
+อัตโนมัติจากเหตุการณ์อื่นใด ลิงก์ที่คัดลอกจะถูกตัด query string อื่นทั้งหมดออก เหลือเฉพาะพารามิเตอร์
+`v` (รหัสวิดีโอ) หรือ `list` (รหัสเพลย์ลิสต์) เท่านั้น ไม่มีคุกกี้ ตัวติดตาม หรือพารามิเตอร์อื่นติดไปกับ
+ลิงก์ที่คัดลอก
+
+## 6. ลิงก์จากบรรทัดคำสั่ง (command-line deep link)
+
+`lalin-cast.exe` รับ URL ของ YouTube เป็นพารามิเตอร์บรรทัดคำสั่งได้ (เช่นจาก Steam launch options หรือ
+Studio launcher) ดูรายละเอียดที่ [`README.md`](README.md) หัวข้อ "Command line" ค่าที่รับมาจะถูกตรวจสอบ
+รูปแบบอย่างเข้มงวดก่อนใช้งานเสมอ (ต้องเป็น `https://` เท่านั้น, host ต้องตรงกับรายชื่อโดเมน YouTube ที่
+อนุญาตไว้ล่วงหน้าแบบตรงตัว ไม่ใช่การจับคู่แบบ suffix, รหัสวิดีโอ/เพลย์ลิสต์ต้องมีรูปแบบที่ถูกต้อง) —
+ค่าที่ไม่ผ่านการตรวจสอบจะถูกทิ้งไปเฉย ๆ ไม่ถูกนำไปเปิดหรือ redirect ไปที่ใด ค่าที่ผ่านการตรวจสอบแล้วจะ
+**ไม่ถูกบันทึกลงไฟล์ log หรือไฟล์การตั้งค่าถาวรใด ๆ** ใช้เพียงส่งต่อให้หน้าต่างสื่อ (media) ในเครื่อง
+เดียวกันเปิดวิดีโอ/เพลย์ลิสต์นั้นเท่านั้น ถ้า Lalin Cast กำลังรันอยู่แล้ว ลิงก์จากอินสแตนซ์ใหม่จะถูกส่งต่อ
+ให้หน้าต่างเดิมในลักษณะเดียวกัน ไม่มีการส่งลิงก์นี้ออกนอกเครื่อง
+
+## 7. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
 latest.json`) เพื่อตรวจสอบว่ามีรุ่นใหม่หรือไม่ ทั้งตอนเปิดแอป (แบบ non-blocking) และเมื่อผู้ใช้กด
@@ -93,7 +120,7 @@ User-Agent) ตามกลไกของโปรโตคอล HTTP เอ�
 ในคำขอนี้ การติดตั้งอัปเดตต้องให้ผู้ใช้กดยืนยันเองเสมอ ไม่มีการติดตั้งอัตโนมัติโดยไม่ถาม ดูรายละเอียด
 เพิ่มเติมที่หัวข้อ "Updating" ใน [`README.md`](README.md)
 
-## 6. หน้า YouTube ในหน้าต่างหลัก
+## 8. หน้า YouTube ในหน้าต่างหลัก
 
 หน้าต่างหลักของ Lalin Cast โหลดหน้า YouTube TV จริงจาก `https://www.youtube.com/tv` ผ่าน remote
 WebView ทุกสิ่งที่เกิดขึ้นภายในหน้านั้น (คุกกี้, การเข้าสู่ระบบบัญชี Google, ประวัติการรับชม, โฆษณา,
@@ -101,13 +128,14 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
 
-## 7. Logging
+## 9. Logging
 
 Lalin Cast ไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV code), คุกกี้, หรือ token/key ใด ๆ ลงไฟล์
 log อย่างถาวร ข้อความ debug/log ระหว่างพัฒนา (ถ้ามี) จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น
-สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้
+สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง (ข้อ 6) ก็อยู่
+ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
 
-## 8. การลบข้อมูล
+## 10. การลบข้อมูล
 
 เนื่องจากข้อมูลทั้งหมดที่แอปเก็บอยู่ในเครื่องของผู้ใช้เอง การลบข้อมูลทำได้โดยลบโฟลเดอร์ข้อมูลแอปทิ้ง:
 
@@ -119,7 +147,7 @@ log อย่างถาวร ข้อความ debug/log ระหว่�
 สถานะภายในอื่น ๆ ของแอป การลบข้อมูลบัญชี Google/YouTube (ประวัติการรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่าน
 การตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุมของ Lalin Cast
 
-## 9. ติดต่อ
+## 11. ติดต่อ
 
 เนื่องจาก Lalin Cast เป็นโปรเจกต์โอเพนซอร์สอิสระ ช่องทางติดต่อหลักคือ GitHub Issues ของ repository
 นี้ (`github.com/Freshair129/lalin-cast`) ก่อนเผยแพร่ต่อสาธารณะ ผู้ก่อตั้งโปรเจกต์ควรพิจารณาเพิ่มช่องทาง
@@ -163,6 +191,8 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `dialDeviceId` | A randomly generated Leanback/DIAL device id, used so the YouTube mobile app can recognize this device across sessions | Answered over DIAL on the LAN only (see section 3); never sent over the internet |
 | `dialFriendlyName` | The name shown when discovered over DIAL. Defaults to `Lalin Cast`; user-settable | Answered over DIAL on the LAN only |
 | `setupCompleted` | Set when the user checks "Don't show again" in the first-run setup wizard; if not `true`, the wizard opens again every time the app starts | No |
+| `controllerEnabled` | Turns game-controller (Gamepad API) reading on or off in the YouTube page. Defaults to on | No |
+| `pauseOnBlur` | Automatically pauses playback when the media window loses focus. Defaults to off | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -223,7 +253,34 @@ machine**, solely to decide whether to show the status window. It never leaves t
 persisted, and Rust re-validates its shape (length limits, must start with `https://`) before using
 it.
 
-## 5. Update checks
+## 5. Game controller (Gamepad) and the copy-link shortcut
+
+When the `controllerEnabled` setting is on (the default), the media window reads the state of any
+connected game controller's buttons and axes through the browser's (WebView2's) standard Gamepad
+API only. This reading happens **entirely on the device** — no controller data, controller name, or
+button-press pattern is ever sent off the device in any way, and none of it is written to a file.
+This setting can be turned off at any time from the settings window (see the "Settings" section of
+[`README.md`](README.md)); once off, the app stops polling controller state.
+
+The `Ctrl+Shift+C` shortcut copies the currently playing video's or playlist's URL to the device's
+clipboard (via `navigator.clipboard.writeText`) **only when the user presses that key combination
+themselves** — nothing else triggers a clipboard write automatically. The copied link has every
+other query-string parameter stripped, keeping only `v` (video id) or `list` (playlist id); no
+cookies, trackers, or other parameters travel with the copied link.
+
+## 6. Command-line deep link
+
+`lalin-cast.exe` accepts a YouTube URL as a command-line argument (for example from Steam launch
+options or the Studio launcher); see the "Command line" section of [`README.md`](README.md). Any
+value received is always strictly validated before use (it must be `https://` only, the host must
+exactly match a pre-approved YouTube domain — not a suffix match — and the video/playlist id must
+be well-formed). A value that fails validation is simply discarded and never opened or redirected
+to. A value that passes validation is **never written to a log file or persisted to any settings
+file** — it is only forwarded, in the same process, to the local media window to open that
+video/playlist. If Lalin Cast is already running, a link from a new instance is forwarded to the
+existing window the same way. This link is never sent off the device.
+
+## 7. Update checks
 
 The app contacts `github.com` (specifically
 `github.com/Freshair129/lalin-cast/releases/latest/download/latest.json`) to check for a new
@@ -233,7 +290,7 @@ User-Agent, per the HTTP protocol itself); no additional personal or usage data 
 Installing an update always requires explicit user confirmation; nothing installs automatically
 without being asked. See the "Updating" section of [`README.md`](README.md) for more detail.
 
-## 6. The YouTube page in the main window
+## 8. The YouTube page in the main window
 
 The main Lalin Cast window loads the real YouTube TV page from `https://www.youtube.com/tv`
 through a remote WebView. Everything that happens inside that page — cookies, Google account
@@ -241,13 +298,15 @@ sign-in, watch history, ads, the recommendation algorithm — is entirely under 
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
 
-## 7. Logging
+## 9. Logging
 
 Lalin Cast does not persistently log personal information (PII), TV pairing codes, cookies, or any
 tokens/keys. Whatever debug/log output exists during development prints only the app's own
 technical state (such as port-bind status or connection status), never user-identifying content.
+The command-line deep link (section 6) falls under this same rule — it is never logged, whether or
+not it passes validation.
 
-## 8. Deleting your data
+## 10. Deleting your data
 
 Because everything the app stores lives on the user's own machine, deleting your data means
 deleting the app's data folder:
@@ -261,7 +320,7 @@ Deleting this folder removes `media-settings.json` (including any `dialDeviceId`
 (watch history, sign-in cookies) must be done through your Google account settings directly, since
 that data is not under Lalin Cast's control.
 
-## 9. Contact
+## 11. Contact
 
 Since Lalin Cast is an independent open-source project, the primary contact channel is GitHub
 Issues on this repository (`github.com/Freshair129/lalin-cast`). Before a public release, the

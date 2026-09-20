@@ -13,6 +13,7 @@ version from any doc's frontmatter `version` value.
 
 - [`plans/H0_RELEASE_READINESS_PLAN.md`](plans/H0_RELEASE_READINESS_PLAN.md) — H0 release-readiness DAG, file ownership matrix and parallel-stream/verify-gate plan.
 - [`plans/W2_LIVING_ROOM_PLAN.md`](plans/W2_LIVING_ROOM_PLAN.md) — Wave 2 living-room readiness DAG (tray DIAL status, first-run network/DIAL setup wizard, offline/blocked-surface status window), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
+- [`plans/W3_CONTROLS_PLAN.md`](plans/W3_CONTROLS_PLAN.md) — Wave 3 controls DAG (controller and keyboard support, native settings window, command-line deep link, pause-on-blur), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
 
 ## Product and architecture
 
@@ -25,10 +26,14 @@ version from any doc's frontmatter `version` value.
 
 ## Legal and licensing
 
-- [`../PRIVACY.md`](../PRIVACY.md) — privacy notice (local data, DIAL/SSDP on LAN, updater network contact, startup connectivity probe, first-run network-profile check, no telemetry).
+- [`../PRIVACY.md`](../PRIVACY.md) — privacy notice (local data, DIAL/SSDP on LAN, updater network contact, startup connectivity probe, first-run network-profile check, local-only Gamepad API reading, the `Ctrl+Shift+C` clipboard copy, validated never-logged command-line deep links, no telemetry).
 - [`../TERMS.md`](../TERMS.md) — terms of use (unofficial/not-affiliated status, YouTube ToS binding, no warranty).
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party license notices for every `Cargo.lock` package plus VacuumTube/Tauri/WebView2 attributions.
 - [`LICENSE_DECISION.md`](LICENSE_DECISION.md) — MIT / Apache-2.0 / proprietary license comparison and the founder decision checklist for Lalin Cast itself.
+
+## Guides
+
+- [`guides/STEAM_AND_HANDHELD.md`](guides/STEAM_AND_HANDHELD.md) — adding Lalin Cast to Steam as a non-Steam game, launch options, Big Picture, supported controllers, ROG Ally/Legion Go tips and current limitations.
 
 ## Runbooks
 

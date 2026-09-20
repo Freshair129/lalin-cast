@@ -49,7 +49,19 @@ Current scope:
   embedded YouTube page reports it isn't displaying the expected TV surface, with a manual retry
   and quit action (no automatic retry loop);
 - surface detection reported by the embedded YouTube page itself (redirected away from the TV
-  surface, or the expected Leanback markup missing) that triggers the status window above.
+  surface, or the expected Leanback markup missing) that triggers the status window above;
+- game-controller input (standard browser Gamepad API — standard-mapping controllers such as
+  Xbox and DualSense) mapped to Leanback key events, plus extra keyboard shortcuts, ported from
+  the pinned VacuumTube reference; real-controller behavior is human gate H8 and not yet
+  evidenced — see [Controller and keyboard](#controller-and-keyboard);
+- an optional pause-on-blur setting that pauses playback when the media window loses focus;
+- a native settings window (language, DIAL name, fullscreen, keep-on-top, controller toggle,
+  pause-on-blur, reopen the setup wizard, check for updates) reachable from the media window's
+  menu, the tray icon, `Ctrl+O`, or the controller's R3 button — see [Settings](#settings)
+  (live-apply behavior on a real machine is human gate H9);
+- command-line startup flags and a YouTube URL/playlist deep link, including forwarding a link to
+  an already-running instance instead of opening a second window — see
+  [Command line](#command-line) (deep-link behavior on the real Leanback surface is human gate H7).
 
 If the local settings store is unavailable, the shell uses safe defaults and
 still opens; the failure is not allowed to block the media window.
@@ -77,6 +89,115 @@ cargo tauri build --debug --no-bundle --ci
 
 The GUI/WebView2 smoke test and clean install/update smoke are separate Windows
 runtime gates. Do not remove the VacuumTube reference until Tauri parity passes.
+
+## Controller and keyboard
+
+**ภาษาไทย:** Lalin Cast รองรับเกมคอนโทรลเลอร์ผ่าน Gamepad API มาตรฐานของเบราว์เซอร์ (ออกแบบมาให้ใช้กับ
+คอนโทรลเลอร์ผังปุ่มมาตรฐานอย่าง Xbox และ DualSense) และคีย์ลัดคีย์บอร์ดเพิ่มเติม พอร์ตมาจาก VacuumTube —
+ดูที่มาแต่ละโมดูลที่ [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md) พฤติกรรมจริงบนอุปกรณ์ยังไม่มีหลักฐานยืนยัน
+(human gate H8 — ดู [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md)) เปิด/ปิด
+คอนโทรลเลอร์ได้จากหน้าต่างการตั้งค่า (ตัวเลือก "ตัวควบคุม")
+
+**English:** Lalin Cast supports game controllers through the browser's standard Gamepad API,
+targeting Xbox and DualSense controllers; real-device behavior is human gate H8 and not yet
+evidenced (see [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md)), plus
+extra keyboard shortcuts, ported from VacuumTube — see
+[`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md) for the per-module source. The controller can be
+turned on or off from the settings window (the "Controller" toggle).
+
+### Controller mapping / ผังปุ่มคอนโทรลเลอร์
+
+| Xbox | DualSense | Action / การทำงาน |
+|---|---|---|
+| A | ✕ (Cross) | Enter / เลือก |
+| B | ○ (Circle) | Back / ย้อนกลับ |
+| X | □ (Square) | Search / ค้นหา |
+| LB | L1 | Back (page) / ถอยหน้า |
+| RB | R1 | Forward (page) / ไปหน้าถัดไป |
+| LT | L2 | Seek backward / ถอยหลังวิดีโอ |
+| RT | R2 | Seek forward / เดินหน้าวิดีโอ |
+| View / Back | Share | Volume down / ลดเสียง |
+| Menu / Start | Options | Volume up / เพิ่มเสียง |
+| L3 (left-stick click) | L3 | Mute / ปิดเสียง |
+| R3 (right-stick click) | R3 | Open settings / เปิดหน้าต่างการตั้งค่า |
+| D-pad / left stick | D-pad / left stick | Navigate — arrow keys / เลื่อนทิศทาง |
+| Right stick | Right stick | Navigate — arrow keys (Lalin Cast addition; upstream declared but never emitted these codes) / เลื่อนทิศทาง |
+
+### Keyboard shortcuts / คีย์ลัดคีย์บอร์ด
+
+| Key / ปุ่ม | Action / การทำงาน |
+|---|---|
+| `Ctrl+O` | Open settings / เปิดหน้าต่างการตั้งค่า |
+| `F11` | Toggle fullscreen / สลับเต็มจอ |
+| `Shift+Enter` (held) | Long-press Enter / กด Enter ค้าง |
+| Right-click | Back / ย้อนกลับ |
+| `+` / `-` | Volume up / down, with an on-screen indicator — เพิ่ม/ลดเสียงพร้อมแถบแสดงผลบนจอ |
+| `M` | Mute / ปิดเสียง |
+| `C` | Toggle captions / เปิด-ปิดคำบรรยาย |
+| `Ctrl+Shift+C` | Copy the current video/playlist URL to the clipboard, query stripped except `v`/`list` — คัดลอกลิงก์ปัจจุบันโดยตัด query ทิ้งยกเว้น `v`/`list` |
+
+## Command line
+
+**ภาษาไทย:** `lalin-cast.exe` รับพารามิเตอร์บรรทัดคำสั่งได้ดังนี้:
+
+- `--fullscreen` — เปิดแอปแบบเต็มจอสำหรับการรันครั้งนี้เท่านั้น ไม่ถูกบันทึกเป็นค่าถาวร
+- `--version` — พิมพ์เลขรุ่นของแอป (`lalin-cast <version>`) แล้วออกทันทีโดยไม่เปิดหน้าต่างใด ๆ
+- URL ของ YouTube ที่ระบุเป็นพารามิเตอร์สุดท้ายที่แอปแยกวิเคราะห์ได้ (เช่น
+  `https://www.youtube.com/watch?v=<id>`, `https://youtu.be/<id>`, หรือลิงก์ playlist) — เปิด
+  วิดีโอ/เพลย์ลิสต์นั้นทันที พารามิเตอร์อื่นที่แอปไม่รู้จักจะถูกข้ามไปเฉย ๆ ไม่ทำให้แอปพัง ถ้า Lalin
+  Cast กำลังรันอยู่แล้ว การเปิดอินสแตนซ์ใหม่พร้อม URL จะส่งลิงก์ไปยังหน้าต่างที่เปิดอยู่แทนการเปิด
+  หน้าต่างซ้อนใหม่
+
+**English:** `lalin-cast.exe` accepts the following command-line arguments:
+
+- `--fullscreen` — starts this run in fullscreen; not persisted as a setting
+- `--version` — prints the app's version (`lalin-cast <version>`) and exits immediately without
+  opening any window
+- a YouTube URL as the last argument the app can parse (e.g.
+  `https://www.youtube.com/watch?v=<id>`, `https://youtu.be/<id>`, or a playlist link) — opens
+  that video/playlist immediately. Any other, unrecognized argument is silently ignored rather than
+  causing a crash. If Lalin Cast is already running, launching a new instance with a URL forwards
+  that link to the existing window instead of opening a second one.
+
+ตัวอย่าง Steam launch options (non-Steam game) / example Steam launch options (non-Steam game):
+
+```
+"C:\Path\To\lalin-cast.exe" --fullscreen "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+```
+
+ดูคู่มือฉบับเต็มสำหรับ Steam Big Picture และอุปกรณ์พกพา (ROG Ally, Legion Go) ที่
+[`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md) — see
+[`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md) for the full Steam Big
+Picture and handheld (ROG Ally, Legion Go) guide.
+
+## Settings
+
+**ภาษาไทย:** หน้าต่างการตั้งค่าเปิดได้จากเมนูของหน้าต่างหลัก (`settings`), ไอคอนถาด (tray), `Ctrl+O`,
+หรือปุ่ม R3 ของคอนโทรลเลอร์ ตั้งค่าได้:
+
+- ภาษา (ไทย/English)
+- ชื่อที่แสดงผ่าน DIAL (`dialFriendlyName`) — มีผลทันที มองเห็นได้จากมือถือที่ค้นหาอุปกรณ์
+- เต็มจอ (fullscreen) และอยู่ด้านบนเสมอ (keep on top)
+- เปิด/ปิดคอนโทรลเลอร์ (`controllerEnabled`, ค่าเริ่มต้นเปิด)
+- หยุดวิดีโอเมื่อหน้าต่างเสียโฟกัส (`pauseOnBlur`, ค่าเริ่มต้นปิด)
+- ปุ่มเปิดตัวช่วยติดตั้งเครือข่าย/DIAL อีกครั้ง
+- ปุ่มตรวจสอบการอัปเดต และเลขรุ่นปัจจุบันของแอป
+
+การเปลี่ยนแต่ละค่ามีผลทันทีและบันทึกอัตโนมัติ ไม่ต้องกดปุ่มบันทึกแยก
+
+**English:** The settings window opens from the media window's menu (`settings`), the tray icon,
+`Ctrl+O`, or the controller's R3 button. It lets you change:
+
+- language (Thai/English)
+- the name shown over DIAL (`dialFriendlyName`) — applies immediately, visible right away to
+  phones discovering the device
+- fullscreen and keep-on-top
+- the controller toggle (`controllerEnabled`, on by default)
+- pause-on-blur (`pauseOnBlur`, off by default) — pauses playback when the window loses focus
+- a button to reopen the network/DIAL setup wizard
+- a button to check for updates, and the app's current version
+
+Every change applies immediately and saves automatically; there is no separate save button.
 
 ## Updating
 
