@@ -69,6 +69,9 @@ function createStubDom() {
     "language-th-label",
     "language-en",
     "language-en-label",
+    "start-with-windows-toggle",
+    "start-with-windows-label",
+    "start-with-windows-note",
     "tv-heading",
     "dial-name-label",
     "dial-name-input",
@@ -109,6 +112,10 @@ function createStubDom() {
     "version-line",
     "unofficial-text",
     "legal-files-text",
+    "copy-diagnostics-btn",
+    "diagnostics-output",
+    "diagnostics-result",
+    "diagnostics-note",
     "state-no-tauri",
     "no-tauri-title",
     "no-tauri-body",
@@ -118,7 +125,14 @@ function createStubDom() {
   });
   // Match the `hidden` attribute settings.html ships with statically, so the
   // stub starts from the same visibility as a freshly loaded real page.
-  ["settings-error", "check-updates-result", "state-no-tauri", "sleep-timer-remaining"].forEach((id) => {
+  [
+    "settings-error",
+    "check-updates-result",
+    "state-no-tauri",
+    "sleep-timer-remaining",
+    "diagnostics-output",
+    "diagnostics-result",
+  ].forEach((id) => {
     elements[id].hidden = true;
   });
   // Match the static `value` attributes on the two radios.
@@ -198,6 +212,7 @@ function baseSettings(overrides) {
       hardwareDecoding: true,
       touchOverlay: true,
       miniPlayer: false,
+      startWithWindows: false,
     },
     overrides,
   );
@@ -263,6 +278,9 @@ pending.push(
     // General
     assert.strictEqual(elements["language-en"].checked, true);
     assert.strictEqual(elements["language-th"].checked, false);
+    assert.strictEqual(elements["start-with-windows-toggle"].checked, false);
+    assert.ok(elements["start-with-windows-label"].textContent.length > 0);
+    assert.ok(elements["start-with-windows-note"].textContent.includes("Windows"));
 
     // TV and phone
     assert.strictEqual(elements["dial-name-input"].value, "Lalin Cast");
@@ -289,11 +307,25 @@ pending.push(
     assert.strictEqual(elements["controller-toggle"].checked, true);
     assert.strictEqual(elements["pause-on-blur-toggle"].checked, false);
     assert.strictEqual(elements["touch-overlay-toggle"].checked, true);
-    assert.strictEqual(elements["controls-table-body"].children.length, 11);
+    assert.strictEqual(elements["controls-table-body"].children.length, 13);
     const firstRow = elements["controls-table-body"].children[0];
     assert.strictEqual(firstRow.children.length, 3);
     assert.ok(firstRow.children[0].textContent.includes("Open settings"));
     assert.ok(firstRow.children[0].textContent.includes("เปิดการตั้งค่า"));
+
+    // The two wave-5 rows: playback speed and the help overlay, both
+    // bilingual with an empty ("—") controller column.
+    const speedRow = elements["controls-table-body"].children[11];
+    assert.ok(speedRow.children[0].textContent.includes("Playback speed"));
+    assert.ok(speedRow.children[0].textContent.includes("ความเร็วเล่น"));
+    assert.strictEqual(speedRow.children[1].textContent, "Shift+, / Shift+.");
+    assert.strictEqual(speedRow.children[2].textContent, "—");
+
+    const helpRow = elements["controls-table-body"].children[12];
+    assert.ok(helpRow.children[0].textContent.includes("help overlay"));
+    assert.ok(helpRow.children[0].textContent.includes("ผังคีย์ลัด"));
+    assert.strictEqual(helpRow.children[1].textContent, "? / F1");
+    assert.strictEqual(helpRow.children[2].textContent, "—");
 
     // Updates and about
     assert.ok(elements["version-line"].textContent.includes("0.4.0"));
@@ -301,6 +333,10 @@ pending.push(
     assert.ok(elements["legal-files-text"].textContent.includes("PRIVACY.md"));
     assert.ok(elements["legal-files-text"].textContent.includes("TERMS.md"));
     assert.ok(elements["legal-files-text"].textContent.includes("THIRD_PARTY_NOTICES.md"));
+    assert.ok(elements["copy-diagnostics-btn"].textContent.length > 0);
+    assert.ok(elements["diagnostics-note"].textContent.length > 0);
+    assert.strictEqual(elements["diagnostics-output"].hidden, true, "diagnostics textarea starts hidden");
+    assert.strictEqual(elements["diagnostics-result"].hidden, true);
 
     assert.strictEqual(elements["state-no-tauri"].hidden, true);
     assert.strictEqual(elements["settings-error"].hidden, true);
@@ -368,6 +404,7 @@ const BOOLEAN_CONTROLS = [
   { id: "pause-on-blur-toggle", key: "pauseOnBlur" },
   { id: "touch-overlay-toggle", key: "touchOverlay" },
   { id: "hardware-decoding-toggle", key: "hardwareDecoding" },
+  { id: "start-with-windows-toggle", key: "startWithWindows" },
 ];
 
 BOOLEAN_CONTROLS.forEach(({ id, key }) => {
@@ -464,6 +501,28 @@ pending.push(
     assert.strictEqual(elements["controller-toggle"].checked, true, "reverted to the last known-good value");
     assert.strictEqual(elements["settings-error"].hidden, false);
     assert.ok(elements["settings-error"].textContent.includes("store locked"));
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for startWithWindows reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("registry write failed")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ startWithWindows: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    // Simulate the user turning the control on (browsers flip `checked`
+    // before the `change` listener runs).
+    elements["start-with-windows-toggle"].checked = true;
+    elements["start-with-windows-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["start-with-windows-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("registry write failed"));
   }),
 );
 
@@ -665,6 +724,116 @@ pending.push(
     assert.strictEqual(elements["settings-error"].hidden, false);
     assert.ok(elements["settings-error"].textContent.includes("offline"));
     assert.strictEqual(elements["check-updates-result"].hidden, true);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Diagnostics snapshot (#copy-diagnostics-btn): fills the readonly textarea,
+// then best-effort copies to the clipboard.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("Copy diagnostics fills the textarea and reports success when the clipboard copy succeeds", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_diagnostics: () => Promise.resolve("Lalin Cast diagnostics\nversion: 0.4.0\n"),
+    });
+    const clipboardCalls = [];
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData(),
+      __TAURI__: tauri,
+      navigator: {
+        clipboard: {
+          writeText: (text) => {
+            clipboardCalls.push(text);
+            return Promise.resolve();
+          },
+        },
+      },
+    };
+    init(doc, win);
+
+    elements["copy-diagnostics-btn"].dispatch("click");
+    await nextTick();
+    await nextTick();
+
+    assert.strictEqual(invokeCalls[0].cmd, "settings_diagnostics");
+    assert.strictEqual(elements["diagnostics-output"].hidden, false);
+    assert.ok(elements["diagnostics-output"].value.includes("version: 0.4.0"));
+    assert.deepStrictEqual(clipboardCalls, ["Lalin Cast diagnostics\nversion: 0.4.0\n"]);
+    assert.strictEqual(elements["diagnostics-result"].hidden, false);
+    assert.ok(elements["diagnostics-result"].textContent.includes("Copied"));
+    assert.ok(elements["diagnostics-result"].textContent.includes("คัดลอกแล้ว"));
+    assert.strictEqual(elements["copy-diagnostics-btn"].disabled, false);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("Copy diagnostics shows the manual-copy fallback text when the clipboard write is rejected", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_diagnostics: () => Promise.resolve("Lalin Cast diagnostics\n"),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData(),
+      __TAURI__: tauri,
+      navigator: {
+        clipboard: {
+          writeText: () => Promise.reject(new Error("denied")),
+        },
+      },
+    };
+    init(doc, win);
+
+    elements["copy-diagnostics-btn"].dispatch("click");
+    await nextTick();
+    await nextTick();
+
+    assert.strictEqual(elements["diagnostics-output"].hidden, false, "textarea is still shown on a clipboard failure");
+    assert.strictEqual(elements["diagnostics-output"].value, "Lalin Cast diagnostics\n");
+    assert.strictEqual(elements["diagnostics-result"].hidden, false);
+    assert.ok(elements["diagnostics-result"].textContent.includes("Select the text and copy it"));
+    assert.ok(elements["diagnostics-result"].textContent.includes("เลือกข้อความแล้วคัดลอกเอง"));
+  }),
+);
+
+pending.push(
+  test("Copy diagnostics falls back to the manual-copy text when no Clipboard API is present", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_diagnostics: () => Promise.resolve("Lalin Cast diagnostics\n"),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri }; // no `navigator` at all
+    init(doc, win);
+
+    elements["copy-diagnostics-btn"].dispatch("click");
+    await nextTick();
+    await nextTick();
+
+    assert.strictEqual(elements["diagnostics-output"].hidden, false);
+    assert.strictEqual(elements["diagnostics-result"].hidden, false);
+    assert.ok(elements["diagnostics-result"].textContent.includes("Select the text and copy it"));
+  }),
+);
+
+pending.push(
+  test("Copy diagnostics failure shows an inline error and leaves the textarea hidden", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_diagnostics: () => Promise.reject(new Error("dial state unavailable")),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+
+    elements["copy-diagnostics-btn"].dispatch("click");
+    await nextTick();
+
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("dial state unavailable"));
+    assert.strictEqual(elements["diagnostics-output"].hidden, true, "textarea stays hidden when the invoke rejects");
+    assert.strictEqual(elements["diagnostics-result"].hidden, true);
+    assert.strictEqual(elements["copy-diagnostics-btn"].disabled, false);
   }),
 );
 
@@ -897,6 +1066,30 @@ pending.push(
     fake.timers[0].fn();
     await nextTick();
     assert.strictEqual(elements["dial-name-input"].value, "Server Name", "applied once focus is elsewhere");
+  }),
+);
+
+pending.push(
+  test("the refresh timer never touches the diagnostics textarea, even while it is focused with pending text", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_get: () => Promise.resolve(baseSettingsData({ settings: baseSettings({ startWithWindows: true }) })),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    elements["diagnostics-output"].value = "unsaved diagnostics text";
+    elements["diagnostics-output"].hidden = false;
+    doc.activeElement = elements["diagnostics-output"];
+
+    fake.timers[0].fn();
+    await nextTick();
+
+    assert.strictEqual(elements["diagnostics-output"].value, "unsaved diagnostics text", "refresh loop never writes this field");
+    assert.strictEqual(elements["diagnostics-output"].hidden, false, "refresh loop never hides this field either");
+    // Sanity: the poll itself did run and did repaint an unrelated control.
+    assert.strictEqual(elements["start-with-windows-toggle"].checked, true);
   }),
 );
 

@@ -1,0 +1,54 @@
+name: "ขอฟีเจอร์ใหม่ / Feature request"
+description: "เสนอฟีเจอร์หรือการปรับปรุงสำหรับ Lalin Cast / Suggest a feature or improvement for Lalin Cast"
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lalin Cast เป็นโปรเจกต์อิสระของบุคคลที่สาม ไม่ได้เกี่ยวข้อง ไม่ได้รับการรับรอง และไม่ได้เป็น
+        ส่วนหนึ่งของ YouTube หรือ Google การเปลี่ยนแปลงของ YouTube เองอยู่นอกเหนือการควบคุมของโปรเจกต์
+        นี้ — Lalin Cast is an independent, third-party project with no affiliation to, endorsement
+        from, or sponsorship by YouTube or Google. Changes to YouTube itself are outside this
+        project's control.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: "ค้นหา issue ซ้ำแล้ว / Searched existing issues"
+      options:
+        - label: >-
+            ฉันค้นหา issue/feature request ที่เปิดอยู่และที่ปิดไปแล้วก่อนเปิดเรื่องใหม่นี้ / I searched
+            both open and closed issues/feature requests before filing this one
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: "ปัญหาหรือความต้องการ / Problem or motivation"
+      description: >-
+        อธิบายสถานการณ์ที่ทำให้อยากได้ฟีเจอร์นี้ / Describe the situation that makes you want this
+        feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "ข้อเสนอ / Proposed solution"
+      description: "อยากให้ Lalin Cast ทำงานอย่างไร / How would you like Lalin Cast to behave?"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "ทางเลือกอื่นที่พิจารณาแล้ว (ไม่บังคับ) / Alternatives considered (optional)"
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "ข้อมูลเพิ่มเติม (ไม่บังคับ) / Additional context (optional)"
+      description: >-
+        ภาพหน้าจอ, ลิงก์อ้างอิง หรือบริบทอื่น — **ห้ามวางรหัสจับคู่ทีวี (TV pairing code), ข้อมูลบัญชี,
+        คุกกี้, โทเคน หรือ URL ที่มี query string** / Screenshots, references, or other context —
+        **never paste a TV pairing code, account data, cookies, tokens, or a URL with a query
+        string.**

@@ -69,3 +69,32 @@ touch overlay on a real touchscreen/handheld is tracked as human gates H10 and H
 |---|---|---|
 | `modules/h264ify.js` | `codecFilter` | Upstream itself is adapted from [erkserkserks/h264ify](https://github.com/erkserkserks/h264ify) (MIT); it overrides `HTMLMediaElement.prototype.canPlayType` (assigned through a detached `<video>` element's `__proto__`) and `window.MediaSource.isTypeSupported` behind four independent config flags (`h264ify_disable_webm`/`_vp8`/`_vp9`/`_av1`). Lalin Cast collapses these into a single `codecFilter` pref (`"off"` \| `"h264"`) gating only the `vp8`, `vp9` and `av01` substrings — matching the `codecAllowed(type, filter)` pure function and its tests — and does not add a separate generic `webm` check (containers using `vp8`/`vp9` are already denied by their own substring match); the upstream `configManager`/`require('../config')` read is replaced with `window.__LALIN_PREFS__.codecFilter` and the `lalin-cast-prefs` event, and the override runs only when `codecFilter === "h264"` instead of a persistent Electron config flag |
 | `modules/touch-support.js` | `touchOverlay` | Upstream creates two clusters of circular buttons (`bottomLeft`: left/right/up/down; `bottomRight`: back/select) that dispatch synthetic `keydown`/`keyup` events with a raw `keyCode` (`document.dispatchEvent(new Event(...))` plus a manual `.keyCode` assignment), auto-hides them 3 seconds after the last touch, and separately overrides Tectonic's `enableTouchSupport` feature switch for native scrollbars plus a `Space`-key scroll-prevention listener. Lalin Cast ports only the on-screen button overlay concept as `#lalin-cast-touch-overlay` (+ `<style id="lalin-cast-touch-style">`), shown after the first `touchstart` while the `touchOverlay` pref (`window.__LALIN_PREFS__`/`lalin-cast-prefs`) is on, using the same synthetic-key-dispatch helper as the `controller`/`keybinds` sections instead of duplicating upstream's own `simulateKeyDown`/`simulateKeyUp`; a pure `touchButtons(lang) -> spec[]` function replaces the hardcoded six-button set with a localized (Th/En) list that also adds a play-pause button not present upstream; the Tectonic `enableTouchSupport` feature-switch override and the `Space`-key scroll-prevention listener are Cobalt/Tectonic-specific and are not ported, since Lalin Cast's WebView2 surface has no equivalent native-scrollbar behavior to fix |
+
+## Wave 5 desktop integration — Lalin-original, not ported (2026-09-20)
+
+Wave 5 (`docs/plans/W5_DESKTOP_PLAN.md`) adds six pieces of desktop integration. None of them are
+ported from VacuumTube or any other upstream project — they have no upstream source path to record,
+unlike every table above. They are Lalin Cast's own design, written directly against Tauri v2's
+window/process APIs and the browser's standard Media Session API:
+
+- **Playback speed** (`injected.js` `speed` section, `Shift+,`/`Shift+.`, the `nextRate` pure
+  function and its on-screen indicator) — VacuumTube has no equivalent speed control or OSD.
+- **Help overlay** (`injected.js` `help` section, `?`/`F1`, the `helpRows(lang)` pure function) —
+  VacuumTube has an in-page settings overlay (see the wave 3 `modules/settings/index.js` row above,
+  which Lalin Cast deliberately does *not* port as an overlay, routing `Ctrl+O` to the native
+  settings window instead), but no bilingual keyboard/controller reference overlay.
+- **Now-playing title** (`injected.js` `media` section reading `navigator.mediaSession.metadata`,
+  Rust `MediaTitleState`, the window-title and tray-tooltip update) — a direct use of the standard
+  Media Session Web API, not a VacuumTube feature.
+- **Studio launcher lifecycle** (Rust `launch.rs`/`lifecycle.rs`, the `--lifecycle`/`--request-id`
+  CLI flags, the `lifecycle.json` state file) — implements the Lalin-specific
+  `MediaLifecycleCommand`/`MediaLifecycleState` contract from `docs/architecture/CAST_PLATFORM_PLAN.md`;
+  see `docs/architecture/CAST_LAUNCHER_IPC.md` for the full spec.
+- **Start with Windows** (Rust `autostart.rs`, the `reg.exe` Run-key writer) — a plain Windows
+  registry integration with no VacuumTube (Electron) counterpart in this port.
+- **Window-position memory** (Rust `window_bounds.rs`, the `restore_target` pure function) — a
+  Tauri-native window-geometry feature with no upstream equivalent.
+
+This is a documentation-only record of the port boundary. Runtime evidence for each of these is
+tracked as human gates H13–H16 in `docs/plans/W5_DESKTOP_PLAN.md` and is **NOT_RUN** until recorded
+there.

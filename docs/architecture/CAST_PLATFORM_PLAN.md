@@ -1,7 +1,7 @@
 ---
-version: "0.9.0b"
+version: "0.10.0b"
 created_at: "2026-09-19T18:01:18+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T21:00:00+07:00,LALIN"
+last_update: "2026-09-20T23:55:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -190,7 +190,7 @@ logged by the implementation.
 | Slice | Local result | Evidence |
 |---|---|---|
 | P1 fork/bootstrap | implemented | `reference/vacuumtube`, pinned source archive and provenance note |
-| P2 launcher/lifecycle | contract implemented; process smoke blocked | Tauri `media_lifecycle`, Studio launcher, status polling and single-instance focus patch; Electron minimal smoke hit host `0xC0000005` |
+| P2 launcher/lifecycle | CLI + state file slice implemented in wave 5 (see `CAST_LAUNCHER_IPC.md`); Studio driver and H13 evidence pending | Rust `launch.rs`/`lifecycle.rs`: `--lifecycle launch\|focus\|close --request-id <id>` CLI flags, atomic `lifecycle.json` state file (`starting`/`ready`/`stopped`/`failed`, written on every transition including `RunEvent::Exit`); full contract mapping, sequences and a PowerShell driver example documented in `CAST_LAUNCHER_IPC.md` — a real Studio-side driver run against a built `lalin-cast.exe` (launch/focus/close/timeout) remains open under human gate H13. Superseded by this row: the earlier Electron-era `media_lifecycle`/status-polling smoke (`0xC0000005`) predates the standalone Cast Tauri runtime and is not this contract's evidence |
 | T0 Tauri port boundary | implemented in docs | `ADR-001-CAST-TAURI-PORT.md` defines shell, WebView, User-Agent, permissions and ad-filter gates |
 | T1 Tauri shell candidate | **PASS / static + process start** | Rust checks/build pass; sandbox `cargo run` stays alive with a window handle and degrades settings persistence to a warning; GUI/WebView2 endpoint smoke pending |
 | T2 DIAL compatibility slice | **PASS / local + user-confirmed iPhone connection** | 3 Rust tests pass; supervised debug runtime binds LAN UDP 1900, returns HTTP `GET /` 200 with `Application-URL`, retries bind/rebinds on LAN address change, and persists the synced Leanback device id; after Ethernet changed to `Private` and app relaunch, user confirmed iPhone TV-code connection |
@@ -236,4 +236,5 @@ clean-VM, account or release readiness.
 | 0.7.0b | 2026-09-20 | beta | Added supervised DIAL retry/rebind and continuous Leanback device-id persistence after the disconnect RCA | uncommitted | LALIN |
 | 0.8.0b | 2026-09-20 | beta | Rebased the plan onto the standalone Lalin Cast repository and signed updater boundary | uncommitted | LALIN |
 | 0.9.0b | 2026-09-20 | beta | Repointed the dangling umbrella-repo ADR-001 link to its historical GitHub path and disambiguated it from the local ADR-001-CAST-TAURI-PORT.md | uncommitted | LALIN |
+| 0.10.0b | 2026-09-20 | beta | Wave 5: updated the P2 local-result row to record the CLI + `lifecycle.json` state-file slice (see `CAST_LAUNCHER_IPC.md`), separating it from the superseded Electron-era launcher smoke and leaving the Studio driver/H13 evidence open | uncommitted | LALIN |
 | 0.1.0b | 2026-09-19 | candidate | Proposed the Media vertical slice, ownership matrix, VacuumTube provenance and ordered gates | uncommitted | LALIN |

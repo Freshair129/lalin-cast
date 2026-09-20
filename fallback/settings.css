@@ -187,6 +187,35 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
+.diagnostics-output {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  margin: 8px 0;
+  padding: 8px 9px;
+  font-family:
+    ui-monospace,
+    "Cascadia Mono",
+    "Consolas",
+    monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.diagnostics-output[hidden] {
+  display: none;
+}
+
+.diagnostics-output:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .note-line {
   font-size: 12.5px;
   color: var(--text-muted);

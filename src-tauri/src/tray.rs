@@ -2,6 +2,15 @@
 //! live from the `lalin-cast-dial-status` event) and the menu offers quick
 //! access to the media window, the network/DIAL setup wizard, and updates.
 //! See the Wave 2 tray contract in docs/plans/W2_LIVING_ROOM_PLAN.md.
+//!
+//! Wave 5 adds a "now playing" line: `lib.rs`'s `lalin-cast-media` listener
+//! calls [`set_now_playing`] on every validated media event, which both
+//! updates the managed [`NowPlayingState`] and immediately redraws the
+//! tooltip. The DIAL-status listener below reads the same managed state so
+//! a DIAL transition never blows away a "now playing" line that is still
+//! current.
+
+use std::sync::Mutex;
 
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -21,8 +30,11 @@ const MENU_CHECK_UPDATES: &str = "tray-check-updates";
 const MENU_QUIT: &str = "tray-quit";
 
 /// `Lalin Cast · DIAL: <state>`, with ` (<host>:<port>)` appended only for
-/// the `ready` state (the other states never carry a host/port).
-fn tooltip_text(status: &DialStatus) -> String {
+/// the `ready` state (the other states never carry a host/port), plus a
+/// second line `▶ <title>` appended only when `now_playing` is
+/// `Some`/non-blank — callers only ever pass `Some` while a video is
+/// actually `playing` (never `paused`/`idle`), per the contract.
+fn tooltip_text(status: &DialStatus, now_playing: Option<&str>) -> String {
     let state_label = match status.state {
         DialStateKind::Starting => "starting",
         DialStateKind::Ready => "ready",
@@ -35,7 +47,41 @@ fn tooltip_text(status: &DialStatus) -> String {
             tooltip.push_str(&format!(" ({host}:{port})"));
         }
     }
+    if let Some(title) = now_playing.map(str::trim).filter(|title| !title.is_empty()) {
+        tooltip.push('\n');
+        tooltip.push_str("▶ ");
+        tooltip.push_str(title);
+    }
     tooltip
+}
+
+/// Managed: the title to append as `▶ <title>` while playing, or `None`
+/// while paused/idle/nothing has ever reported (see [`set_now_playing`]).
+#[derive(Default)]
+pub struct NowPlayingState(Mutex<Option<String>>);
+
+fn current_now_playing(app: &AppHandle) -> Option<String> {
+    app.try_state::<NowPlayingState>()
+        .and_then(|state| state.0.lock().ok().and_then(|guard| guard.clone()))
+}
+
+/// Updates the managed "now playing" title and immediately redraws the
+/// tray tooltip with it (combined with whatever DIAL status is current).
+/// Called from `lib.rs`'s `lalin-cast-media` listener with `Some(title)`
+/// only while the reported state is `playing`, `None` otherwise. A no-op
+/// if [`NowPlayingState`] is not managed yet.
+pub fn set_now_playing(app: &AppHandle, title: Option<&str>) {
+    let Some(state) = app.try_state::<NowPlayingState>() else {
+        return;
+    };
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = title.map(str::to_owned);
+    }
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let status = dial::read_status(app);
+        let now_playing = current_now_playing(app);
+        let _ = tray.set_tooltip(Some(tooltip_text(&status, now_playing.as_deref())));
+    }
 }
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> tauri::Result<Menu<R>> {
@@ -79,7 +125,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .tooltip(tooltip_text(&initial_status))
+        .tooltip(tooltip_text(&initial_status, None))
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_SHOW => focus_media(app),
             MENU_SETUP => setup::open_setup_window(app),
@@ -125,8 +171,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 _ => return,
             },
         };
+        let now_playing = current_now_playing(&tooltip_app);
         if let Some(tray) = tooltip_app.tray_by_id(TRAY_ID) {
-            let _ = tray.set_tooltip(Some(tooltip_text(&status)));
+            let _ = tray.set_tooltip(Some(tooltip_text(&status, now_playing.as_deref())));
         }
     });
 
@@ -176,7 +223,7 @@ mod tests {
             port: None,
             message: None,
         };
-        assert_eq!(tooltip_text(&starting), "Lalin Cast · DIAL: starting");
+        assert_eq!(tooltip_text(&starting, None), "Lalin Cast · DIAL: starting");
 
         let disabled = DialStatus {
             state: DialStateKind::Disabled,
@@ -184,7 +231,7 @@ mod tests {
             port: None,
             message: Some("DIAL could not start".to_owned()),
         };
-        assert_eq!(tooltip_text(&disabled), "Lalin Cast · DIAL: disabled");
+        assert_eq!(tooltip_text(&disabled, None), "Lalin Cast · DIAL: disabled");
     }
 
     #[test]
@@ -196,7 +243,7 @@ mod tests {
             message: None,
         };
         assert_eq!(
-            tooltip_text(&ready),
+            tooltip_text(&ready, None),
             "Lalin Cast · DIAL: ready (192.168.1.5:51234)"
         );
 
@@ -208,7 +255,30 @@ mod tests {
             port: Some(51234),
             message: Some("listener stopped".to_owned()),
         };
-        assert_eq!(tooltip_text(&degraded), "Lalin Cast · DIAL: degraded");
+        assert_eq!(tooltip_text(&degraded, None), "Lalin Cast · DIAL: degraded");
+    }
+
+    #[test]
+    fn tooltip_appends_the_now_playing_line_only_when_present() {
+        let ready = DialStatus {
+            state: DialStateKind::Ready,
+            host: Some("192.168.1.5".to_owned()),
+            port: Some(51234),
+            message: None,
+        };
+        assert_eq!(
+            tooltip_text(&ready, Some("Some Video - YouTube")),
+            "Lalin Cast · DIAL: ready (192.168.1.5:51234)\n▶ Some Video - YouTube"
+        );
+        // Blank/whitespace-only titles never append an empty line.
+        assert_eq!(
+            tooltip_text(&ready, Some("   ")),
+            "Lalin Cast · DIAL: ready (192.168.1.5:51234)"
+        );
+        assert_eq!(
+            tooltip_text(&ready, None),
+            "Lalin Cast · DIAL: ready (192.168.1.5:51234)"
+        );
     }
 
     #[test]

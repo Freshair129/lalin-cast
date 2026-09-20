@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder, Window}
 
 use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
-use crate::{setup, sleep, tray, updater, window_mode};
+use crate::{autostart, diagnostics, setup, sleep, tray, updater, window_mode};
 
 pub const SETTINGS_LABEL: &str = "settings";
 const SETTINGS_WINDOW_WIDTH: f64 = 560.0;
@@ -31,6 +31,7 @@ const KEY_CODEC_FILTER: &str = "codecFilter";
 const KEY_HARDWARE_DECODING: &str = "hardwareDecoding";
 const KEY_TOUCH_OVERLAY: &str = "touchOverlay";
 const KEY_MINI_PLAYER: &str = "miniPlayer";
+const KEY_START_WITH_WINDOWS: &str = "startWithWindows";
 
 /// The full set of user-editable settings, mirrored 1:1 onto individual
 /// `media-settings.json` store keys (unchanged keys from waves 1–3, plus
@@ -55,6 +56,7 @@ pub struct Settings {
     hardware_decoding: bool,
     touch_overlay: bool,
     mini_player: bool,
+    start_with_windows: bool,
 }
 
 /// Return type of `settings_get`/`settings_set` and the `settings`+`dial`+…
@@ -131,6 +133,7 @@ fn load_settings(app: &AppHandle) -> Settings {
         // Session-only: read live from window_mode's managed state, never
         // from the store (see the struct doc comment above).
         mini_player: window_mode::is_mini(app),
+        start_with_windows: crate::read_bool_setting_or(app, KEY_START_WITH_WINDOWS, false),
     }
 }
 
@@ -212,6 +215,11 @@ pub fn apply_setting(key: &str, value: &Value, current: &Settings) -> Result<Set
             next.mini_player = value
                 .as_bool()
                 .ok_or_else(|| "miniPlayer must be a boolean".to_owned())?;
+        }
+        KEY_START_WITH_WINDOWS => {
+            next.start_with_windows = value
+                .as_bool()
+                .ok_or_else(|| "startWithWindows must be a boolean".to_owned())?;
         }
         _ => return Err(format!("unknown settings key: {key}")),
     }
@@ -376,6 +384,15 @@ pub fn settings_set(
             window_mode::toggle_mini(app);
         }
         KEY_MINI_PLAYER => {}
+        // Persist only on success: a `reg.exe` failure must surface as an
+        // `Err` from this command (so the page shows an inline error) and
+        // must never leave the store claiming a state that was not
+        // actually reached in the registry.
+        KEY_START_WITH_WINDOWS => {
+            autostart::set_enabled(next.start_with_windows)
+                .map_err(|error| format!("could not update Windows startup: {error}"))?;
+            crate::write_bool_setting(app, KEY_START_WITH_WINDOWS, next.start_with_windows);
+        }
         _ => {
             // `apply_setting` already rejected every key outside the whitelist;
             // never panic in a handler reachable from page-supplied input.
@@ -418,6 +435,28 @@ pub async fn settings_check_updates(window: Window) -> Result<(), String> {
     Ok(())
 }
 
+/// Builds `diagnostics.rs`'s eleven-key settings snapshot for the
+/// `settings_diagnostics` command. Lives here (rather than in
+/// `diagnostics.rs`) so [`Settings`]'s fields never need to become `pub`
+/// just to be read by another module — this is the one place already
+/// allowed to see them.
+pub(crate) fn diagnostics_settings(app: &AppHandle) -> diagnostics::DiagnosticsSettings {
+    let settings = load_settings(app);
+    diagnostics::DiagnosticsSettings {
+        fullscreen: settings.fullscreen,
+        keep_on_top: settings.keep_on_top,
+        pause_on_blur: settings.pause_on_blur,
+        controller_enabled: settings.controller_enabled,
+        sleep_timer_minutes: settings.sleep_timer_minutes,
+        codec_filter: settings.codec_filter,
+        hardware_decoding: settings.hardware_decoding,
+        hardware_decoding_restart_required: crate::hardware_decoding_restart_required(app),
+        touch_overlay: settings.touch_overlay,
+        start_with_windows: settings.start_with_windows,
+        mini_player: settings.mini_player,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{apply_setting, Settings};
@@ -437,6 +476,7 @@ mod tests {
             hardware_decoding: true,
             touch_overlay: true,
             mini_player: false,
+            start_with_windows: false,
         }
     }
 
@@ -447,6 +487,19 @@ mod tests {
         // Also rejects a key that merely resembles a real one.
         assert!(apply_setting("Language", &json!("en"), &base()).is_err());
         assert!(apply_setting("__proto__", &json!("x"), &base()).is_err());
+    }
+
+    #[test]
+    fn rejects_window_bounds_which_is_rust_only_and_never_page_writable() {
+        // `windowBounds` is never a `Settings` field — it is written only by
+        // `window_bounds.rs` straight to the store — so `apply_setting`
+        // rejects it exactly like any other unrecognized key.
+        assert!(apply_setting(
+            "windowBounds",
+            &json!({"x": 0, "y": 0, "width": 1200, "height": 675}),
+            &base()
+        )
+        .is_err());
     }
 
     #[test]
@@ -464,6 +517,8 @@ mod tests {
         assert!(apply_setting("hardwareDecoding", &json!("yes"), &base()).is_err());
         assert!(apply_setting("touchOverlay", &json!("yes"), &base()).is_err());
         assert!(apply_setting("miniPlayer", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("startWithWindows", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("startWithWindows", &json!(null), &base()).is_err());
     }
 
     #[test]
@@ -550,5 +605,9 @@ mod tests {
 
         let next = apply_setting("miniPlayer", &json!(true), &current).expect("valid bool");
         assert!(next.mini_player);
+
+        let next = apply_setting("startWithWindows", &json!(true), &current).expect("valid bool");
+        assert!(next.start_with_windows);
+        assert_eq!(next.mini_player, current.mini_player);
     }
 }

@@ -37,11 +37,14 @@ const m = require("./injected.js");
 function makeElement() {
   // A real EventTarget (Node has this built in) so production code's
   // `element.addEventListener(...)` calls — used by the wave 4 touch
-  // overlay's buttons — work against this stub exactly like a real DOM
-  // element, on top of the same plain property bag every other section of
-  // injected.js already relies on (id, className, textContent, style,
-  // children, classList, appendChild).
+  // overlay's buttons and the wave 5 help overlay's backdrop click — work
+  // against this stub exactly like a real DOM element, on top of the same
+  // plain property bag every other section of injected.js already relies on
+  // (id, className, textContent, style, children, classList, appendChild,
+  // setAttribute/getAttribute — the last pair added for wave 5's
+  // role="dialog"/aria-modal help overlay).
   const classSet = new Set();
+  const attributes = {};
   const el = new EventTarget();
   Object.assign(el, {
     id: "",
@@ -58,8 +61,28 @@ function makeElement() {
       el.children.push(child);
       return child;
     },
+    setAttribute(name, value) { attributes[name] = String(value); },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null;
+    },
   });
   return el;
+}
+
+// Builds a keydown/ratechange/loadedmetadata-style Event whose `.target`
+// reports `target` when read, even though the event is dispatched directly
+// on `doc` (this file's established convention — see e.g. `keyEvent()`
+// above) rather than on `target` itself. `Event.prototype.target` is a
+// getter with no setter (assigning `.target` directly throws in strict
+// mode), but it IS configurable, so `defineProperty` can shadow it with an
+// own property; Node's dispatchEvent does not touch that own property, so
+// listeners invoked during dispatch see it. Used by the wave 5 speed
+// section (ratechange/loadedmetadata need to know which <video> changed).
+function eventWithTarget(type, target, fields) {
+  const e = new Event(type);
+  Object.defineProperty(e, "target", { value: target, configurable: true });
+  Object.assign(e, fields || {});
+  return e;
 }
 
 function makeContainer(registry) {
@@ -1157,6 +1180,590 @@ pending.push(
     return m.initSleepListener(doc, win, {}).then(() => {
       assert.strictEqual(doc.getElementById("lalin-cast-sleep-osd"), null);
     });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5 — Playback speed: nextRate, formatRate, createSpeedOsd, createSpeedControl
+// (docs/plans/W5_DESKTOP_PLAN.md, "Playback speed"). Lalin Cast original —
+// no VacuumTube module offers a speed control.
+// ---------------------------------------------------------------------------
+
+// Simulates a real HTMLMediaElement, where setting `.playbackRate`
+// synchronously fires its own "ratechange" (optionally clamped to a
+// different value than requested, e.g. a video that refuses to exceed 1x) —
+// used to prove createSpeedControl's internal "applying" flag actually
+// suppresses processing its own write, not just that the numbers happen to
+// end up the same either way.
+function makeSyncRatechangeVideo(doc, clamp) {
+  let rate = 1;
+  const video = {};
+  Object.defineProperty(video, "playbackRate", {
+    get() { return rate; },
+    set(v) {
+      rate = typeof clamp === "function" ? clamp(v) : v;
+      doc.dispatchEvent(eventWithTarget("ratechange", video));
+    },
+  });
+  return video;
+}
+
+pending.push(
+  test("nextRate: steps through SPEED_RATES and clamps at both ends", () => {
+    assert.strictEqual(m.nextRate(1, "up"), 1.25);
+    assert.strictEqual(m.nextRate(1, "down"), 0.75);
+    assert.strictEqual(m.nextRate(1.5, "up"), 1.75);
+    assert.strictEqual(m.nextRate(1.5, "down"), 1.25);
+    assert.strictEqual(m.nextRate(2, "up"), 2, "clamped at the top entry");
+    assert.strictEqual(m.nextRate(0.5, "down"), 0.5, "clamped at the bottom entry");
+    assert.strictEqual(m.nextRate(0.5, "up"), 0.75);
+    assert.strictEqual(m.nextRate(2, "down"), 1.75);
+  }),
+);
+
+pending.push(
+  test("nextRate: snaps an off-table value to the nearest entry instead of stepping, direction ignored; exact ties favor the lower entry", () => {
+    assert.strictEqual(m.nextRate(1.6, "up"), 1.5, "1.6 is nearer 1.5 than 1.75");
+    assert.strictEqual(m.nextRate(1.6, "down"), 1.5, "off-table snapping ignores direction");
+    assert.strictEqual(m.nextRate(1.125, "up"), 1, "exact tie between 1 and 1.25 keeps the lower entry");
+    assert.strictEqual(m.nextRate(3, "up"), 2, "snaps to the nearest entry even far outside the table");
+    assert.strictEqual(m.nextRate(0.1, "down"), 0.5);
+  }),
+);
+
+pending.push(
+  test("nextRate: a non-finite/missing current falls back to the documented 1x default", () => {
+    assert.strictEqual(m.nextRate(undefined, "up"), 1.25);
+    assert.strictEqual(m.nextRate(NaN, "down"), 0.75);
+    assert.strictEqual(m.nextRate(null, "up"), 1.25);
+  }),
+);
+
+pending.push(
+  test("formatRate: renders the documented \"N×\" text for every table entry", () => {
+    assert.strictEqual(m.formatRate(1), "1×");
+    assert.strictEqual(m.formatRate(1.5), "1.5×");
+    assert.strictEqual(m.formatRate(0.75), "0.75×");
+    assert.strictEqual(m.formatRate(1.25), "1.25×");
+    assert.strictEqual(m.formatRate(1.75), "1.75×");
+    assert.strictEqual(m.formatRate(2), "2×");
+    assert.strictEqual(m.formatRate(0.5), "0.5×");
+  }),
+);
+
+pending.push(
+  test("createSpeedOsd.show(rate): creates #lalin-cast-speed-osd + its own style, shows \"N×\", and auto-hides after 1.5s", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const osd = m.createSpeedOsd(doc, win);
+
+    osd.show(1.5);
+    const el = doc.getElementById(m.SPEED_OSD_ID);
+    assert.ok(el, "creates its own OSD element");
+    assert.strictEqual(el.textContent, "1.5×");
+    assert.notStrictEqual(el.style.display, "none");
+    const style = doc.getElementById("lalin-cast-speed-style");
+    assert.ok(style, "creates its own style element");
+
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.strictEqual(scheduled.ms, m.SPEED_OSD_VISIBLE_MS);
+    win.clearTimeout(scheduled.id);
+    scheduled.cb();
+    assert.strictEqual(el.style.display, "none");
+
+    osd.show(1);
+    assert.strictEqual(el.textContent, "1×");
+    assert.notStrictEqual(el.style.display, "none");
+    win.clearTimeout(win.__timeoutCalls[win.__timeoutCalls.length - 1].id);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: increase()/decrease() apply desiredRate to every video and report it back via getDesiredRate()", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const videoA = {};
+    const videoB = {};
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [videoA, videoB] });
+
+    control.increase();
+    assert.strictEqual(control.getDesiredRate(), 1.25);
+    assert.strictEqual(videoA.playbackRate, 1.25);
+    assert.strictEqual(videoB.playbackRate, 1.25);
+
+    control.decrease();
+    control.decrease();
+    assert.strictEqual(control.getDesiredRate(), 0.75);
+    assert.strictEqual(videoA.playbackRate, 0.75);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: increase()/decrease() call the OSD with the new rate", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const shown = [];
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [], osd: { show: (rate) => shown.push(rate) } });
+
+    control.increase();
+    control.increase();
+    control.decrease();
+
+    assert.deepStrictEqual(shown, [1.25, 1.5, 1.25]);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: loadedmetadata re-applies desiredRate to the newly loaded video only once it is not the 1x default", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [] });
+
+    const untouched = {};
+    doc.dispatchEvent(eventWithTarget("loadedmetadata", untouched));
+    assert.strictEqual(untouched.playbackRate, undefined, "desiredRate is still 1x; nothing should be written");
+
+    control.increase();
+    const fresh = {};
+    doc.dispatchEvent(eventWithTarget("loadedmetadata", fresh));
+    assert.strictEqual(fresh.playbackRate, 1.25);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: a ratechange we did NOT cause (YouTube's own speed menu) is adopted as the new desiredRate", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [] });
+
+    doc.dispatchEvent(eventWithTarget("ratechange", { playbackRate: 1.75 }));
+    assert.strictEqual(control.getDesiredRate(), 1.75);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: adopting an off-table external rate, then increase() snaps to the nearest table entry (does not fight it)", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const video = {};
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [video] });
+
+    doc.dispatchEvent(eventWithTarget("ratechange", { playbackRate: 1.6 }));
+    assert.strictEqual(control.getDesiredRate(), 1.6);
+
+    control.increase();
+    assert.strictEqual(control.getDesiredRate(), 1.5, "1.6 is off-table; increase() snaps to the nearest entry first");
+    assert.strictEqual(video.playbackRate, 1.5);
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: a ratechange fired synchronously by our own write is ignored, even when the video clamps to a different value", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const compliant = makeSyncRatechangeVideo(doc);
+    const clamped = makeSyncRatechangeVideo(doc, (v) => Math.min(v, 1)); // a video that refuses to exceed 1x
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [compliant, clamped] });
+
+    control.increase(); // desiredRate 1 -> 1.25
+
+    assert.strictEqual(
+      control.getDesiredRate(),
+      1.25,
+      "our own write's ratechange — even the clamped video's, reporting back a different rate — must not overwrite desiredRate",
+    );
+    assert.strictEqual(compliant.playbackRate, 1.25);
+    assert.strictEqual(clamped.playbackRate, 1, "the clamped video itself still only reaches 1x");
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: the load-algorithm ratechange (readyState 0) is not adopted, so the next loadedmetadata still re-applies desiredRate", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const video = { playbackRate: 1, readyState: 0 };
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [video] });
+
+    control.increase(); // desiredRate 1 -> 1.25, applied to `video`
+    assert.strictEqual(video.playbackRate, 1.25);
+
+    // YouTube moves on to the next video: the media load algorithm resets
+    // the rate to the default and fires ratechange while readyState is 0.
+    video.playbackRate = 1;
+    doc.dispatchEvent(eventWithTarget("ratechange", video));
+    assert.strictEqual(control.getDesiredRate(), 1.25, "a load-time reset must not be adopted");
+
+    video.readyState = 1;
+    doc.dispatchEvent(eventWithTarget("loadedmetadata", video));
+    assert.strictEqual(video.playbackRate, 1.25, "loadedmetadata re-applies the session rate");
+  }),
+);
+
+pending.push(
+  test("createSpeedControl: an asynchronous echo of our own write (rate already equal to desiredRate) is not treated as external", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const video = { playbackRate: 1, readyState: 4 };
+    const control = m.createSpeedControl(doc, win, { getVideos: () => [video] });
+
+    control.increase(); // 1.25
+    control.increase(); // 1.5
+    // The browser delivers the ratechange for our own write later, as a
+    // queued task — long after the `applying` flag is clear.
+    doc.dispatchEvent(eventWithTarget("ratechange", video));
+    assert.strictEqual(control.getDesiredRate(), 1.5);
+
+    // A genuinely external change (YouTube's own menu) is still adopted.
+    video.playbackRate = 0.75;
+    doc.dispatchEvent(eventWithTarget("ratechange", video));
+    assert.strictEqual(control.getDesiredRate(), 0.75);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5 — keybindFor: speed-up/speed-down/toggle-help, via both `code` and `key`
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("keybindFor: Shift+Period (code or '>' key) is speed-up; Ctrl/no-Shift must not match", () => {
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Period", shiftKey: true }), "speed-up");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: ">", shiftKey: true }), "speed-up");
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Period", shiftKey: true, ctrlKey: true }), null);
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Period", shiftKey: false }), null, "plain Period must not match");
+  }),
+);
+
+pending.push(
+  test("keybindFor: Shift+Comma (code or '<' key) is speed-down; Meta must not match", () => {
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Comma", shiftKey: true }), "speed-down");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "<", shiftKey: true }), "speed-down");
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Comma", shiftKey: true, metaKey: true }), null);
+  }),
+);
+
+pending.push(
+  test("keybindFor: Shift+Slash (code or '?' key) or bare F1 toggles help; F1 with any modifier must not match", () => {
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Slash", shiftKey: true }), "toggle-help");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "?", shiftKey: true }), "toggle-help");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "F1" }), "toggle-help");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "F1", ctrlKey: true }), null);
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "F1", shiftKey: true }), null, "F1 must be completely bare");
+    assert.strictEqual(m.keybindFor({ type: "keydown", key: "F1", metaKey: true }), null);
+    assert.strictEqual(m.keybindFor({ type: "keydown", code: "Slash", shiftKey: true, ctrlKey: true }), null);
+  }),
+);
+
+pending.push(
+  test("createKeybindHandler: Shift+./,/'?' drive speed-up/speed-down/toggle-help and stop the event before a later listener", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    let up = 0;
+    let down = 0;
+    let help = 0;
+    m.createKeybindHandler(doc, win, {
+      onSpeedUp: () => { up += 1; },
+      onSpeedDown: () => { down += 1; },
+      onToggleHelp: () => { help += 1; },
+    });
+
+    let laterSaw = 0;
+    doc.addEventListener("keydown", () => { laterSaw += 1; }, true);
+
+    doc.dispatchEvent(keyEvent({ key: ">", shiftKey: true }));
+    doc.dispatchEvent(keyEvent({ key: "<", shiftKey: true }));
+    doc.dispatchEvent(keyEvent({ key: "?", shiftKey: true }));
+    doc.dispatchEvent(keyEvent({ key: "F1" }));
+
+    assert.strictEqual(up, 1);
+    assert.strictEqual(down, 1);
+    assert.strictEqual(help, 2, "both ? and F1 toggle help");
+    assert.strictEqual(laterSaw, 0, "stopImmediatePropagation must block a later capture listener for all four");
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5 — Help overlay: helpRows, createHelpOverlay
+// (docs/plans/W5_DESKTOP_PLAN.md, "Help overlay"). Lalin Cast original.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("helpRows: th and en return the same number of rows, and no cell (action/keyboard/controller) is empty", () => {
+    const th = m.helpRows("th");
+    const en = m.helpRows("en");
+    assert.strictEqual(th.length, en.length);
+    assert.ok(th.length >= 10, "covers every binding the contract lists");
+    [...th, ...en].forEach((row) => {
+      ["action", "keyboard", "controller"].forEach((field) => {
+        assert.strictEqual(typeof row[field], "string");
+        assert.ok(row[field].length > 0, `${field} must not be empty`);
+      });
+    });
+  }),
+);
+
+pending.push(
+  test("helpRows: covers every keyboard shortcut documented in README.md", () => {
+    const keyboardCells = m.helpRows("en").map((r) => r.keyboard);
+    [
+      "Ctrl+O", "F11", "Ctrl+Shift+M", "Shift+Enter", "Right-click",
+      "+ / -", "M", "C", "Ctrl+Shift+C", "Shift+, / Shift+.", "? / F1",
+    ].forEach((expected) => {
+      assert.ok(keyboardCells.includes(expected), `missing a row for ${expected}`);
+    });
+  }),
+);
+
+pending.push(
+  test("createHelpOverlay: toggle() builds #lalin-cast-help lazily with role=dialog/aria-modal=true and one row per helpRows() entry", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "en" });
+
+    assert.strictEqual(doc.getElementById(m.HELP_OVERLAY_ID), null, "not built until the first toggle");
+
+    overlay.toggle();
+    assert.strictEqual(overlay.isOpen(), true);
+
+    const el = doc.getElementById(m.HELP_OVERLAY_ID);
+    assert.ok(el, "built lazily on first toggle");
+    assert.strictEqual(el.getAttribute("role"), "dialog");
+    assert.strictEqual(el.getAttribute("aria-modal"), "true");
+    assert.notStrictEqual(el.style.display, "none");
+
+    const style = doc.getElementById("lalin-cast-help-style");
+    assert.ok(style, "creates its own style element");
+
+    overlay.toggle();
+    assert.strictEqual(overlay.isOpen(), false);
+    assert.strictEqual(el.style.display, "none");
+  }),
+);
+
+pending.push(
+  test("createHelpOverlay: Escape (real key, or the controller's synthetic keyCode 27) closes it and stops the event", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "th" });
+    overlay.toggle();
+
+    let laterSaw = 0;
+    doc.addEventListener("keydown", () => { laterSaw += 1; }, true);
+
+    doc.dispatchEvent(keyEvent({ key: "Escape" }));
+    assert.strictEqual(overlay.isOpen(), false);
+    assert.strictEqual(laterSaw, 0, "stopImmediatePropagation must block a later listener");
+
+    overlay.toggle(); // reopen
+    const synthetic = new Event("keydown");
+    synthetic.keyCode = 27; // controller B button / right-click "back" dispatch — no .key set
+    doc.dispatchEvent(synthetic);
+    assert.strictEqual(overlay.isOpen(), false);
+  }),
+);
+
+pending.push(
+  test("createHelpOverlay: while open, Arrow/Enter keydowns (real key or synthetic keyCode) are stopped; everything else passes through", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "th" });
+    overlay.toggle();
+
+    const laterSaw = [];
+    doc.addEventListener("keydown", (e) => { laterSaw.push(e.key || e.keyCode); }, true);
+
+    doc.dispatchEvent(keyEvent({ key: "ArrowUp" }));
+    doc.dispatchEvent(keyEvent({ key: "ArrowDown" }));
+    doc.dispatchEvent(keyEvent({ key: "ArrowLeft" }));
+    doc.dispatchEvent(keyEvent({ key: "ArrowRight" }));
+    doc.dispatchEvent(keyEvent({ key: "Enter" }));
+    const syntheticUp = new Event("keydown");
+    syntheticUp.keyCode = 38; // the gamepad D-pad's synthetic dispatch — no .key set
+    doc.dispatchEvent(syntheticUp);
+    assert.deepStrictEqual(laterSaw, [], "all six navigation keydowns must be stopped before reaching a later listener");
+
+    doc.dispatchEvent(keyEvent({ key: "a" }));
+    assert.deepStrictEqual(laterSaw, ["a"], "an unrelated key must still pass through while open");
+    assert.strictEqual(overlay.isOpen(), true, "none of the navigation keys close the overlay");
+  }),
+);
+
+pending.push(
+  test("createHelpOverlay: Escape/Arrow keydowns do nothing while the overlay is closed", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "th" });
+
+    let laterSaw = 0;
+    doc.addEventListener("keydown", () => { laterSaw += 1; }, true);
+    doc.dispatchEvent(keyEvent({ key: "Escape" }));
+    doc.dispatchEvent(keyEvent({ key: "ArrowUp" }));
+
+    assert.strictEqual(laterSaw, 2, "neither keydown is intercepted while the overlay is closed");
+    assert.strictEqual(overlay.isOpen(), false);
+  }),
+);
+
+pending.push(
+  test("createHelpOverlay: a click on the backdrop closes it; a click that bubbled from inside the panel does not", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "th" });
+    overlay.toggle();
+    const el = doc.getElementById(m.HELP_OVERLAY_ID);
+
+    el.dispatchEvent(eventWithTarget("click", { id: "some-row-span" }));
+    assert.strictEqual(overlay.isOpen(), true, "a click that bubbled up from inside the panel must not close it");
+
+    el.dispatchEvent(new Event("click")); // no override -> target is el itself, i.e. the backdrop
+    assert.strictEqual(overlay.isOpen(), false);
+  }),
+);
+
+pending.push(
+  test("integration: the toggle-help keybind (via createKeybindHandler) opens then closes the help overlay", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createHelpOverlay(doc, win, { getLang: () => "en" });
+    m.createKeybindHandler(doc, win, { onToggleHelp: () => overlay.toggle() });
+
+    doc.dispatchEvent(keyEvent({ key: "?", shiftKey: true }));
+    assert.strictEqual(overlay.isOpen(), true);
+
+    doc.dispatchEvent(keyEvent({ key: "?", shiftKey: true }));
+    assert.strictEqual(overlay.isOpen(), false);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 5 — Now-playing: mediaStateFor, readMediaTitle, createMediaSignal
+// (docs/plans/W5_DESKTOP_PLAN.md, "Now-playing"). Lalin Cast original.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("mediaStateFor: play/pause/ended/emptied map to playing/paused/idle/idle; anything else is null", () => {
+    assert.strictEqual(m.mediaStateFor("play"), "playing");
+    assert.strictEqual(m.mediaStateFor("pause"), "paused");
+    assert.strictEqual(m.mediaStateFor("ended"), "idle");
+    assert.strictEqual(m.mediaStateFor("emptied"), "idle");
+    assert.strictEqual(m.mediaStateFor("timeupdate"), null);
+    assert.strictEqual(m.mediaStateFor(undefined), null);
+  }),
+);
+
+pending.push(
+  test("readMediaTitle: reads navigator.mediaSession.metadata.title, trimmed and capped at 200 chars; \"\" when absent/malformed", () => {
+    assert.strictEqual(m.readMediaTitle({ navigator: {} }), "");
+    assert.strictEqual(m.readMediaTitle({ navigator: { mediaSession: {} } }), "");
+    assert.strictEqual(m.readMediaTitle({ navigator: { mediaSession: { metadata: {} } } }), "");
+    assert.strictEqual(m.readMediaTitle({ navigator: { mediaSession: { metadata: { title: 42 } } } }), "", "non-string title is ignored");
+    assert.strictEqual(
+      m.readMediaTitle({ navigator: { mediaSession: { metadata: { title: "  Hello there  " } } } }),
+      "Hello there",
+    );
+    const long = "x".repeat(250);
+    assert.strictEqual(
+      m.readMediaTitle({ navigator: { mediaSession: { metadata: { title: long } } } }),
+      "x".repeat(200),
+    );
+    assert.strictEqual(m.readMediaTitle(null), "");
+    assert.strictEqual(m.readMediaTitle(undefined), "");
+  }),
+);
+
+pending.push(
+  test("createMediaSignal: play/pause/ended/emptied on doc (capture) emit the documented lalin-cast-media payload, title from mediaSession only", () => {
+    const doc = createStubDoc();
+    doc.title = "Should never be read — see the contract's \"never read from YouTube's DOM\"";
+    const win = createStubWin({ navigator: { mediaSession: { metadata: { title: "My Video" } } } });
+    const emitted = [];
+    m.createMediaSignal(doc, win, { emit: (state, title) => { emitted.push({ state, title }); } });
+
+    doc.dispatchEvent(new Event("play"));
+    doc.dispatchEvent(new Event("pause"));
+    doc.dispatchEvent(new Event("ended"));
+    doc.dispatchEvent(new Event("emptied"));
+
+    assert.deepStrictEqual(emitted.map((e) => e.state), ["playing", "paused", "idle", "idle"]);
+    emitted.forEach((e) => assert.strictEqual(e.title, "My Video"));
+  }),
+);
+
+pending.push(
+  test("createMediaSignal: title is \"\" with no mediaSession at all", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const emitted = [];
+    m.createMediaSignal(doc, win, { emit: (state, title) => { emitted.push({ state, title }); } });
+
+    doc.dispatchEvent(new Event("play"));
+    assert.strictEqual(emitted[0].title, "");
+  }),
+);
+
+pending.push(
+  test("createMediaSignal: a delayed re-read fires exactly 2s after play, picking up a title that only just became available", () => {
+    const doc = createStubDoc();
+    const mediaSession = { metadata: { title: "" } };
+    const win = createStubWin({ navigator: { mediaSession } });
+    const emitted = [];
+    m.createMediaSignal(doc, win, { emit: (state, title) => { emitted.push({ state, title }); } });
+
+    doc.dispatchEvent(new Event("play"));
+    assert.strictEqual(emitted.length, 1);
+    assert.strictEqual(emitted[0].title, "");
+
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.strictEqual(scheduled.ms, 2000);
+    mediaSession.metadata.title = "Now Available";
+    win.clearTimeout(scheduled.id);
+    scheduled.cb();
+
+    assert.strictEqual(emitted.length, 2);
+    assert.strictEqual(emitted[1].state, "playing");
+    assert.strictEqual(emitted[1].title, "Now Available");
+  }),
+);
+
+pending.push(
+  test("createMediaSignal: a pause/ended/emptied within 2s of play cancels the pending re-read (no trailing \"playing\")", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const cleared = [];
+    win.clearTimeout = (id) => {
+      cleared.push(id);
+      clearTimeout(id);
+    };
+    const emitted = [];
+    m.createMediaSignal(doc, win, { emit: (state, title) => { emitted.push({ state, title }); } });
+
+    doc.dispatchEvent(new Event("play"));
+    const scheduled = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.strictEqual(scheduled.ms, 2000);
+
+    doc.dispatchEvent(new Event("pause"));
+    assert.ok(cleared.includes(scheduled.id), "pause must cancel the pending re-read");
+    assert.deepStrictEqual(emitted.map((e) => e.state), ["playing", "paused"]);
+
+    // A second play schedules a fresh re-read; the first one stays cancelled.
+    doc.dispatchEvent(new Event("play"));
+    const again = win.__timeoutCalls[win.__timeoutCalls.length - 1];
+    assert.notStrictEqual(again.id, scheduled.id);
+    win.clearTimeout(again.id);
+  }),
+);
+
+pending.push(
+  test("createMediaSignal: pause/ended/emptied do NOT schedule a delayed re-read", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    m.createMediaSignal(doc, win, { emit: () => {} });
+    const before = win.__timeoutCalls.length;
+
+    doc.dispatchEvent(new Event("pause"));
+    doc.dispatchEvent(new Event("ended"));
+    doc.dispatchEvent(new Event("emptied"));
+
+    assert.strictEqual(win.__timeoutCalls.length, before);
   }),
 );
 

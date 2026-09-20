@@ -71,6 +71,13 @@ p.muted {
   margin-top: 8px;
 }
 
+p.retry-line {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
 p[hidden] {
   display: none;
 }
