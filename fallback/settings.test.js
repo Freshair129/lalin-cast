@@ -72,6 +72,14 @@ function createStubDom() {
     "start-with-windows-toggle",
     "start-with-windows-label",
     "start-with-windows-note",
+    "ui-scale-label",
+    "ui-scale-select",
+    "ui-scale-note",
+    "profile-legend",
+    "profile-living-room-btn",
+    "profile-handheld-btn",
+    "profile-desktop-btn",
+    "profile-note",
     "tv-heading",
     "dial-name-label",
     "dial-name-input",
@@ -87,6 +95,8 @@ function createStubDom() {
     "hardware-decoding-toggle",
     "hardware-decoding-label",
     "hardware-decoding-note",
+    "sleep-at-end-toggle",
+    "sleep-at-end-label",
     "display-heading",
     "fullscreen-toggle",
     "fullscreen-label",
@@ -116,6 +126,11 @@ function createStubDom() {
     "diagnostics-output",
     "diagnostics-result",
     "diagnostics-note",
+    "copy-launch-command-btn",
+    "launch-command-output",
+    "launch-command-result",
+    "launch-command-note",
+    "reset-defaults-btn",
     "state-no-tauri",
     "no-tauri-title",
     "no-tauri-body",
@@ -132,6 +147,8 @@ function createStubDom() {
     "sleep-timer-remaining",
     "diagnostics-output",
     "diagnostics-result",
+    "launch-command-output",
+    "launch-command-result",
   ].forEach((id) => {
     elements[id].hidden = true;
   });
@@ -213,6 +230,8 @@ function baseSettings(overrides) {
       touchOverlay: true,
       miniPlayer: false,
       startWithWindows: false,
+      uiScale: 100,
+      sleepAtEndOfVideo: false,
     },
     overrides,
   );
@@ -242,6 +261,35 @@ function makeWinWithTimers(data, tauri, fake) {
     __TAURI__: tauri,
     setInterval: fake.setInterval,
     clearInterval: fake.clearInterval,
+  };
+}
+
+// A fake one-shot timer for the reset-to-defaults 5s confirm window, kept
+// separate from makeFakeTimers()'s setInterval/clearInterval above since
+// #reset-defaults-btn uses win.setTimeout/win.clearTimeout.
+function makeFakeOneShotTimers() {
+  const timers = [];
+  let nextId = 1;
+  return {
+    setTimeout(fn, ms) {
+      const id = nextId++;
+      timers.push({ id, fn, ms, cleared: false });
+      return id;
+    },
+    clearTimeout(id) {
+      const t = timers.find((t) => t.id === id);
+      if (t) t.cleared = true;
+    },
+    timers,
+  };
+}
+
+function makeWinWithOneShotTimers(data, tauri, fake) {
+  return {
+    __LALIN_SETTINGS__: data,
+    __TAURI__: tauri,
+    setTimeout: fake.setTimeout,
+    clearTimeout: fake.clearTimeout,
   };
 }
 
@@ -281,6 +329,13 @@ pending.push(
     assert.strictEqual(elements["start-with-windows-toggle"].checked, false);
     assert.ok(elements["start-with-windows-label"].textContent.length > 0);
     assert.ok(elements["start-with-windows-note"].textContent.includes("Windows"));
+    assert.strictEqual(elements["ui-scale-select"].children.length, 5);
+    assert.strictEqual(elements["ui-scale-select"].value, "100");
+    assert.ok(elements["ui-scale-note"].textContent.length > 0);
+    assert.ok(elements["profile-living-room-btn"].textContent.length > 0);
+    assert.ok(elements["profile-handheld-btn"].textContent.length > 0);
+    assert.ok(elements["profile-desktop-btn"].textContent.length > 0);
+    assert.ok(elements["profile-note"].textContent.length > 0);
 
     // TV and phone
     assert.strictEqual(elements["dial-name-input"].value, "Lalin Cast");
@@ -297,6 +352,8 @@ pending.push(
     assert.ok(elements["codec-filter-note"].textContent.length > 0);
     assert.strictEqual(elements["hardware-decoding-toggle"].checked, true);
     assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "info");
+    assert.strictEqual(elements["sleep-at-end-toggle"].checked, false);
+    assert.ok(elements["sleep-at-end-label"].textContent.length > 0);
 
     // Display
     assert.strictEqual(elements["fullscreen-toggle"].checked, false);
@@ -325,7 +382,7 @@ pending.push(
     assert.ok(helpRow.children[0].textContent.includes("help overlay"));
     assert.ok(helpRow.children[0].textContent.includes("ผังคีย์ลัด"));
     assert.strictEqual(helpRow.children[1].textContent, "? / F1");
-    assert.strictEqual(helpRow.children[2].textContent, "—");
+    assert.strictEqual(helpRow.children[2].textContent, "Y", "wave 6: controller Y button also opens help");
 
     // Updates and about
     assert.ok(elements["version-line"].textContent.includes("0.4.0"));
@@ -337,6 +394,11 @@ pending.push(
     assert.ok(elements["diagnostics-note"].textContent.length > 0);
     assert.strictEqual(elements["diagnostics-output"].hidden, true, "diagnostics textarea starts hidden");
     assert.strictEqual(elements["diagnostics-result"].hidden, true);
+    assert.ok(elements["copy-launch-command-btn"].textContent.length > 0);
+    assert.ok(elements["launch-command-note"].textContent.length > 0);
+    assert.strictEqual(elements["launch-command-output"].hidden, true, "launch-command textarea starts hidden");
+    assert.strictEqual(elements["launch-command-result"].hidden, true);
+    assert.ok(elements["reset-defaults-btn"].textContent.length > 0);
 
     assert.strictEqual(elements["state-no-tauri"].hidden, true);
     assert.strictEqual(elements["settings-error"].hidden, true);
@@ -405,6 +467,7 @@ const BOOLEAN_CONTROLS = [
   { id: "touch-overlay-toggle", key: "touchOverlay" },
   { id: "hardware-decoding-toggle", key: "hardwareDecoding" },
   { id: "start-with-windows-toggle", key: "startWithWindows" },
+  { id: "sleep-at-end-toggle", key: "sleepAtEndOfVideo" },
 ];
 
 BOOLEAN_CONTROLS.forEach(({ id, key }) => {
@@ -837,6 +900,309 @@ pending.push(
   }),
 );
 
+// ---------------------------------------------------------------------------
+// UI scale (#ui-scale-select)
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("selecting a UI scale calls settings_set('uiScale', <int>) and applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_set: (args) =>
+        Promise.resolve({
+          settings: baseSettings({ uiScale: args.value }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+
+    elements["ui-scale-select"].value = "150";
+    elements["ui-scale-select"].dispatch("change");
+    await nextTick();
+
+    assert.deepStrictEqual(invokeCalls[0].args, { key: "uiScale", value: 150 });
+    assert.strictEqual(elements["ui-scale-select"].value, "150");
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for an out-of-set UI scale reverts the select and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () => Promise.reject(new Error("value not in allowed set")),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ uiScale: 100 }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["ui-scale-select"].value = "200";
+    elements["ui-scale-select"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["ui-scale-select"].value, "100", "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("not in allowed set"));
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Settings profiles (#profile-living-room-btn / #profile-handheld-btn /
+// #profile-desktop-btn)
+// ---------------------------------------------------------------------------
+
+[
+  { id: "profile-living-room-btn", profile: "livingRoom" },
+  { id: "profile-handheld-btn", profile: "handheld" },
+  { id: "profile-desktop-btn", profile: "desktop" },
+].forEach(({ id, profile }) => {
+  pending.push(
+    test(`clicking #${id} invokes settings_apply_profile({ profile: "${profile}" }) and re-renders the snapshot`, async () => {
+      const { doc, elements } = createStubDom();
+      const { tauri, invokeCalls } = makeTauriStub({
+        settings_apply_profile: (args) =>
+          Promise.resolve({
+            settings: baseSettings({ fullscreen: true, uiScale: 150 }),
+            dial: baseSettingsData().dial,
+            sleepRemainingSeconds: null,
+            hardwareDecodingRestartRequired: false,
+          }),
+      });
+      const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+      init(doc, win);
+
+      elements[id].dispatch("click");
+      await nextTick();
+
+      assert.strictEqual(invokeCalls[0].cmd, "settings_apply_profile");
+      assert.deepStrictEqual(invokeCalls[0].args, { profile });
+      assert.strictEqual(elements["fullscreen-toggle"].checked, true);
+      assert.strictEqual(elements["ui-scale-select"].value, "150");
+      assert.strictEqual(elements["settings-error"].hidden, true);
+      assert.strictEqual(elements[id].disabled, false);
+    }),
+  );
+});
+
+pending.push(
+  test("a settings_apply_profile rejection shows an inline error and leaves the settings unchanged", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_apply_profile: () => Promise.reject(new Error("unknown profile")),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ fullscreen: false, uiScale: 100 }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["profile-handheld-btn"].dispatch("click");
+    await nextTick();
+
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("unknown profile"));
+    assert.strictEqual(elements["fullscreen-toggle"].checked, false, "unchanged on rejection");
+    assert.strictEqual(elements["ui-scale-select"].value, "100", "unchanged on rejection");
+    assert.strictEqual(elements["profile-handheld-btn"].disabled, false);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Launch command (#copy-launch-command-btn) — same pattern as diagnostics.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("Copy launch command fills the textarea and reports success when the clipboard copy succeeds", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_launch_command: () => Promise.resolve('"C:\\Program Files\\Lalin Cast\\lalin-cast.exe" --fullscreen'),
+    });
+    const clipboardCalls = [];
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData(),
+      __TAURI__: tauri,
+      navigator: {
+        clipboard: {
+          writeText: (text) => {
+            clipboardCalls.push(text);
+            return Promise.resolve();
+          },
+        },
+      },
+    };
+    init(doc, win);
+
+    elements["copy-launch-command-btn"].dispatch("click");
+    await nextTick();
+    await nextTick();
+
+    assert.strictEqual(invokeCalls[0].cmd, "settings_launch_command");
+    assert.strictEqual(elements["launch-command-output"].hidden, false);
+    assert.strictEqual(elements["launch-command-output"].value, '"C:\\Program Files\\Lalin Cast\\lalin-cast.exe" --fullscreen');
+    assert.deepStrictEqual(clipboardCalls, ['"C:\\Program Files\\Lalin Cast\\lalin-cast.exe" --fullscreen']);
+    assert.strictEqual(elements["launch-command-result"].hidden, false);
+    assert.ok(elements["launch-command-result"].textContent.includes("Copied"));
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("Copy launch command shows the manual-copy fallback text when the clipboard write is rejected", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_launch_command: () => Promise.resolve('"C:\\lalin-cast.exe" --fullscreen'),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData(),
+      __TAURI__: tauri,
+      navigator: {
+        clipboard: {
+          writeText: () => Promise.reject(new Error("denied")),
+        },
+      },
+    };
+    init(doc, win);
+
+    elements["copy-launch-command-btn"].dispatch("click");
+    await nextTick();
+    await nextTick();
+
+    assert.strictEqual(elements["launch-command-output"].hidden, false);
+    assert.strictEqual(elements["launch-command-result"].hidden, false);
+    assert.ok(elements["launch-command-result"].textContent.includes("Select the text and copy it"));
+  }),
+);
+
+pending.push(
+  test("Copy launch command failure shows an inline error and leaves the textarea hidden", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_launch_command: () => Promise.reject(new Error("exe path unavailable")),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+
+    elements["copy-launch-command-btn"].dispatch("click");
+    await nextTick();
+
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("exe path unavailable"));
+    assert.strictEqual(elements["launch-command-output"].hidden, true);
+    assert.strictEqual(elements["launch-command-result"].hidden, true);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Reset to defaults (#reset-defaults-btn) — two-step confirm, no native
+// dialog. Uses a fake win.setTimeout/clearTimeout (separate from the
+// setInterval-based refresh loop).
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("first click on reset-defaults arms a 5s confirm window and shows the bilingual confirm text", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const fake = makeFakeOneShotTimers();
+    const win = makeWinWithOneShotTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    const originalLabel = elements["reset-defaults-btn"].textContent;
+    elements["reset-defaults-btn"].dispatch("click");
+
+    assert.notStrictEqual(elements["reset-defaults-btn"].textContent, originalLabel);
+    assert.ok(elements["reset-defaults-btn"].textContent.includes("Press again within 5 s to confirm"));
+    assert.ok(elements["reset-defaults-btn"].textContent.includes("กดอีกครั้งภายใน 5 วินาทีเพื่อยืนยัน"));
+    assert.strictEqual(fake.timers.length, 1);
+  }),
+);
+
+pending.push(
+  test("a second click within the window invokes settings_reset_defaults and re-renders the snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_reset_defaults: () =>
+        Promise.resolve({
+          settings: baseSettings({ fullscreen: false, uiScale: 100, sleepTimerMinutes: 0 }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const fake = makeFakeOneShotTimers();
+    const win = makeWinWithOneShotTimers(
+      baseSettingsData({ settings: baseSettings({ fullscreen: true, uiScale: 150 }) }),
+      tauri,
+      fake,
+    );
+    init(doc, win);
+
+    const originalLabel = elements["reset-defaults-btn"].textContent;
+    elements["reset-defaults-btn"].dispatch("click");
+    elements["reset-defaults-btn"].dispatch("click");
+    await nextTick();
+
+    assert.strictEqual(invokeCalls[0].cmd, "settings_reset_defaults");
+    assert.strictEqual(invokeCalls[0].args, undefined);
+    assert.strictEqual(elements["fullscreen-toggle"].checked, false);
+    assert.strictEqual(elements["ui-scale-select"].value, "100");
+    assert.strictEqual(elements["reset-defaults-btn"].textContent, originalLabel, "label restored after a successful reset");
+    assert.strictEqual(elements["reset-defaults-btn"].disabled, false);
+    assert.ok(fake.timers[0].cleared, "the pending confirm timer is cancelled by the second click");
+  }),
+);
+
+pending.push(
+  test("a settings_reset_defaults rejection shows an inline error and restores the label", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_reset_defaults: () => Promise.reject(new Error("reset failed")),
+    });
+    const fake = makeFakeOneShotTimers();
+    const win = makeWinWithOneShotTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    const originalLabel = elements["reset-defaults-btn"].textContent;
+    elements["reset-defaults-btn"].dispatch("click");
+    elements["reset-defaults-btn"].dispatch("click");
+    await nextTick();
+
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("reset failed"));
+    assert.strictEqual(elements["reset-defaults-btn"].textContent, originalLabel);
+    assert.strictEqual(elements["reset-defaults-btn"].disabled, false);
+  }),
+);
+
+pending.push(
+  test("letting the confirm window expire restores the original label without calling settings_reset_defaults", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub();
+    const fake = makeFakeOneShotTimers();
+    const win = makeWinWithOneShotTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    const originalLabel = elements["reset-defaults-btn"].textContent;
+    elements["reset-defaults-btn"].dispatch("click");
+    assert.notStrictEqual(elements["reset-defaults-btn"].textContent, originalLabel);
+
+    // Simulate the 5s timer firing (expiry) rather than a second click.
+    fake.timers[0].fn();
+
+    assert.strictEqual(elements["reset-defaults-btn"].textContent, originalLabel);
+    assert.strictEqual(invokeCalls.length, 0, "expiry never calls settings_reset_defaults");
+
+    // A click after expiry re-arms rather than confirming immediately.
+    elements["reset-defaults-btn"].dispatch("click");
+    assert.notStrictEqual(elements["reset-defaults-btn"].textContent, originalLabel);
+    assert.strictEqual(invokeCalls.length, 0);
+  }),
+);
+
 ["starting", "degraded", "disabled"].forEach((dialState) => {
   pending.push(
     test(`DIAL state '${dialState}' renders a non-empty status line`, () => {
@@ -1090,6 +1456,53 @@ pending.push(
     assert.strictEqual(elements["diagnostics-output"].hidden, false, "refresh loop never hides this field either");
     // Sanity: the poll itself did run and did repaint an unrelated control.
     assert.strictEqual(elements["start-with-windows-toggle"].checked, true);
+  }),
+);
+
+pending.push(
+  test("the refresh timer never touches the launch-command textarea, even while it is focused with pending text", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_get: () => Promise.resolve(baseSettingsData({ settings: baseSettings({ startWithWindows: true }) })),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    elements["launch-command-output"].value = "unsaved launch command";
+    elements["launch-command-output"].hidden = false;
+    doc.activeElement = elements["launch-command-output"];
+
+    fake.timers[0].fn();
+    await nextTick();
+
+    assert.strictEqual(elements["launch-command-output"].value, "unsaved launch command", "refresh loop never writes this field");
+    assert.strictEqual(elements["launch-command-output"].hidden, false, "refresh loop never hides this field either");
+    // Sanity: the poll itself did run and did repaint an unrelated control.
+    assert.strictEqual(elements["start-with-windows-toggle"].checked, true);
+  }),
+);
+
+pending.push(
+  test("the refresh timer never touches an armed reset-defaults confirm label", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_get: () => Promise.resolve(baseSettingsData({ settings: baseSettings({ startWithWindows: true }) })),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    // The reset button uses win.setTimeout/clearTimeout, which this stub
+    // window does not provide; arming still works (it just cannot schedule
+    // the expiry), which is enough to prove the refresh loop leaves it alone.
+    init(doc, win);
+
+    elements["reset-defaults-btn"].dispatch("click");
+    const armedLabel = elements["reset-defaults-btn"].textContent;
+
+    fake.timers[0].fn();
+    await nextTick();
+
+    assert.strictEqual(elements["reset-defaults-btn"].textContent, armedLabel, "refresh loop never relabels the armed button");
   }),
 );
 

@@ -1,0 +1,11 @@
+# Permission for resetting settings to their documented defaults from the settings window.
+
+[[permission]]
+identifier = "allow-settings-reset-defaults"
+description = "Enables the settings_reset_defaults command without any pre-configured scope."
+commands.allow = ["settings_reset_defaults"]
+
+[[permission]]
+identifier = "deny-settings-reset-defaults"
+description = "Denies the settings_reset_defaults command."
+commands.deny = ["settings_reset_defaults"]

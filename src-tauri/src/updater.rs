@@ -90,12 +90,28 @@ struct UpdatePayload {
     message: Option<String>,
 }
 
-fn to_update_info(update: &tauri_plugin_updater::Update) -> CastUpdateInfo {
+/// Pure field mapping extracted from [`to_update_info`] so it is
+/// unit-testable without constructing a real `tauri_plugin_updater::Update`
+/// (its `extract_path`/`context` fields are private to that crate, so no
+/// test in this codebase can build one directly).
+fn map_update_info(
+    version: String,
+    body: Option<String>,
+    pub_date: Option<String>,
+) -> CastUpdateInfo {
     CastUpdateInfo {
-        version: update.version.clone(),
-        notes: update.body.clone(),
-        pub_date: update.date.map(|value| value.to_string()),
+        version,
+        notes: body,
+        pub_date,
     }
+}
+
+fn to_update_info(update: &tauri_plugin_updater::Update) -> CastUpdateInfo {
+    map_update_info(
+        update.version.clone(),
+        update.body.clone(),
+        update.date.map(|value| value.to_string()),
+    )
 }
 
 async fn check_update(app: &AppHandle) -> Result<Option<CastUpdateInfo>, String> {
@@ -288,7 +304,7 @@ pub async fn cast_update_install(window: Window) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::CheckGuard;
+    use super::{map_update_info, CheckGuard};
 
     #[test]
     fn check_guard_blocks_reacquisition_until_released() {
@@ -305,5 +321,31 @@ mod tests {
             guard.try_acquire().is_some(),
             "acquire should succeed again after the token drops"
         );
+    }
+
+    #[test]
+    fn maps_a_full_update_info_straight_through() {
+        let info = map_update_info(
+            "1.2.3".to_owned(),
+            Some("Fixed a bug".to_owned()),
+            Some("2026-09-21".to_owned()),
+        );
+        assert_eq!(info.version, "1.2.3");
+        assert_eq!(info.notes.as_deref(), Some("Fixed a bug"));
+        assert_eq!(info.pub_date.as_deref(), Some("2026-09-21"));
+    }
+
+    #[test]
+    fn maps_a_none_body_and_none_date_without_panicking() {
+        let info = map_update_info("2.0.0".to_owned(), None, None);
+        assert_eq!(info.version, "2.0.0");
+        assert_eq!(info.notes, None);
+        assert_eq!(info.pub_date, None);
+    }
+
+    #[test]
+    fn preserves_an_empty_string_body_rather_than_treating_it_as_none() {
+        let info = map_update_info("2.0.1".to_owned(), Some(String::new()), None);
+        assert_eq!(info.notes, Some(String::new()));
     }
 }

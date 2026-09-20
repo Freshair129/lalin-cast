@@ -60,11 +60,17 @@ const INJECTED_SCRIPT: &str = include_str!("../injected.js");
 /// gets for free.
 const HARDWARE_DECODING_DISABLED_BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-accelerated-video-decode";
 
-/// Rust → page: `{ lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay }`,
+/// Rust → page: `{ lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo }`,
 /// emitted to the `media` window whenever one of those settings changes from
 /// the settings window. Never carries `deepLink` — that only ever travels
 /// once, in the `__LALIN_PREFS__` init script or on [`DEEPLINK_EVENT`].
 const PREFS_EVENT: &str = "lalin-cast-prefs";
+/// Rust → page: `{ action: "toggle-play" }` — the only whitelisted action.
+/// Emitted to the `media` window from the tray's `tray-play-pause` item and
+/// the media menu's `play-pause` item (see [`emit_remote_toggle_play`]).
+/// `injected.js` (Wave 6) listens for this and pauses/resumes whichever
+/// `<video>` is relevant, per the contract.
+const REMOTE_EVENT: &str = "lalin-cast-remote";
 /// Rust → page: `{ url }`, emitted to the `media` window when a running
 /// instance receives a launch URL via the single-instance callback.
 const DEEPLINK_EVENT: &str = "lalin-cast-deeplink";
@@ -115,6 +121,7 @@ struct PrefsPayload {
     pause_on_blur: bool,
     codec_filter: String,
     touch_overlay: bool,
+    sleep_at_end_of_video: bool,
     deep_link: Option<String>,
 }
 
@@ -135,11 +142,13 @@ struct PrefsEventPayload {
     pause_on_blur: bool,
     codec_filter: String,
     touch_overlay: bool,
+    sleep_at_end_of_video: bool,
 }
 
 /// Emits the current `lang`/`controllerEnabled`/`pauseOnBlur`/`codecFilter`/
-/// `touchOverlay` to the `media` window on [`PREFS_EVENT`]. Called from
-/// `settings::settings_set` after any of those settings changes.
+/// `touchOverlay`/`sleepAtEndOfVideo` to the `media` window on
+/// [`PREFS_EVENT`]. Called from `settings::settings_set` after any of those
+/// settings changes.
 pub(crate) fn emit_prefs(app: &tauri::AppHandle) {
     let lang = i18n::load(app);
     let payload = PrefsEventPayload {
@@ -148,8 +157,29 @@ pub(crate) fn emit_prefs(app: &tauri::AppHandle) {
         pause_on_blur: read_bool_setting_or(app, "pauseOnBlur", false),
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
+        sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
     };
     let _ = app.emit_to(MEDIA_LABEL, PREFS_EVENT, &payload);
+}
+
+/// [`REMOTE_EVENT`] payload: the one-action whitelist per the contract.
+#[derive(Serialize)]
+struct RemoteEventPayload {
+    action: &'static str,
+}
+
+/// Emits `{ action: "toggle-play" }` on [`REMOTE_EVENT`] to the `media`
+/// window. Called from the tray's `tray-play-pause` item and the media
+/// window menu's `play-pause` item — both funnel through this single
+/// helper so the payload shape can never drift between the two call sites.
+pub(crate) fn emit_remote_toggle_play(app: &tauri::AppHandle) {
+    let _ = app.emit_to(
+        MEDIA_LABEL,
+        REMOTE_EVENT,
+        &RemoteEventPayload {
+            action: "toggle-play",
+        },
+    );
 }
 
 /// [`DEEPLINK_EVENT`] payload.
@@ -472,6 +502,15 @@ fn seed_settings(app: &tauri::AppHandle) {
     if store.get("touchOverlay").is_none() {
         store.set("touchOverlay", true);
     }
+    // Wave 6 store keys: uiScale 100 % (no scaling), sleepAtEndOfVideo off
+    // (matches the "never surprise the user" default every prior toggle in
+    // this table uses).
+    if store.get("uiScale").is_none() {
+        store.set("uiScale", 100);
+    }
+    if store.get("sleepAtEndOfVideo").is_none() {
+        store.set("sleepAtEndOfVideo", false);
+    }
     // sleepTimerMinutes never survives a restart: a fresh process starts
     // with no live timer thread (see sleep.rs's SleepState, managed fresh
     // on every launch), so a nonzero value left over from a previous run
@@ -569,6 +608,8 @@ pub(crate) fn build_menu<R: Runtime>(
             .build(app)?;
     let mini_player_item =
         MenuItemBuilder::with_id("mini-player", i18n::t(lang, i18n::Key::MiniPlayer)).build(app)?;
+    let play_pause_item =
+        MenuItemBuilder::with_id("play-pause", i18n::t(lang, i18n::Key::PlayPause)).build(app)?;
     let reload_item =
         MenuItemBuilder::with_id("reload", i18n::t(lang, i18n::Key::Reload)).build(app)?;
     let update_item =
@@ -589,6 +630,7 @@ pub(crate) fn build_menu<R: Runtime>(
             &fullscreen_item,
             &keep_on_top_item,
             &mini_player_item,
+            &play_pause_item,
             &reload_item,
             &update_item,
             &network_setup_item,
@@ -622,6 +664,7 @@ fn build_media_window(
         pause_on_blur: read_bool_setting_or(app, "pauseOnBlur", false),
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
+        sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
         deep_link: launch.deep_link.as_ref().map(launch::DeepLink::canonical),
     }
     .init_script();
@@ -677,6 +720,7 @@ fn build_media_window(
             "network-setup" => setup::open_setup_window(window.app_handle()),
             "settings" => settings::open_settings_window(window.app_handle()),
             "mini-player" => window_mode::toggle_mini(window.app_handle()),
+            "play-pause" => emit_remote_toggle_play(window.app_handle()),
             "toggle-language" => {
                 let app_handle = window.app_handle().clone();
                 let next = i18n::load(&app_handle).other();
@@ -771,6 +815,19 @@ fn build_media_window(
     });
 
     window.show()?;
+    // Applied once here — after both the `windowBounds` restore and
+    // `show()` above — per the `uiScale` contract; `settings::settings_set`
+    // separately calls `set_zoom` immediately whenever the setting changes
+    // later, so this is only the "apply whatever was saved" half.
+    // Re-validated here as well: a hand-edited or corrupted store must not
+    // zoom the window to an absurd factor at launch.
+    let stored_scale = read_u32_setting_or(app, "uiScale", 100);
+    let ui_scale = if settings::ALLOWED_UI_SCALES.contains(&stored_scale) {
+        stored_scale
+    } else {
+        100
+    };
+    let _ = window.set_zoom(f64::from(ui_scale) / 100.0);
     // `build_media_window` only ever runs for the very first launch (a
     // second instance is handled entirely by the single-instance callback
     // below), so the fallback here matches the "starting" write's fallback
@@ -960,6 +1017,9 @@ pub fn run() {
             settings::settings_set,
             settings::settings_open_setup,
             settings::settings_check_updates,
+            settings::settings_apply_profile,
+            settings::settings_reset_defaults,
+            settings::settings_launch_command,
             diagnostics::settings_diagnostics
         ])
         .build(tauri::generate_context!())

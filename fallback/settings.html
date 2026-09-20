@@ -36,6 +36,22 @@
             <span id="start-with-windows-label"></span>
           </label>
           <p id="start-with-windows-note" class="note-line"></p>
+
+          <label class="select-field" for="ui-scale-select">
+            <span id="ui-scale-label"></span>
+          </label>
+          <select id="ui-scale-select"></select>
+          <p id="ui-scale-note" class="note-line"></p>
+
+          <div class="profile-group">
+            <p id="profile-legend" class="field-legend"></p>
+            <div class="profile-buttons">
+              <button id="profile-living-room-btn" type="button" class="secondary"></button>
+              <button id="profile-handheld-btn" type="button" class="secondary"></button>
+              <button id="profile-desktop-btn" type="button" class="secondary"></button>
+            </div>
+            <p id="profile-note" class="note-line"></p>
+          </div>
         </section>
 
         <section aria-labelledby="tv-heading">
@@ -71,6 +87,11 @@
             <span id="hardware-decoding-label"></span>
           </label>
           <p id="hardware-decoding-note" class="note-line" role="status" aria-live="polite"></p>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="sleep-at-end-toggle" />
+            <span id="sleep-at-end-label"></span>
+          </label>
         </section>
 
         <section aria-labelledby="display-heading">
@@ -133,6 +154,13 @@
           <textarea id="diagnostics-output" class="diagnostics-output" readonly hidden spellcheck="false"></textarea>
           <p id="diagnostics-result" class="muted" hidden role="status" aria-live="polite"></p>
           <p id="diagnostics-note" class="note-line"></p>
+
+          <button id="copy-launch-command-btn" type="button" class="secondary"></button>
+          <textarea id="launch-command-output" class="diagnostics-output" readonly hidden spellcheck="false"></textarea>
+          <p id="launch-command-result" class="muted" hidden role="status" aria-live="polite"></p>
+          <p id="launch-command-note" class="note-line"></p>
+
+          <button id="reset-defaults-btn" type="button" class="secondary danger"></button>
         </section>
       </div>
 

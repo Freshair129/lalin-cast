@@ -8,8 +8,9 @@
 //! `fallback/settings.html`/`settings.js` (owned by the pages stream).
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder, Window};
+use tauri_plugin_store::StoreExt;
 
 use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
@@ -32,6 +33,32 @@ const KEY_HARDWARE_DECODING: &str = "hardwareDecoding";
 const KEY_TOUCH_OVERLAY: &str = "touchOverlay";
 const KEY_MINI_PLAYER: &str = "miniPlayer";
 const KEY_START_WITH_WINDOWS: &str = "startWithWindows";
+const KEY_UI_SCALE: &str = "uiScale";
+const KEY_SLEEP_AT_END_OF_VIDEO: &str = "sleepAtEndOfVideo";
+
+/// The only valid `uiScale` values (percent). Out-of-set → `Err` in
+/// [`apply_setting`].
+pub(crate) const ALLOWED_UI_SCALES: [u32; 5] = [100, 125, 150, 175, 200];
+
+/// Store-backed defaults, documented in the wave 3/4/6 contract tables.
+/// Used both by [`load_settings`] (each `read_*_setting_or` fallback below)
+/// and exercised directly by `store_backed_defaults_match_the_documented_contract`
+/// — this crate carries no `AppHandle` test-mock (adding the `tauri` "test"
+/// feature would touch `Cargo.lock`, which wave 6 must leave unchanged), so
+/// "`load_settings` on an empty store" is asserted against these shared
+/// constants rather than a real store.
+const DEFAULT_FULLSCREEN: bool = false;
+const DEFAULT_KEEP_ON_TOP: bool = false;
+const DEFAULT_PAUSE_ON_BLUR: bool = false;
+const DEFAULT_CONTROLLER_ENABLED: bool = true;
+const DEFAULT_SETUP_COMPLETED: bool = false;
+const DEFAULT_SLEEP_TIMER_MINUTES: u32 = 0;
+const DEFAULT_CODEC_FILTER: &str = "off";
+const DEFAULT_HARDWARE_DECODING: bool = true;
+const DEFAULT_TOUCH_OVERLAY: bool = true;
+const DEFAULT_START_WITH_WINDOWS: bool = false;
+const DEFAULT_UI_SCALE: u32 = 100;
+const DEFAULT_SLEEP_AT_END_OF_VIDEO: bool = false;
 
 /// The full set of user-editable settings, mirrored 1:1 onto individual
 /// `media-settings.json` store keys (unchanged keys from waves 1–3, plus
@@ -57,6 +84,8 @@ pub struct Settings {
     touch_overlay: bool,
     mini_player: bool,
     start_with_windows: bool,
+    ui_scale: u32,
+    sleep_at_end_of_video: bool,
 }
 
 /// Return type of `settings_get`/`settings_set` and the `settings`+`dial`+…
@@ -121,19 +150,45 @@ fn load_settings(app: &AppHandle) -> Settings {
     Settings {
         language: i18n::load(app).store_value().to_owned(),
         dial_friendly_name: dial::load_friendly_name(app),
-        fullscreen: crate::read_bool_setting_or(app, KEY_FULLSCREEN, false),
-        keep_on_top: crate::read_bool_setting_or(app, KEY_KEEP_ON_TOP, false),
-        pause_on_blur: crate::read_bool_setting_or(app, KEY_PAUSE_ON_BLUR, false),
-        controller_enabled: crate::read_bool_setting_or(app, KEY_CONTROLLER_ENABLED, true),
-        setup_completed: crate::read_bool_setting_or(app, KEY_SETUP_COMPLETED, false),
-        sleep_timer_minutes: crate::read_u32_setting_or(app, KEY_SLEEP_TIMER_MINUTES, 0),
-        codec_filter: crate::read_string_setting_or(app, KEY_CODEC_FILTER, "off"),
-        hardware_decoding: crate::read_bool_setting_or(app, KEY_HARDWARE_DECODING, true),
-        touch_overlay: crate::read_bool_setting_or(app, KEY_TOUCH_OVERLAY, true),
+        fullscreen: crate::read_bool_setting_or(app, KEY_FULLSCREEN, DEFAULT_FULLSCREEN),
+        keep_on_top: crate::read_bool_setting_or(app, KEY_KEEP_ON_TOP, DEFAULT_KEEP_ON_TOP),
+        pause_on_blur: crate::read_bool_setting_or(app, KEY_PAUSE_ON_BLUR, DEFAULT_PAUSE_ON_BLUR),
+        controller_enabled: crate::read_bool_setting_or(
+            app,
+            KEY_CONTROLLER_ENABLED,
+            DEFAULT_CONTROLLER_ENABLED,
+        ),
+        setup_completed: crate::read_bool_setting_or(
+            app,
+            KEY_SETUP_COMPLETED,
+            DEFAULT_SETUP_COMPLETED,
+        ),
+        sleep_timer_minutes: crate::read_u32_setting_or(
+            app,
+            KEY_SLEEP_TIMER_MINUTES,
+            DEFAULT_SLEEP_TIMER_MINUTES,
+        ),
+        codec_filter: crate::read_string_setting_or(app, KEY_CODEC_FILTER, DEFAULT_CODEC_FILTER),
+        hardware_decoding: crate::read_bool_setting_or(
+            app,
+            KEY_HARDWARE_DECODING,
+            DEFAULT_HARDWARE_DECODING,
+        ),
+        touch_overlay: crate::read_bool_setting_or(app, KEY_TOUCH_OVERLAY, DEFAULT_TOUCH_OVERLAY),
         // Session-only: read live from window_mode's managed state, never
         // from the store (see the struct doc comment above).
         mini_player: window_mode::is_mini(app),
-        start_with_windows: crate::read_bool_setting_or(app, KEY_START_WITH_WINDOWS, false),
+        start_with_windows: crate::read_bool_setting_or(
+            app,
+            KEY_START_WITH_WINDOWS,
+            DEFAULT_START_WITH_WINDOWS,
+        ),
+        ui_scale: crate::read_u32_setting_or(app, KEY_UI_SCALE, DEFAULT_UI_SCALE),
+        sleep_at_end_of_video: crate::read_bool_setting_or(
+            app,
+            KEY_SLEEP_AT_END_OF_VIDEO,
+            DEFAULT_SLEEP_AT_END_OF_VIDEO,
+        ),
     }
 }
 
@@ -221,6 +276,21 @@ pub fn apply_setting(key: &str, value: &Value, current: &Settings) -> Result<Set
                 .as_bool()
                 .ok_or_else(|| "startWithWindows must be a boolean".to_owned())?;
         }
+        KEY_UI_SCALE => {
+            let scale = value
+                .as_u64()
+                .and_then(|raw| u32::try_from(raw).ok())
+                .ok_or_else(|| "uiScale must be an integer".to_owned())?;
+            if !ALLOWED_UI_SCALES.contains(&scale) {
+                return Err("uiScale must be one of 100, 125, 150, 175, 200".to_owned());
+            }
+            next.ui_scale = scale;
+        }
+        KEY_SLEEP_AT_END_OF_VIDEO => {
+            next.sleep_at_end_of_video = value
+                .as_bool()
+                .ok_or_else(|| "sleepAtEndOfVideo must be a boolean".to_owned())?;
+        }
         _ => return Err(format!("unknown settings key: {key}")),
     }
     Ok(next)
@@ -284,29 +354,29 @@ pub fn settings_get(
 /// that key's side effect per the contract table (`language` rebuilds the
 /// media menu and tray and re-emits prefs; `dialFriendlyName` asks the DIAL
 /// supervisor to rebind; `fullscreen`/`keepOnTop` apply to the media window
-/// immediately; `pauseOnBlur`/`controllerEnabled`/`touchOverlay` re-emit
-/// prefs; `setupCompleted`/`codecFilter`/`hardwareDecoding` are save-only
-/// (`codecFilter` additionally re-emits prefs — it only takes effect after
-/// the page reloads, but the page still needs the new value to apply on its
-/// next load); `sleepTimerMinutes` hands off to `sleep::schedule`;
-/// `miniPlayer` toggles mini-player mode when it differs from the current
-/// state and is never itself persisted).
-#[tauri::command]
-pub fn settings_set(
-    key: String,
+/// immediately; `pauseOnBlur`/`controllerEnabled`/`touchOverlay`/
+/// `sleepAtEndOfVideo` re-emit prefs; `setupCompleted`/`codecFilter`/
+/// `hardwareDecoding` are save-only (`codecFilter` additionally re-emits
+/// prefs — it only takes effect after the page reloads, but the page still
+/// needs the new value to apply on its next load); `sleepTimerMinutes`
+/// hands off to `sleep::schedule`; `uiScale` applies to the media window
+/// immediately via `set_zoom`; `miniPlayer` toggles mini-player mode when it
+/// differs from the current state and is never itself persisted).
+///
+/// Shared by [`settings_set`], [`settings_apply_profile`] and
+/// [`settings_reset_defaults`] — all three funnel every key they write
+/// through this single function, so a profile or a reset can never write a
+/// key straight to the store the way the contract forbids.
+fn set_one(
+    app: &AppHandle,
+    key: &str,
     value: Value,
-    window: Window,
-    dial_state: State<'_, dial::DialState>,
-    sleep_state: State<'_, sleep::SleepState>,
-) -> Result<SettingsSnapshot, String> {
-    if window.label() != SETTINGS_LABEL {
-        return Err("settings_set is only available from the settings window".to_owned());
-    }
-    let app = window.app_handle();
+    dial_state: &dial::DialState,
+) -> Result<Settings, String> {
     let current = load_settings(app);
-    let next = apply_setting(&key, &value, &current)?;
+    let next = apply_setting(key, &value, &current)?;
 
-    match key.as_str() {
+    match key {
         KEY_LANGUAGE => {
             let lang = i18n::Lang::from_store_value(&next.language).unwrap_or(i18n::Lang::En);
             i18n::save(app, lang);
@@ -324,7 +394,7 @@ pub fn settings_set(
                 dial::FRIENDLY_NAME_STORE_KEY,
                 &next.dial_friendly_name,
             );
-            dial::request_reload(&dial_state);
+            dial::request_reload(dial_state);
         }
         KEY_FULLSCREEN => {
             crate::write_bool_setting(app, KEY_FULLSCREEN, next.fullscreen);
@@ -376,6 +446,16 @@ pub fn settings_set(
             crate::write_bool_setting(app, KEY_TOUCH_OVERLAY, next.touch_overlay);
             crate::emit_prefs(app);
         }
+        KEY_UI_SCALE => {
+            crate::write_u32_setting(app, KEY_UI_SCALE, next.ui_scale);
+            if let Some(media) = app.get_webview_window(crate::MEDIA_LABEL) {
+                let _ = media.set_zoom(next.ui_scale as f64 / 100.0);
+            }
+        }
+        KEY_SLEEP_AT_END_OF_VIDEO => {
+            crate::write_bool_setting(app, KEY_SLEEP_AT_END_OF_VIDEO, next.sleep_at_end_of_video);
+            crate::emit_prefs(app);
+        }
         // Never persisted (session-only); only acts when the requested
         // value actually differs from the live state, so a redundant
         // `settings_set("miniPlayer", true)` while already mini is a
@@ -399,18 +479,181 @@ pub fn settings_set(
         }
     }
 
-    // Re-read from the store/live state rather than trusting `next`
-    // directly: every side effect above that persists a value writes
-    // exactly what `next` already holds, but `miniPlayer` deliberately
-    // never persists (its truth lives only in `window_mode::MiniPlayerState`,
-    // and a `toggle_mini` call above can no-op if the media window happens
-    // to be gone), so the response should always reflect what is actually
-    // true now, not merely what was requested.
+    Ok(next)
+}
+
+#[tauri::command]
+pub fn settings_set(
+    key: String,
+    value: Value,
+    window: Window,
+    dial_state: State<'_, dial::DialState>,
+    sleep_state: State<'_, sleep::SleepState>,
+) -> Result<SettingsSnapshot, String> {
+    if window.label() != SETTINGS_LABEL {
+        return Err("settings_set is only available from the settings window".to_owned());
+    }
+    let app = window.app_handle();
+    set_one(app, &key, value, &dial_state)?;
+
+    // Re-read from the store/live state rather than trusting `set_one`'s
+    // return value directly: every side effect it runs that persists a
+    // value writes exactly what it already computed, but `miniPlayer`
+    // deliberately never persists (its truth lives only in
+    // `window_mode::MiniPlayerState`, and a `toggle_mini` call can no-op if
+    // the media window happens to be gone), so the response should always
+    // reflect what is actually true now, not merely what was requested.
     Ok(build_snapshot(
         app,
         dial::current_status(&dial_state),
         sleep::remaining_seconds(&sleep_state),
     ))
+}
+
+/// The 7 `(key, value)` pairs a named profile applies, in the exact order
+/// of the contract's profile table — `None` for an unrecognized profile
+/// name (the command layer turns that into an `Err`). Deliberately never
+/// touches `language`, `dialFriendlyName`, `startWithWindows`,
+/// `hardwareDecoding`, or `sleepTimerMinutes`.
+pub(crate) fn profile_settings(profile: &str) -> Option<Vec<(&'static str, Value)>> {
+    match profile {
+        "livingRoom" => Some(vec![
+            (KEY_FULLSCREEN, json!(true)),
+            (KEY_KEEP_ON_TOP, json!(false)),
+            (KEY_CONTROLLER_ENABLED, json!(true)),
+            (KEY_TOUCH_OVERLAY, json!(false)),
+            (KEY_PAUSE_ON_BLUR, json!(false)),
+            (KEY_CODEC_FILTER, json!("off")),
+            (KEY_UI_SCALE, json!(150)),
+        ]),
+        "handheld" => Some(vec![
+            (KEY_FULLSCREEN, json!(true)),
+            (KEY_KEEP_ON_TOP, json!(false)),
+            (KEY_CONTROLLER_ENABLED, json!(true)),
+            (KEY_TOUCH_OVERLAY, json!(true)),
+            (KEY_PAUSE_ON_BLUR, json!(false)),
+            (KEY_CODEC_FILTER, json!("h264")),
+            (KEY_UI_SCALE, json!(125)),
+        ]),
+        "desktop" => Some(vec![
+            (KEY_FULLSCREEN, json!(false)),
+            (KEY_KEEP_ON_TOP, json!(false)),
+            (KEY_CONTROLLER_ENABLED, json!(true)),
+            (KEY_TOUCH_OVERLAY, json!(false)),
+            (KEY_PAUSE_ON_BLUR, json!(true)),
+            (KEY_CODEC_FILTER, json!("off")),
+            (KEY_UI_SCALE, json!(100)),
+        ]),
+        _ => None,
+    }
+}
+
+/// Applies every `(key, value)` pair from [`profile_settings`] through
+/// [`set_one`] — the same whitelist/type-check + side-effect path
+/// `settings_set` uses for a single key — one at a time, in order. An
+/// unrecognized `profile` name is an `Err` before anything is applied.
+#[tauri::command]
+pub fn settings_apply_profile(
+    profile: String,
+    window: Window,
+    dial_state: State<'_, dial::DialState>,
+    sleep_state: State<'_, sleep::SleepState>,
+) -> Result<SettingsSnapshot, String> {
+    if window.label() != SETTINGS_LABEL {
+        return Err("settings_apply_profile is only available from the settings window".to_owned());
+    }
+    let app = window.app_handle();
+    let pairs = profile_settings(&profile).ok_or_else(|| format!("unknown profile: {profile}"))?;
+    for (key, value) in pairs {
+        set_one(app, key, value, &dial_state)?;
+    }
+    Ok(build_snapshot(
+        app,
+        dial::current_status(&dial_state),
+        sleep::remaining_seconds(&sleep_state),
+    ))
+}
+
+/// The reset-to-defaults `(key, value)` list, in the exact order the
+/// contract lists them. Deliberately never touches `language`,
+/// `dialFriendlyName`, `dialDeviceId`, `setupCompleted`, or
+/// `startWithWindows` — `windowBounds` is not a [`Settings`] field at all,
+/// so it is removed separately (`store.delete`) by
+/// [`settings_reset_defaults`], not through this list/`set_one`.
+pub(crate) fn reset_plan() -> Vec<(&'static str, Value)> {
+    vec![
+        (KEY_FULLSCREEN, json!(false)),
+        (KEY_KEEP_ON_TOP, json!(false)),
+        (KEY_PAUSE_ON_BLUR, json!(false)),
+        (KEY_CONTROLLER_ENABLED, json!(true)),
+        (KEY_SLEEP_TIMER_MINUTES, json!(0)),
+        (KEY_CODEC_FILTER, json!("off")),
+        (KEY_HARDWARE_DECODING, json!(true)),
+        (KEY_TOUCH_OVERLAY, json!(true)),
+        (KEY_UI_SCALE, json!(100)),
+        (KEY_SLEEP_AT_END_OF_VIDEO, json!(false)),
+        (KEY_MINI_PLAYER, json!(false)),
+    ]
+}
+
+/// Applies [`reset_plan`] through [`set_one`] (cancelling any running sleep
+/// timer and leaving mini-player as a side effect of the `sleepTimerMinutes`/
+/// `miniPlayer` entries in that list), then deletes the `windowBounds` store
+/// key directly — the one piece of reset that is not a [`Settings`] field
+/// and so cannot go through `set_one`/`apply_setting` at all.
+#[tauri::command]
+pub fn settings_reset_defaults(
+    window: Window,
+    dial_state: State<'_, dial::DialState>,
+    sleep_state: State<'_, sleep::SleepState>,
+) -> Result<SettingsSnapshot, String> {
+    if window.label() != SETTINGS_LABEL {
+        return Err(
+            "settings_reset_defaults is only available from the settings window".to_owned(),
+        );
+    }
+    let app = window.app_handle();
+    for (key, value) in reset_plan() {
+        set_one(app, key, value, &dial_state)?;
+    }
+    if let Ok(store) = app.store("media-settings.json") {
+        store.delete(crate::window_bounds::STORE_KEY);
+        let _ = store.save();
+    }
+    Ok(build_snapshot(
+        app,
+        dial::current_status(&dial_state),
+        sleep::remaining_seconds(&sleep_state),
+    ))
+}
+
+/// Pure formatter for the Steam launch command: `"<quoted exe path>
+/// --fullscreen"`, with no other arguments. Kept separate from
+/// [`settings_launch_command`] so the string-building itself is testable
+/// without a live `AppHandle`/`std::env::current_exe`.
+pub(crate) fn format_launch_command(quoted_exe_path: &str) -> String {
+    format!("{quoted_exe_path} --fullscreen")
+}
+
+/// Returns the quoted launch command for a Steam "non-Steam game" shortcut:
+/// the current executable's path (via `autostart::run_value`, the same
+/// quoting/validation `startWithWindows` uses) plus `--fullscreen` and
+/// nothing else. The settings page copies the result to the clipboard
+/// itself; this command never touches the clipboard.
+#[tauri::command]
+pub fn settings_launch_command(window: Window) -> Result<String, String> {
+    if window.label() != SETTINGS_LABEL {
+        return Err(
+            "settings_launch_command is only available from the settings window".to_owned(),
+        );
+    }
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("could not resolve the executable path: {error}"))?;
+    let exe_str = exe
+        .to_str()
+        .ok_or_else(|| "executable path is not valid UTF-8".to_owned())?;
+    let quoted = autostart::run_value(exe_str)?;
+    Ok(format_launch_command(&quoted))
 }
 
 #[tauri::command]
@@ -459,7 +702,13 @@ pub(crate) fn diagnostics_settings(app: &AppHandle) -> diagnostics::DiagnosticsS
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_setting, Settings};
+    use super::{
+        apply_setting, format_launch_command, profile_settings, reset_plan, Settings,
+        ALLOWED_UI_SCALES, DEFAULT_CODEC_FILTER, DEFAULT_CONTROLLER_ENABLED, DEFAULT_FULLSCREEN,
+        DEFAULT_HARDWARE_DECODING, DEFAULT_KEEP_ON_TOP, DEFAULT_PAUSE_ON_BLUR,
+        DEFAULT_SETUP_COMPLETED, DEFAULT_SLEEP_AT_END_OF_VIDEO, DEFAULT_SLEEP_TIMER_MINUTES,
+        DEFAULT_START_WITH_WINDOWS, DEFAULT_TOUCH_OVERLAY, DEFAULT_UI_SCALE,
+    };
     use serde_json::json;
 
     fn base() -> Settings {
@@ -477,6 +726,8 @@ mod tests {
             touch_overlay: true,
             mini_player: false,
             start_with_windows: false,
+            ui_scale: 100,
+            sleep_at_end_of_video: false,
         }
     }
 
@@ -519,6 +770,33 @@ mod tests {
         assert!(apply_setting("miniPlayer", &json!("yes"), &base()).is_err());
         assert!(apply_setting("startWithWindows", &json!("yes"), &base()).is_err());
         assert!(apply_setting("startWithWindows", &json!(null), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!("100"), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!(null), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!(100.5), &base()).is_err());
+        assert!(apply_setting("sleepAtEndOfVideo", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("sleepAtEndOfVideo", &json!(null), &base()).is_err());
+    }
+
+    #[test]
+    fn rejects_a_ui_scale_value_outside_the_allowed_set() {
+        assert!(apply_setting("uiScale", &json!(99), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!(101), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!(-100), &base()).is_err());
+        assert!(apply_setting("uiScale", &json!(0), &base()).is_err());
+        for scale in ALLOWED_UI_SCALES {
+            let ok = apply_setting("uiScale", &json!(scale), &base())
+                .unwrap_or_else(|_| panic!("{scale} should be accepted"));
+            assert_eq!(ok.ui_scale, scale);
+        }
+    }
+
+    #[test]
+    fn applies_sleep_at_end_of_video_and_leaves_the_rest_untouched() {
+        let current = base();
+        let next = apply_setting("sleepAtEndOfVideo", &json!(true), &current).expect("valid bool");
+        assert!(next.sleep_at_end_of_video);
+        assert_eq!(next.ui_scale, current.ui_scale);
+        assert_eq!(next.fullscreen, current.fullscreen);
     }
 
     #[test]
@@ -609,5 +887,158 @@ mod tests {
         let next = apply_setting("startWithWindows", &json!(true), &current).expect("valid bool");
         assert!(next.start_with_windows);
         assert_eq!(next.mini_player, current.mini_player);
+    }
+
+    // -- Wave 6: profiles, reset to defaults, launch command --
+
+    const FORBIDDEN_PROFILE_KEYS: [&str; 5] = [
+        "language",
+        "dialFriendlyName",
+        "startWithWindows",
+        "hardwareDecoding",
+        "sleepTimerMinutes",
+    ];
+
+    #[test]
+    fn every_profile_yields_exactly_seven_keys_and_never_a_forbidden_key() {
+        for profile in ["livingRoom", "handheld", "desktop"] {
+            let pairs = profile_settings(profile).expect("a known profile should resolve");
+            assert_eq!(pairs.len(), 7, "{profile} should apply exactly 7 keys");
+            for (key, _) in &pairs {
+                assert!(
+                    !FORBIDDEN_PROFILE_KEYS.contains(key),
+                    "{profile} must never touch {key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn profile_settings_returns_none_for_an_unknown_profile() {
+        assert!(profile_settings("gaming").is_none());
+        assert!(profile_settings("").is_none());
+        assert!(profile_settings("LivingRoom").is_none());
+    }
+
+    #[test]
+    fn living_room_profile_matches_the_documented_values() {
+        let pairs = profile_settings("livingRoom").expect("livingRoom should resolve");
+        assert_eq!(
+            pairs,
+            vec![
+                ("fullscreen", json!(true)),
+                ("keepOnTop", json!(false)),
+                ("controllerEnabled", json!(true)),
+                ("touchOverlay", json!(false)),
+                ("pauseOnBlur", json!(false)),
+                ("codecFilter", json!("off")),
+                ("uiScale", json!(150)),
+            ]
+        );
+    }
+
+    #[test]
+    fn handheld_profile_matches_the_documented_values() {
+        let pairs = profile_settings("handheld").expect("handheld should resolve");
+        assert_eq!(
+            pairs,
+            vec![
+                ("fullscreen", json!(true)),
+                ("keepOnTop", json!(false)),
+                ("controllerEnabled", json!(true)),
+                ("touchOverlay", json!(true)),
+                ("pauseOnBlur", json!(false)),
+                ("codecFilter", json!("h264")),
+                ("uiScale", json!(125)),
+            ]
+        );
+    }
+
+    #[test]
+    fn desktop_profile_matches_the_documented_values() {
+        let pairs = profile_settings("desktop").expect("desktop should resolve");
+        assert_eq!(
+            pairs,
+            vec![
+                ("fullscreen", json!(false)),
+                ("keepOnTop", json!(false)),
+                ("controllerEnabled", json!(true)),
+                ("touchOverlay", json!(false)),
+                ("pauseOnBlur", json!(true)),
+                ("codecFilter", json!("off")),
+                ("uiScale", json!(100)),
+            ]
+        );
+    }
+
+    #[test]
+    fn reset_plan_never_touches_a_protected_key() {
+        let forbidden = [
+            "language",
+            "dialFriendlyName",
+            "dialDeviceId",
+            "setupCompleted",
+            "startWithWindows",
+            "windowBounds",
+        ];
+        let plan = reset_plan();
+        for (key, _) in &plan {
+            assert!(!forbidden.contains(key), "reset must never touch {key}");
+        }
+    }
+
+    #[test]
+    fn reset_plan_matches_the_documented_values() {
+        assert_eq!(
+            reset_plan(),
+            vec![
+                ("fullscreen", json!(false)),
+                ("keepOnTop", json!(false)),
+                ("pauseOnBlur", json!(false)),
+                ("controllerEnabled", json!(true)),
+                ("sleepTimerMinutes", json!(0)),
+                ("codecFilter", json!("off")),
+                ("hardwareDecoding", json!(true)),
+                ("touchOverlay", json!(true)),
+                ("uiScale", json!(100)),
+                ("sleepAtEndOfVideo", json!(false)),
+                ("miniPlayer", json!(false)),
+            ]
+        );
+    }
+
+    #[test]
+    fn format_launch_command_appends_fullscreen_to_the_quoted_path_only() {
+        assert_eq!(
+            format_launch_command(r#""C:\Lalin Cast\lalin-cast.exe""#),
+            r#""C:\Lalin Cast\lalin-cast.exe" --fullscreen"#
+        );
+        // No other argument ever sneaks in.
+        let command = format_launch_command(r#""C:\lalin-cast.exe""#);
+        assert_eq!(command.matches("--fullscreen").count(), 1);
+        assert!(!command.contains("http"));
+    }
+
+    #[test]
+    #[allow(clippy::assertions_on_constants, clippy::bool_assert_comparison)]
+    fn store_backed_defaults_match_the_documented_contract() {
+        // Mirrors exactly what `load_settings` returns for every
+        // store-backed key when the store is empty: each `read_*_setting_or`
+        // call in `load_settings` falls back to one of these named
+        // constants, so asserting the constants pins the "empty store"
+        // behavior without needing a live `AppHandle`/store.
+        assert!(!DEFAULT_FULLSCREEN);
+        assert!(!DEFAULT_KEEP_ON_TOP);
+        assert!(!DEFAULT_PAUSE_ON_BLUR);
+        assert!(DEFAULT_CONTROLLER_ENABLED);
+        assert!(!DEFAULT_SETUP_COMPLETED);
+        assert_eq!(DEFAULT_SLEEP_TIMER_MINUTES, 0);
+        assert_eq!(DEFAULT_CODEC_FILTER, "off");
+        assert!(DEFAULT_HARDWARE_DECODING);
+        assert!(DEFAULT_TOUCH_OVERLAY);
+        assert!(!DEFAULT_START_WITH_WINDOWS);
+        assert_eq!(DEFAULT_UI_SCALE, 100);
+        assert!(!DEFAULT_SLEEP_AT_END_OF_VIDEO);
+        assert!(ALLOWED_UI_SCALES.contains(&DEFAULT_UI_SCALE));
     }
 }

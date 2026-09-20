@@ -83,6 +83,51 @@ jobs:
         run: |
           Write-Host "Authenticode signing placeholder — enable after H4 (certificate purchase)."
 
+      - name: Extract CHANGELOG section for release body
+        # Wave 6 U4 (docs/plans/W6_POLISH_PLAN.md): pulls the "## [<version>]"
+        # section out of CHANGELOG.md (version = the pushed tag without its
+        # leading "v") into a multi-line GITHUB_ENV value, so the GitHub
+        # Release body matches what's actually documented for this version
+        # instead of a static sentence. Falls back to the previous static
+        # sentence when that section cannot be found (e.g. the checklist
+        # step below was skipped before tagging).
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag -replace '^v', ''
+          $fallback = "Signed Windows release for Lalin Cast (x64 stable; arm64 experimental)."
+          $lines = Get-Content -Path CHANGELOG.md
+          $headerPattern = '^## \[' + [regex]::Escape($version) + '\]'
+          $startIndex = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match $headerPattern) {
+              $startIndex = $i
+              break
+            }
+          }
+          if ($startIndex -ge 0) {
+            $endIndex = $lines.Count
+            for ($j = $startIndex + 1; $j -lt $lines.Count; $j++) {
+              if ($lines[$j] -match '^## \[') {
+                $endIndex = $j
+                break
+              }
+            }
+            $section = ($lines[$startIndex..($endIndex - 1)] -join "`n").Trim()
+          } else {
+            $section = ""
+          }
+          if ([string]::IsNullOrWhiteSpace($section)) {
+            Write-Warning "No '## [$version]' section found in CHANGELOG.md; falling back to the static release body."
+            $body = $fallback
+          } else {
+            $body = $section
+          }
+          $delimiter = "RELEASE_BODY_EOF_$([Guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_BODY<<$delimiter"
+          Add-Content -Path $env:GITHUB_ENV -Value $body
+          Add-Content -Path $env:GITHUB_ENV -Value $delimiter
+
       - name: Write release job summary
         shell: pwsh
         run: |
@@ -107,7 +152,7 @@ jobs:
           args: --target ${{ matrix.target }}
           tagName: v__VERSION__
           releaseName: Lalin Cast v__VERSION__
-          releaseBody: "Signed Windows release for Lalin Cast (x64 stable; arm64 experimental)."
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           # tauri-action's upload-version-json.ts (read at the pinned SHA,

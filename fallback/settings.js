@@ -23,6 +23,8 @@
  *       touchOverlay: boolean,
  *       miniPlayer: boolean,
  *       startWithWindows: boolean,
+ *       uiScale: 100 | 125 | 150 | 175 | 200,
+ *       sleepAtEndOfVideo: boolean,
  *     },
  *     dial: {
  *       state: "starting" | "ready" | "degraded" | "disabled",
@@ -40,18 +42,26 @@
  *     Whitelisted keys only ("language", "dialFriendlyName", "fullscreen",
  *     "keepOnTop", "pauseOnBlur", "controllerEnabled", "setupCompleted",
  *     "sleepTimerMinutes", "codecFilter", "hardwareDecoding", "touchOverlay",
- *     "miniPlayer", "startWithWindows"); an unknown key, a wrong value type,
- *     or a value outside the allowed set (e.g. a sleep timer minute count
- *     that is not one of {0, 15, 30, 60, 90, 120}) rejects. On success the
- *     returned snapshot is the new source of truth for every control on this
- *     page; on failure nothing changed server-side, so controls are
- *     re-rendered from the last known-good `settings`/`dial`/
+ *     "miniPlayer", "startWithWindows", "uiScale", "sleepAtEndOfVideo"); an
+ *     unknown key, a wrong value type, or a value outside the allowed set
+ *     (e.g. a sleep timer minute count that is not one of {0, 15, 30, 60, 90,
+ *     120}, or a `uiScale` not one of {100, 125, 150, 175, 200}) rejects. On
+ *     success the returned snapshot is the new source of truth for every
+ *     control on this page; on failure nothing changed server-side, so
+ *     controls are re-rendered from the last known-good `settings`/`dial`/
  *     `sleepRemainingSeconds`/`hardwareDecodingRestartRequired` already held
  *     in memory.
  *   settings_open_setup()                          -> void (opens the `setup` window)
  *   settings_check_updates()                       -> void (result appears in the `update` window)
  *   settings_diagnostics()                         -> string (plain-text diagnostics snapshot;
  *     contains no device id, URL, deep link, TV code, cookie or token)
+ *   settings_apply_profile(profile: string)         -> SettingsSnapshot (profile is one of
+ *     "livingRoom" | "handheld" | "desktop"; anything else rejects)
+ *   settings_reset_defaults()                       -> SettingsSnapshot (resets the whitelisted
+ *     keys to their defaults except language, DIAL name/id, setupCompleted
+ *     and startWithWindows; no native dialog)
+ *   settings_launch_command()                       -> string (a Steam-shortcut launch command,
+ *     `"<absolute exe path>" --fullscreen`; no URL, no other arguments)
  *
  * Every control on this page calls `settings_set` the moment its value
  * changes (no separate "Save" button) and re-renders itself from whatever
@@ -86,6 +96,12 @@ const STRINGS = {
       languageTh: "ไทย",
       languageEn: "English",
       startWithWindowsLabel: "เริ่ม Lalin Cast อัตโนมัติเมื่อเข้าสู่ระบบ Windows",
+      uiScaleLabel: "ขนาดหน้าจอ UI",
+      uiScaleNote: "หมายเหตุ: มีผลทันที",
+      profileLegend: "โปรไฟล์ตั้งค่าด่วน",
+      profileLivingRoomBtn: "ห้องนั่งเล่น",
+      profileHandheldBtn: "อุปกรณ์พกพา",
+      profileDesktopBtn: "เดสก์ท็อป",
     },
     tv: {
       heading: "ทีวีและมือถือ",
@@ -107,6 +123,7 @@ const STRINGS = {
       codecFilterNote: "หมายเหตุ: มีผลหลังโหลดหน้าใหม่",
       hardwareDecodingLabel: "ถอดรหัสวิดีโอด้วยฮาร์ดแวร์",
       hardwareDecodingNote: "หมายเหตุ: มีผลหลังเปิดแอปใหม่",
+      sleepAtEndLabel: "หยุดเล่นเมื่อจบวิดีโอ",
     },
     display: {
       heading: "หน้าจอ",
@@ -132,11 +149,18 @@ const STRINGS = {
       diagnosticsNote:
         "ข้อความวินิจฉัยมีเวอร์ชันแอป ระบบปฏิบัติการและ WebView2 สถานะ DIAL และ IP ในเครือข่ายภายใน (LAN) และค่าตั้งต่าง ๆ — ไม่มีข้อมูลบัญชีหรือรหัสทีวี",
       diagnosticsOutputLabel: "ข้อความวินิจฉัย",
+      copyLaunchCommandBtn: "คัดลอกคำสั่งเปิดสำหรับ Steam",
+      launchCommandNote: "คำสั่งเปิดมีที่อยู่ไฟล์โปรแกรมบนเครื่องนี้ — ใช้เป็น Target ของ Non-Steam shortcut ใน Steam ได้เช่นกัน",
+      launchCommandOutputLabel: "คำสั่งเปิด",
+      resetDefaultsBtn: "คืนค่าเริ่มต้น",
     },
     settingsErrorPrefix: "บันทึกการตั้งค่าไม่สำเร็จ: ",
     openSetupErrorPrefix: "เปิดตัวช่วยตั้งค่าไม่สำเร็จ: ",
     checkUpdatesErrorPrefix: "ตรวจสอบอัปเดตไม่สำเร็จ: ",
     diagnosticsErrorPrefix: "ดึงข้อมูลวินิจฉัยไม่สำเร็จ: ",
+    profileErrorPrefix: "ใช้โปรไฟล์ไม่สำเร็จ: ",
+    launchCommandErrorPrefix: "ดึงคำสั่งเปิดไม่สำเร็จ: ",
+    resetDefaultsErrorPrefix: "คืนค่าเริ่มต้นไม่สำเร็จ: ",
     unknownError: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
     noTauri: {
       title: "ใช้งานหน้านี้ไม่ได้",
@@ -151,6 +175,12 @@ const STRINGS = {
       languageTh: "ไทย",
       languageEn: "English",
       startWithWindowsLabel: "Start Lalin Cast automatically when Windows starts",
+      uiScaleLabel: "UI scale",
+      uiScaleNote: "Note: applies immediately",
+      profileLegend: "Quick-setup profiles",
+      profileLivingRoomBtn: "Living room",
+      profileHandheldBtn: "Handheld",
+      profileDesktopBtn: "Desktop",
     },
     tv: {
       heading: "TV and phone",
@@ -172,6 +202,7 @@ const STRINGS = {
       codecFilterNote: "Note: applies after the next reload",
       hardwareDecodingLabel: "Hardware video decoding",
       hardwareDecodingNote: "Note: applies after restarting the app",
+      sleepAtEndLabel: "Stop playback at the end of the video",
     },
     display: {
       heading: "Display",
@@ -197,11 +228,19 @@ const STRINGS = {
       diagnosticsNote:
         "The diagnostics text includes the app version, OS and WebView2, DIAL status and your LAN IP address, and your settings — it does not include any account information or TV code.",
       diagnosticsOutputLabel: "Diagnostics text",
+      copyLaunchCommandBtn: "Copy launch command for Steam",
+      launchCommandNote:
+        "The launch command includes this computer's program file path — use it as the Target of a non-Steam shortcut too.",
+      launchCommandOutputLabel: "Launch command",
+      resetDefaultsBtn: "Reset to defaults",
     },
     settingsErrorPrefix: "Could not save settings: ",
     openSetupErrorPrefix: "Could not open network setup: ",
     checkUpdatesErrorPrefix: "Could not check for updates: ",
     diagnosticsErrorPrefix: "Could not get diagnostics: ",
+    profileErrorPrefix: "Could not apply profile: ",
+    launchCommandErrorPrefix: "Could not get the launch command: ",
+    resetDefaultsErrorPrefix: "Could not reset to defaults: ",
     unknownError: "Unknown error",
     noTauri: {
       title: "This page can't be used",
@@ -234,7 +273,7 @@ const CONTROLS_TABLE = {
     ["นำทาง / Navigate", "ลูกศร / Arrow keys", "ปุ่มทิศทาง/แท่งซ้าย / D-pad or left stick"],
     ["ยืนยัน/เลือก / Confirm/select", "Enter", "ปุ่มยืนยัน / Confirm button"],
     ["ความเร็วเล่น ช้าลง/เร็วขึ้น / Playback speed down/up", "Shift+, / Shift+.", "—"],
-    ["แสดงผังคีย์ลัด / Show help overlay", "? / F1", "—"],
+    ["แสดงผังคีย์ลัด / Show help overlay", "? / F1", "Y"],
   ],
 };
 
@@ -246,6 +285,14 @@ const START_WITH_WINDOWS_NOTE =
   "เพิ่ม Lalin Cast ในรายการเริ่มต้นของ Windows (registry Run key ของบัญชีนี้) มีผลตั้งแต่การเข้าสู่ระบบครั้งถัดไป / Adds Lalin Cast to this account's Windows startup (registry Run key); takes effect at the next sign-in";
 const DIAGNOSTICS_COPIED_TEXT = "คัดลอกแล้ว / Copied";
 const DIAGNOSTICS_MANUAL_COPY_TEXT = "เลือกข้อความแล้วคัดลอกเอง / Select the text and copy it";
+
+// Same fixed-vocabulary rationale as CONTROLS_TABLE/DIAGNOSTICS_*: short,
+// pinned wording shown regardless of the window's active UI language.
+const PROFILE_NOTE_TEXT =
+  "ห้องนั่งเล่น: เต็มจอ, เปิดจอย, ขนาด UI 150% · อุปกรณ์พกพา: เต็มจอ, เปิดจอย, ปุ่มสัมผัส, จำกัดเฉพาะ H.264, ขนาด UI 125% · เดสก์ท็อป: ไม่เต็มจอ, หยุดเมื่อเสียโฟกัส, ขนาด UI 100% / " +
+  "Living room: fullscreen, controller on, 150% UI scale · Handheld: fullscreen, controller on, touch overlay, H.264 only, 125% UI scale · Desktop: windowed, pause on blur, 100% UI scale";
+const RESET_DEFAULTS_CONFIRM_TEXT = "กดอีกครั้งภายใน 5 วินาทีเพื่อยืนยัน / Press again within 5 s to confirm";
+const RESET_DEFAULTS_CONFIRM_WINDOW_MS = 5000;
 
 // Sleep timer and codec filter option labels are shown bilingually, same
 // rationale as CONTROLS_TABLE above: they are short, fixed-vocabulary
@@ -265,6 +312,14 @@ const CODEC_FILTER_OPTIONS = [
   { value: "h264", label: "จำกัดเฉพาะ H.264 / H.264 only" },
 ];
 
+const UI_SCALE_OPTIONS = [
+  { value: 100, label: "100%" },
+  { value: 125, label: "125%" },
+  { value: 150, label: "150%" },
+  { value: 175, label: "175%" },
+  { value: 200, label: "200%" },
+];
+
 const SETTINGS_KEYS = {
   fullscreen: "fullscreen",
   keepOnTop: "keepOnTop",
@@ -276,6 +331,16 @@ const SETTINGS_KEYS = {
   touchOverlay: "touchOverlay",
   miniPlayer: "miniPlayer",
   startWithWindows: "startWithWindows",
+  uiScale: "uiScale",
+  sleepAtEndOfVideo: "sleepAtEndOfVideo",
+};
+
+// Maps each profile button's element id to the profile name
+// `settings_apply_profile` expects, per the "Settings profiles" contract.
+const PROFILE_BUTTONS = {
+  "profile-living-room-btn": "livingRoom",
+  "profile-handheld-btn": "handheld",
+  "profile-desktop-btn": "desktop",
 };
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -346,7 +411,12 @@ function hasTauriApi(win) {
 
 function getState(win) {
   if (!win.__lalinSettingsState__) {
-    win.__lalinSettingsState__ = { wired: false, refreshTimerId: null };
+    win.__lalinSettingsState__ = {
+      wired: false,
+      refreshTimerId: null,
+      resetArmed: false,
+      resetTimerId: null,
+    };
   }
   return win.__lalinSettingsState__;
 }
@@ -426,6 +496,16 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "start-with-windows-label", strings.general.startWithWindowsLabel);
   setText(doc, "start-with-windows-note", START_WITH_WINDOWS_NOTE);
 
+  setText(doc, "ui-scale-label", strings.general.uiScaleLabel);
+  setText(doc, "ui-scale-note", strings.general.uiScaleNote);
+  buildSelectOptions(doc, "ui-scale-select", UI_SCALE_OPTIONS);
+
+  setText(doc, "profile-legend", strings.general.profileLegend);
+  setText(doc, "profile-living-room-btn", strings.general.profileLivingRoomBtn);
+  setText(doc, "profile-handheld-btn", strings.general.profileHandheldBtn);
+  setText(doc, "profile-desktop-btn", strings.general.profileDesktopBtn);
+  setText(doc, "profile-note", PROFILE_NOTE_TEXT);
+
   setText(doc, "tv-heading", strings.tv.heading);
   setText(doc, "dial-name-label", strings.tv.dialNameLabel);
   setText(doc, "open-setup-btn", strings.tv.openSetupBtn);
@@ -435,6 +515,7 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "codec-filter-label", strings.playback.codecFilterLabel);
   setText(doc, "codec-filter-note", strings.playback.codecFilterNote);
   setText(doc, "hardware-decoding-label", strings.playback.hardwareDecodingLabel);
+  setText(doc, "sleep-at-end-label", strings.playback.sleepAtEndLabel);
   buildSelectOptions(doc, "sleep-timer-select", SLEEP_TIMER_OPTIONS);
   buildSelectOptions(doc, "codec-filter-select", CODEC_FILTER_OPTIONS);
 
@@ -461,6 +542,11 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "copy-diagnostics-btn", strings.updates.copyDiagnosticsBtn);
   setText(doc, "diagnostics-note", strings.updates.diagnosticsNote);
   setAttr(doc, "diagnostics-output", "aria-label", strings.updates.diagnosticsOutputLabel);
+
+  setText(doc, "copy-launch-command-btn", strings.updates.copyLaunchCommandBtn);
+  setText(doc, "launch-command-note", strings.updates.launchCommandNote);
+  setAttr(doc, "launch-command-output", "aria-label", strings.updates.launchCommandOutputLabel);
+  setText(doc, "reset-defaults-btn", strings.updates.resetDefaultsBtn);
 }
 
 function dialStateLabel(strings, dial) {
@@ -544,6 +630,7 @@ function renderDynamic(doc, strings, data) {
   setChecked(doc, "language-th", settings.language === "th");
   setChecked(doc, "language-en", settings.language !== "th");
   setChecked(doc, "start-with-windows-toggle", !!settings.startWithWindows);
+  setValue(doc, "ui-scale-select", settings.uiScale != null ? settings.uiScale : 100);
   renderDialNameInput(doc, settings.dialFriendlyName || "");
   renderDial(doc, strings, data && data.dial);
 
@@ -552,6 +639,7 @@ function renderDynamic(doc, strings, data) {
   setValue(doc, "codec-filter-select", settings.codecFilter || "off");
   setChecked(doc, "hardware-decoding-toggle", !!settings.hardwareDecoding);
   renderHardwareDecodingNote(doc, strings, !!(data && data.hardwareDecodingRestartRequired));
+  setChecked(doc, "sleep-at-end-toggle", !!settings.sleepAtEndOfVideo);
 
   setChecked(doc, "fullscreen-toggle", !!settings.fullscreen);
   setChecked(doc, "keep-on-top-toggle", !!settings.keepOnTop);
@@ -590,7 +678,13 @@ function afterSettingsSet(doc, win, invokePromise) {
       }
       win.__LALIN_SETTINGS__ = data;
       const nextStrings = STRINGS[langOf(data)];
-      if (nextStrings !== strings) renderStaticLabels(doc, nextStrings, data);
+      if (nextStrings !== strings) {
+        // A relabel would silently overwrite an armed reset-defaults confirm
+        // label while leaving it armed; disarm first so the button's text
+        // and state stay in step.
+        disarmResetDefaults(doc, win, nextStrings);
+        renderStaticLabels(doc, nextStrings, data);
+      }
       renderDynamic(doc, nextStrings, data);
     })
     .catch((err) => {
@@ -721,8 +815,9 @@ function wireCheckUpdates(doc, win) {
 // Resolves `true` when the text was copied to the clipboard, `false` when
 // the Clipboard API is unavailable or the copy was rejected (e.g. no user
 // gesture, permission denied) — either way the caller falls back to the
-// manual-copy message, never throwing.
-function copyDiagnosticsToClipboard(win, text) {
+// manual-copy message, never throwing. Shared by the diagnostics and
+// launch-command copy buttons (same pattern, per the U3 contract).
+function copyTextToClipboard(win, text) {
   const nav = win && win.navigator;
   if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== "function") {
     return Promise.resolve(false);
@@ -753,13 +848,158 @@ function wireCopyDiagnostics(doc, win) {
         setValue(doc, "diagnostics-output", value);
         setHidden(doc, "diagnostics-output", value.length === 0);
 
-        return copyDiagnosticsToClipboard(win, value).then((copied) => {
+        return copyTextToClipboard(win, value).then((copied) => {
           setText(doc, "diagnostics-result", copied ? DIAGNOSTICS_COPIED_TEXT : DIAGNOSTICS_MANUAL_COPY_TEXT);
           setHidden(doc, "diagnostics-result", false);
         });
       })
       .catch((err) => {
         showError(doc, strings.diagnosticsErrorPrefix + stringifyError(err, strings));
+      })
+      .then(() => {
+        btn.disabled = false;
+      });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Launch command (#copy-launch-command-btn) — same pattern as the diagnostics
+// button above: fills the readonly textarea (hidden until it has text), then
+// best-effort copies to the clipboard, reporting success/manual-copy in
+// #launch-command-result. Never touched by the background refresh loop.
+// ---------------------------------------------------------------------------
+
+function wireCopyLaunchCommand(doc, win) {
+  const btn = byId(doc, "copy-launch-command-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    const data = win.__LALIN_SETTINGS__ || {};
+    const strings = STRINGS[langOf(data)];
+
+    btn.disabled = true;
+    setHidden(doc, "launch-command-result", true);
+    setText(doc, "launch-command-result", "");
+    showError(doc, "");
+
+    win.__TAURI__.core
+      .invoke("settings_launch_command")
+      .then((text) => {
+        const value = text == null ? "" : String(text);
+        setValue(doc, "launch-command-output", value);
+        setHidden(doc, "launch-command-output", value.length === 0);
+
+        return copyTextToClipboard(win, value).then((copied) => {
+          setText(doc, "launch-command-result", copied ? DIAGNOSTICS_COPIED_TEXT : DIAGNOSTICS_MANUAL_COPY_TEXT);
+          setHidden(doc, "launch-command-result", false);
+        });
+      })
+      .catch((err) => {
+        showError(doc, strings.launchCommandErrorPrefix + stringifyError(err, strings));
+      })
+      .then(() => {
+        btn.disabled = false;
+      });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Settings profiles (#profile-living-room-btn / #profile-handheld-btn /
+// #profile-desktop-btn) — each invokes settings_apply_profile({ profile })
+// and re-renders from the returned snapshot, reusing the same
+// merge-and-render (or revert-and-show-error) path as an ordinary
+// settings_set control.
+// ---------------------------------------------------------------------------
+
+function wireProfileButtons(doc, win) {
+  Object.keys(PROFILE_BUTTONS).forEach((elementId) => {
+    const btn = byId(doc, elementId);
+    if (!btn) return;
+    const profile = PROFILE_BUTTONS[elementId];
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      const data = win.__LALIN_SETTINGS__ || {};
+      const strings = STRINGS[langOf(data)];
+      showError(doc, "");
+
+      btn.disabled = true;
+      win.__TAURI__.core
+        .invoke("settings_apply_profile", { profile })
+        .then((snapshot) => {
+          mergeSnapshot(data, snapshot);
+          win.__LALIN_SETTINGS__ = data;
+          renderDynamic(doc, STRINGS[langOf(data)], data);
+        })
+        .catch((err) => {
+          showError(doc, strings.profileErrorPrefix + stringifyError(err, strings));
+        })
+        .then(() => {
+          btn.disabled = false;
+        });
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reset to defaults (#reset-defaults-btn) — two-step, no native dialog. The
+// first click arms a 5-second window (button text becomes the bilingual
+// confirm prompt); a second click inside that window invokes
+// settings_reset_defaults and re-renders from the snapshot; letting the
+// window expire restores the original label and does nothing else.
+// ---------------------------------------------------------------------------
+
+function disarmResetDefaults(doc, win, strings) {
+  const state = getState(win);
+  if (state.resetTimerId != null && typeof win.clearTimeout === "function") {
+    win.clearTimeout(state.resetTimerId);
+  }
+  state.resetArmed = false;
+  state.resetTimerId = null;
+  setText(doc, "reset-defaults-btn", strings.updates.resetDefaultsBtn);
+}
+
+function wireResetDefaults(doc, win) {
+  const btn = byId(doc, "reset-defaults-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    const data = win.__LALIN_SETTINGS__ || {};
+    const strings = STRINGS[langOf(data)];
+    const state = getState(win);
+
+    if (!state.resetArmed) {
+      state.resetArmed = true;
+      setText(doc, "reset-defaults-btn", RESET_DEFAULTS_CONFIRM_TEXT);
+      if (typeof win.setTimeout === "function") {
+        state.resetTimerId = win.setTimeout(() => {
+          disarmResetDefaults(doc, win, strings);
+        }, RESET_DEFAULTS_CONFIRM_WINDOW_MS);
+      }
+      return;
+    }
+
+    // Second click inside the confirm window.
+    if (state.resetTimerId != null && typeof win.clearTimeout === "function") {
+      win.clearTimeout(state.resetTimerId);
+    }
+    state.resetArmed = false;
+    state.resetTimerId = null;
+
+    btn.disabled = true;
+    showError(doc, "");
+
+    win.__TAURI__.core
+      .invoke("settings_reset_defaults")
+      .then((snapshot) => {
+        mergeSnapshot(data, snapshot);
+        win.__LALIN_SETTINGS__ = data;
+        const nextStrings = STRINGS[langOf(data)];
+        renderDynamic(doc, nextStrings, data);
+        setText(doc, "reset-defaults-btn", nextStrings.updates.resetDefaultsBtn);
+      })
+      .catch((err) => {
+        showError(doc, strings.resetDefaultsErrorPrefix + stringifyError(err, strings));
+        setText(doc, "reset-defaults-btn", strings.updates.resetDefaultsBtn);
       })
       .then(() => {
         btn.disabled = false;
@@ -847,12 +1087,17 @@ function init(doc, win) {
     wireBooleanToggle(doc, win, "touch-overlay-toggle", SETTINGS_KEYS.touchOverlay);
     wireBooleanToggle(doc, win, "hardware-decoding-toggle", SETTINGS_KEYS.hardwareDecoding);
     wireBooleanToggle(doc, win, "start-with-windows-toggle", SETTINGS_KEYS.startWithWindows);
+    wireBooleanToggle(doc, win, "sleep-at-end-toggle", SETTINGS_KEYS.sleepAtEndOfVideo);
     wireSelectControl(doc, win, "sleep-timer-select", SETTINGS_KEYS.sleepTimerMinutes, (raw) => parseInt(raw, 10));
     wireSelectControl(doc, win, "codec-filter-select", SETTINGS_KEYS.codecFilter);
+    wireSelectControl(doc, win, "ui-scale-select", SETTINGS_KEYS.uiScale, (raw) => parseInt(raw, 10));
     wireDialName(doc, win);
     wireOpenSetup(doc, win);
     wireCheckUpdates(doc, win);
     wireCopyDiagnostics(doc, win);
+    wireCopyLaunchCommand(doc, win);
+    wireProfileButtons(doc, win);
+    wireResetDefaults(doc, win);
     wireEscape(doc, win);
   }
 

@@ -1,0 +1,11 @@
+# Permission for applying a named settings profile (livingRoom/handheld/desktop) from the settings window.
+
+[[permission]]
+identifier = "allow-settings-apply-profile"
+description = "Enables the settings_apply_profile command without any pre-configured scope."
+commands.allow = ["settings_apply_profile"]
+
+[[permission]]
+identifier = "deny-settings-apply-profile"
+description = "Denies the settings_apply_profile command."
+commands.deny = ["settings_apply_profile"]

@@ -1,0 +1,11 @@
+# Permission for building the Steam launch command text from the settings window.
+
+[[permission]]
+identifier = "allow-settings-launch-command"
+description = "Enables the settings_launch_command command without any pre-configured scope."
+commands.allow = ["settings_launch_command"]
+
+[[permission]]
+identifier = "deny-settings-launch-command"
+description = "Denies the settings_launch_command command."
+commands.deny = ["settings_launch_command"]

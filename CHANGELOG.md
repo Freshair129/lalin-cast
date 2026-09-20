@@ -72,7 +72,7 @@ version number.
 - release matrix ARM64 แบบ experimental (`continue-on-error`) และ template manifest สำหรับ winget / an
   experimental ARM64 release matrix (`continue-on-error`) and winget manifest templates
 
-#### Wave 5 — Desktop integration and launcher (`docs/plans/W5_DESKTOP_PLAN.md`, กำลังดำเนินการ / in progress)
+#### Wave 5 — Desktop integration and launcher (`docs/plans/W5_DESKTOP_PLAN.md`, merge แล้วผ่าน PR #8 / merged via PR #8)
 
 - วงจรชีวิตของ Studio launcher ผ่าน CLI (`--lifecycle launch|focus|close`) และไฟล์สถานะ
   `lifecycle.json` / a Studio launcher lifecycle via the CLI (`--lifecycle launch|focus|close`) and a
@@ -94,6 +94,21 @@ version number.
 - ไฟล์ support ของ repository: issue templates, PR template, `SECURITY.md`, `CHANGELOG.md` (ไฟล์นี้),
   `docs/runbooks/RELEASE_CHECKLIST.md` / repository support files: the issue templates, the PR
   template, `SECURITY.md`, `CHANGELOG.md` (this file), and `docs/runbooks/RELEASE_CHECKLIST.md`
+
+#### Wave 6 — Living-room polish and QA (`docs/plans/W6_POLISH_PLAN.md`)
+
+- CI job `smoke` (windows-latest, `continue-on-error: true` จนกว่า human gate H20 จะยืนยันเสถียร 2 รอบ)
+  build debug binary แล้วตรวจ `--version` และวงจร `--lifecycle close` จริงผ่านไฟล์ `lifecycle.json` / a
+  `smoke` CI job (windows-latest, `continue-on-error: true` until human gate H20 confirms two stable
+  runs) that builds the debug binary and verifies `--version` and a real `--lifecycle close` round
+  trip against `lifecycle.json`
+- `scripts/lifecycle-driver.ps1` และ `scripts/README.md`: สคริปต์ขับวงจรชีวิต Studio launcher
+  (`launch`/`focus`/`close`) แบบอ่านไฟล์สถานะอย่างเดียว สำหรับ human gate H13 / `scripts/lifecycle-driver.ps1`
+  and `scripts/README.md`: a read-only Studio launcher lifecycle driver script (`launch`/`focus`/`close`)
+  for human gate H13
+- release notes ของ GitHub Release ดึงมาจากส่วน `## [<version>]` ของ `CHANGELOG.md` โดยตรง (พร้อม
+  fallback ถ้าไม่พบส่วนนั้น) / GitHub Release notes are now extracted directly from the `## [<version>]`
+  section of `CHANGELOG.md` (with a fallback when that section is missing)
 
 ### Changed
 
@@ -127,7 +142,7 @@ version number.
 - แก้ RUSTSEC-2026-0285 โดยอัปเกรด rustls 0.23.44 -> 0.23.45 / fixed RUSTSEC-2026-0285 by upgrading
   rustls 0.23.44 -> 0.23.45
 
-#### Wave 5 — Desktop integration and launcher (`docs/plans/W5_DESKTOP_PLAN.md`, กำลังดำเนินการ / in progress)
+#### Wave 5 — Desktop integration and launcher (`docs/plans/W5_DESKTOP_PLAN.md`, merge แล้วผ่าน PR #8 / merged via PR #8)
 
 - `reg.exe` (สำหรับ start-with-Windows) ถูกเรียกด้วย argument คงที่จาก pure function เท่านั้น — ไม่มี
   PowerShell, ไม่มี `unsafe` ใหม่, ไม่มี `windows-sys` feature ใหม่ / `reg.exe` (for start-with-Windows)
@@ -141,3 +156,11 @@ version number.
   Rust side before use
 - capability ระยะไกล (`src-tauri/capabilities/default.json`) ไม่เปลี่ยนแปลงตลอดทั้ง wave 5 / the
   remote capability (`src-tauri/capabilities/default.json`) is unchanged throughout wave 5
+
+#### Wave 6 — Living-room polish and QA (`docs/plans/W6_POLISH_PLAN.md`)
+
+- ทุก step ของ CI smoke job และ release-notes extraction เป็น pwsh ที่มี argument คงที่ ไม่มี secret ใด
+  ถูกพิมพ์ลง log / every step of the CI smoke job and the release-notes extraction is pwsh with fixed
+  arguments; no secret is ever printed to the log
+- `scripts/lifecycle-driver.ps1` อ่าน `lifecycle.json` อย่างเดียว ไม่เขียนหรือแก้ไขไฟล์ใด ๆ / `scripts/lifecycle-driver.ps1`
+  only reads `lifecycle.json` — it never writes to or modifies any file

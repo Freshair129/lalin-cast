@@ -13,12 +13,16 @@
   //     deepLink: string | null,
   //     codecFilter: "off" | "h264",
   //     touchOverlay: boolean,
+  //     sleepAtEndOfVideo: boolean, // wave 6 — see docs/plans/W6_POLISH_PLAN.md
   //   };
   //
   // Rust -> page events this file listens for:
-  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay }
+  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo }
   //   "lalin-cast-deeplink" payload { url }
   //   "lalin-cast-sleep"    payload { minutes } (wave 4 — see docs/plans/W4_PLAYBACK_PLAN.md)
+  //   "lalin-cast-remote"   payload { action: "toggle-play" } (wave 6 — see docs/plans/W6_POLISH_PLAN.md,
+  //     "Remote (Rust -> หน้า YouTube)". Sent from the tray/window play-pause item; whitelisted to
+  //     exactly this one action, rate-limited 250 ms on this side.)
   //
   // page -> Rust events this file emits:
   //   "lalin-cast-shell" payload { action: "open-settings" | "toggle-fullscreen" | "toggle-mini" }
@@ -55,7 +59,9 @@
     deepLink: null,
     // Wave 4 additions (docs/plans/W4_PLAYBACK_PLAN.md, "ค่าคงที่และ contract"):
     codecFilter: "off",
-    touchOverlay: true
+    touchOverlay: true,
+    // Wave 6 addition (docs/plans/W6_POLISH_PLAN.md, "Sleep at end of video"):
+    sleepAtEndOfVideo: false
   });
 
   // Reads window.__LALIN_PREFS__ with the documented defaults, tolerating a
@@ -69,17 +75,19 @@
       pauseOnBlur: raw.pauseOnBlur === true ? true : DEFAULT_PREFS.pauseOnBlur,
       deepLink: typeof raw.deepLink === "string" && raw.deepLink.length > 0 ? raw.deepLink : DEFAULT_PREFS.deepLink,
       codecFilter: raw.codecFilter === "h264" ? "h264" : DEFAULT_PREFS.codecFilter,
-      touchOverlay: raw.touchOverlay === false ? false : DEFAULT_PREFS.touchOverlay
+      touchOverlay: raw.touchOverlay === false ? false : DEFAULT_PREFS.touchOverlay,
+      sleepAtEndOfVideo: raw.sleepAtEndOfVideo === true ? true : DEFAULT_PREFS.sleepAtEndOfVideo
     };
   };
 
   // Merges a `lalin-cast-prefs` payload ({ lang, controllerEnabled,
-  // pauseOnBlur, codecFilter, touchOverlay }, no `deepLink` field — that only
-  // ever arrives once, via __LALIN_PREFS__ or a `lalin-cast-deeplink` event)
-  // onto the previous prefs, ignoring unknown/malformed fields. Note that a
-  // later `codecFilter` change is only ever *stored* here — per contract it
-  // takes effect on the next page load, since installCodecFilter() (below)
-  // only ever runs once, synchronously, from boot().
+  // pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo }, no
+  // `deepLink` field — that only ever arrives once, via __LALIN_PREFS__ or a
+  // `lalin-cast-deeplink` event) onto the previous prefs, ignoring
+  // unknown/malformed fields. Note that a later `codecFilter` change is only
+  // ever *stored* here — per contract it takes effect on the next page load,
+  // since installCodecFilter() (below) only ever runs once, synchronously,
+  // from boot().
   const applyPrefsUpdate = (prev, payload) => {
     const base = prev && typeof prev === "object" ? prev : DEFAULT_PREFS;
     const next = {
@@ -88,7 +96,8 @@
       pauseOnBlur: base.pauseOnBlur,
       deepLink: base.deepLink,
       codecFilter: base.codecFilter,
-      touchOverlay: base.touchOverlay
+      touchOverlay: base.touchOverlay,
+      sleepAtEndOfVideo: base.sleepAtEndOfVideo
     };
     if (payload && typeof payload === "object") {
       if (payload.lang === "en" || payload.lang === "th") next.lang = payload.lang;
@@ -96,6 +105,7 @@
       if (typeof payload.pauseOnBlur === "boolean") next.pauseOnBlur = payload.pauseOnBlur;
       if (payload.codecFilter === "h264" || payload.codecFilter === "off") next.codecFilter = payload.codecFilter;
       if (typeof payload.touchOverlay === "boolean") next.touchOverlay = payload.touchOverlay;
+      if (typeof payload.sleepAtEndOfVideo === "boolean") next.sleepAtEndOfVideo = payload.sleepAtEndOfVideo;
     }
     return next;
   };
@@ -500,7 +510,10 @@
     0: 13,   // A -> Enter
     1: 27,   // B -> Escape
     2: 170,  // X -> asterisk (search)
-    // 3 (Y) is intentionally unmapped upstream; falls back to GAMEPAD_FALLBACK_KEYCODE.
+    // 3 (Y) was intentionally unmapped upstream (fell back to GAMEPAD_FALLBACK_KEYCODE).
+    // Wave 6 (docs/plans/W6_POLISH_PLAN.md, "Controller"): special-cased in
+    // resolveGamepadEvent() below, like R3, to dispatch the "toggle-help"
+    // action instead of a keyCode.
     4: 115,  // Left bumper -> F4 (back)
     5: 116,  // Right bumper -> F5 (forward)
     6: 113,  // Left trigger -> F2 (seek backwards)
@@ -530,6 +543,7 @@
   // like every other unmapped button upstream.
   const GAMEPAD_FALLBACK_KEYCODE = 135;
   const GAMEPAD_SETTINGS_BUTTON = 11; // R3
+  const GAMEPAD_HELP_BUTTON = 3; // Y (wave 6 — toggle-help while controllerEnabled)
   const GAMEPAD_AXIS_DEADZONE = 0.5;
   const GAMEPAD_REPEAT_DELAY_MS = 500;
   const GAMEPAD_REPEAT_INTERVAL_MS = 100;
@@ -592,12 +606,17 @@
   };
 
   // Resolves one raw code transition into either a dispatchable
-  // { type, code, keyCode } or, for R3, an { type, action } — mirroring
+  // { type, code, keyCode } or, for R3/Y, an { type, action } — mirroring
   // controller-support.js's `simulateKeyDown`/`simulateKeyUp`, which special-
-  // cases 'vt-settings' and does nothing at all on its keyup.
+  // cases 'vt-settings' and does nothing at all on its keyup. Wave 6 adds Y
+  // (GAMEPAD_HELP_BUTTON) alongside R3, the same way: action-only, keyup a
+  // no-op.
   const resolveGamepadEvent = (rawEvent) => {
     if (rawEvent.code === GAMEPAD_SETTINGS_BUTTON) {
       return rawEvent.type === "down" ? { type: "down", action: "open-settings" } : null;
+    }
+    if (rawEvent.code === GAMEPAD_HELP_BUTTON) {
+      return rawEvent.type === "down" ? { type: "down", action: "toggle-help" } : null;
     }
     const keyCode = Object.prototype.hasOwnProperty.call(GAMEPAD_KEY_CODE_MAP, rawEvent.code)
       ? GAMEPAD_KEY_CODE_MAP[rawEvent.code]
@@ -623,6 +642,8 @@
   const createGamepadController = (doc, win, options) => {
     const getEnabled = (options && options.getEnabled) || (() => true);
     const onOpenSettings = (options && options.onOpenSettings) || (() => {});
+    // Wave 6 — Y button (docs/plans/W6_POLISH_PLAN.md, "Controller").
+    const onToggleHelp = (options && options.onToggleHelp) || (() => {});
 
     let focused = true;
     win.addEventListener("focus", () => { focused = true; });
@@ -643,7 +664,10 @@
     const dispatch = (resolved) => {
       if (!focused) return;
       if (resolved.action) {
-        if (resolved.type === "down") onOpenSettings();
+        if (resolved.type === "down") {
+          if (resolved.action === "open-settings") onOpenSettings();
+          else if (resolved.action === "toggle-help") onToggleHelp();
+        }
         return;
       }
       dispatchSyntheticKey(doc, resolved.type === "down" ? "keydown" : "keyup", resolved.keyCode);
@@ -1426,6 +1450,15 @@
 
     const ensureElement = () => {
       if (element) return element;
+      // Reuse an already-injected #lalin-cast-sleep-osd if one exists (e.g. a
+      // second createSleepOsd() instance created against the same doc) so we
+      // never inject a duplicate DOM id into the page. See docs/plans/
+      // W6_POLISH_PLAN.md, "Sleep at end of video (U2)".
+      const existing = typeof doc.getElementById === "function" ? doc.getElementById(SLEEP_OSD_ID) : null;
+      if (existing) {
+        element = existing;
+        return element;
+      }
       const el = doc.createElement("div");
       el.id = SLEEP_OSD_ID;
       el.textContent = SLEEP_OSD_TEXT;
@@ -1452,9 +1485,13 @@
     };
 
     return {
-      show() {
+      // `text` defaults to the sleep-timer wording; wave 6's sleep-at-end
+      // section (below) reuses this same OSD element/timer with its own
+      // bilingual text instead of duplicating the show/hide machinery.
+      show(text) {
         pauseAllVideos(doc);
         const el = ensureElement();
+        el.textContent = typeof text === "string" && text.length > 0 ? text : SLEEP_OSD_TEXT;
         if (el.style) el.style.display = "";
         if (hideTimer !== null && typeof win.clearTimeout === "function") {
           win.clearTimeout(hideTimer);
@@ -1472,10 +1509,207 @@
 
   // Wired from initPrefsAndDeepLink (Boot section, below) once the Tauri
   // bridge is ready, mirroring initDeepLinkListener's (win, tauri) shape.
-  const initSleepListener = async (doc, win, tauri) => {
+  const initSleepListener = async (doc, win, tauri, osd) => {
     if (!tauri?.event?.listen) return;
-    const osd = createSleepOsd(doc, win);
-    await tauri.event.listen("lalin-cast-sleep", () => osd.show());
+    // `osd` lets boot() hand in the one createSleepOsd() instance shared with
+    // createSleepAtEndHandler below, so both features drive the same
+    // #lalin-cast-sleep-osd element instead of each creating their own; falls
+    // back to a fresh instance when called standalone (e.g. existing tests).
+    const sharedOsd = osd || createSleepOsd(doc, win);
+    await tauri.event.listen("lalin-cast-sleep", () => sharedOsd.show());
+  };
+
+  // -------------------------------------------------------------------------
+  // Remote (Lalin Cast original — wave 6, docs/plans/W6_POLISH_PLAN.md,
+  // "Remote (Rust -> หน้า YouTube)")
+  //
+  // Listens for the tray/window play-pause item's "lalin-cast-remote" event
+  // (wired by initPrefsAndDeepLink below, via the same bridge-wait pattern
+  // initDeepLinkListener/initSleepListener already use). Whitelisted to
+  // exactly { action: "toggle-play" } — anything else is dropped silently —
+  // and rate-limited to one accepted call per 250 ms on this side, since the
+  // event can in principle fire faster than a human ever double-clicks tray
+  // icons. Never touches YouTube's DOM beyond <video> elements, per contract.
+  // -------------------------------------------------------------------------
+
+  const REMOTE_RATE_LIMIT_MS = 250;
+
+  // Pure: whether an incoming lalin-cast-remote payload should be acted on
+  // right now. `lastAcceptedAt` is the timestamp of the previous accepted
+  // call (null if none yet); `now` is the current timestamp. Rejects
+  // anything but the exact whitelisted shape, and any call within
+  // REMOTE_RATE_LIMIT_MS of the last accepted one.
+  const remoteActionAllowed = (payload, lastAcceptedAt, now) => {
+    if (!payload || typeof payload !== "object" || payload.action !== "toggle-play") return false;
+    if (typeof lastAcceptedAt === "number" && typeof now === "number" && now - lastAcceptedAt < REMOTE_RATE_LIMIT_MS) {
+      return false;
+    }
+    return true;
+  };
+
+  // Toggle-play semantics: if any <video> is currently playing
+  // (!paused && !ended), pause every <video>; otherwise play() the first
+  // paused <video> found, swallowing a promise rejection (autoplay policy,
+  // no active video, etc.) so it never surfaces as an unhandled rejection.
+  const toggleRemotePlayback = (doc) => {
+    if (!doc || typeof doc.querySelectorAll !== "function") return;
+    const videos = Array.prototype.slice.call(doc.querySelectorAll("video"));
+    const anyPlaying = videos.some((video) => video && !video.paused && !video.ended);
+    if (anyPlaying) {
+      videos.forEach((video) => {
+        if (video && typeof video.pause === "function") video.pause();
+      });
+      return;
+    }
+    const target = videos.find((video) => video && video.paused);
+    if (target && typeof target.play === "function") {
+      const result = target.play();
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    }
+  };
+
+  // Wires the rate limiter + whitelist + toggle above into one payload
+  // handler. `now` is overridable (this file's established testability
+  // convention) so injected.test.js can drive the 250 ms window without a
+  // real sleep.
+  const createRemoteHandler = (doc, win, options) => {
+    void win; // kept for parity with this file's other create*Handler factories
+    const opts = options || {};
+    const now = opts.now || (() => Date.now());
+    let lastAcceptedAt = null;
+
+    const handler = (payload) => {
+      const t = now();
+      if (!remoteActionAllowed(payload, lastAcceptedAt, t)) return;
+      lastAcceptedAt = t;
+      toggleRemotePlayback(doc);
+    };
+
+    return { handler };
+  };
+
+  // Wired from initPrefsAndDeepLink (Boot section, below), mirroring
+  // initSleepListener's (doc, win, tauri) shape.
+  const initRemoteListener = async (doc, win, tauri) => {
+    if (!tauri?.event?.listen) return;
+    const remote = createRemoteHandler(doc, win);
+    await tauri.event.listen("lalin-cast-remote", (event) => {
+      remote.handler(event?.payload || event);
+    });
+  };
+
+  // -------------------------------------------------------------------------
+  // Sleep at end of video (Lalin Cast original — wave 6,
+  // docs/plans/W6_POLISH_PLAN.md, "Sleep at end of video (U2)")
+  //
+  // While `prefs.sleepAtEndOfVideo` is true (default false; updated from
+  // `lalin-cast-prefs` like every other pref above): a capture-phase `ended`
+  // on any <video> arms an 8 s window. The first `play`/`playing` from any
+  // video inside that window — YouTube's Leanback autoplay-next — is paused
+  // immediately and the wave 4 `#lalin-cast-sleep-osd` element (reused via
+  // createSleepOsd's `show(text)`, above) shows the bilingual end-of-video
+  // text below for 6 s, then the window disarms. No play within 8 s ->
+  // silent disarm. `sleepAtEndDecision()` is the pure state machine;
+  // `createSleepAtEndHandler()` wires it to real doc events + a setTimeout
+  // for the 8 s expiry, so the window can never stay armed forever.
+  // -------------------------------------------------------------------------
+
+  const SLEEP_AT_END_WINDOW_MS = 8000;
+  const SLEEP_AT_END_OSD_TEXT =
+    "จบวิดีโอแล้ว — หยุดเล่นตามที่ตั้งไว้ / End of video: playback paused as requested";
+
+  // Pure: decides what a sleep-at-end event should do to `state`
+  // ({ armed, deadline } — `deadline` unused by the decision itself, kept
+  // only so a caller can compute its own expiry; pass any object shape here,
+  // it is never inspected beyond `.armed`). `eventType` is one of "ended",
+  // "play"/"playing", or "expire" (fired by the caller's own 8 s timer, not
+  // a real DOM event). `now` is accepted for the same testability
+  // convention as the rest of this file's `now`-taking helpers, and is
+  // echoed into the returned state's `deadline` on "arm" so a caller can
+  // sanity-check timing without keeping its own copy.
+  //   "ended"          -> always (re)arms, regardless of prior state.
+  //   "play"/"playing" while armed  -> "pause-and-show", disarms.
+  //   "play"/"playing" while disarmed -> "none", state unchanged.
+  //   "expire" while armed   -> "disarm".
+  //   "expire" while disarmed, or any other eventType -> "none", unchanged.
+  const sleepAtEndDecision = (state, eventType, now) => {
+    const base = state && typeof state === "object" ? state : { armed: false, deadline: null };
+    if (eventType === "ended") {
+      return { action: "arm", state: { armed: true, deadline: (typeof now === "number" ? now : 0) + SLEEP_AT_END_WINDOW_MS } };
+    }
+    if (eventType === "play" || eventType === "playing") {
+      if (base.armed) return { action: "pause-and-show", state: { armed: false, deadline: null } };
+      return { action: "none", state: base };
+    }
+    if (eventType === "expire") {
+      if (base.armed) return { action: "disarm", state: { armed: false, deadline: null } };
+      return { action: "none", state: base };
+    }
+    return { action: "none", state: base };
+  };
+
+  // Wires sleepAtEndDecision() to real capture-phase doc events, an OSD
+  // (createSleepOsd's instance, reused so both features share one element
+  // and one 6 s auto-hide timer), and a setTimeout standing in for the 8 s
+  // expiry. `getPref` gates the "ended" branch only — per contract, Rust
+  // never resets `sleepAtEndOfVideo` itself, so the page is the only place
+  // this pref is read to decide whether to arm at all.
+  const createSleepAtEndHandler = (doc, win, options) => {
+    const opts = options || {};
+    const getPref = opts.getPref || (() => false);
+    const osd = opts.osd || createSleepOsd(doc, win);
+    const now = opts.now || (() => (win && typeof win.Date !== "undefined" ? win.Date.now() : Date.now()));
+
+    let state = { armed: false, deadline: null };
+    let expireTimer = null;
+
+    const clearExpireTimer = () => {
+      if (expireTimer !== null && win && typeof win.clearTimeout === "function") {
+        win.clearTimeout(expireTimer);
+      }
+      expireTimer = null;
+    };
+
+    const apply = (eventType) => {
+      const result = sleepAtEndDecision(state, eventType, now());
+      state = result.state;
+      if (result.action === "arm") {
+        clearExpireTimer();
+        if (win && typeof win.setTimeout === "function") {
+          expireTimer = win.setTimeout(() => {
+            expireTimer = null;
+            apply("expire");
+          }, SLEEP_AT_END_WINDOW_MS);
+        }
+      } else if (result.action === "pause-and-show") {
+        clearExpireTimer();
+        osd.show(SLEEP_AT_END_OSD_TEXT);
+      } else if (result.action === "disarm") {
+        clearExpireTimer();
+      }
+      return result;
+    };
+
+    const onEnded = () => {
+      if (getPref() !== true) return;
+      apply("ended");
+    };
+    const onPlayish = () => {
+      // Re-checked at fire time too: turning the pref off during the armed
+      // window must not pause the very next play the user asked for.
+      if (getPref() !== true) return;
+      apply("play");
+    };
+
+    doc.addEventListener("ended", onEnded, true);
+    doc.addEventListener("play", onPlayish, true);
+    doc.addEventListener("playing", onPlayish, true);
+
+    return {
+      onEnded,
+      onPlayish,
+      getState: () => state
+    };
   };
 
   // -------------------------------------------------------------------------
@@ -1802,7 +2036,7 @@
     { action: "เปิด-ปิดคำบรรยาย", keyboard: "C", controller: "—" },
     { action: "คัดลอกลิงก์วิดีโอ/เพลย์ลิสต์", keyboard: "Ctrl+Shift+C", controller: "—" },
     { action: "ปรับความเร็วเล่น ช้าลง/เร็วขึ้น", keyboard: "Shift+, / Shift+.", controller: "—" },
-    { action: "เปิด/ปิดผังคีย์นี้", keyboard: "? / F1", controller: "—" }
+    { action: "เปิด/ปิดผังคีย์นี้", keyboard: "? / F1", controller: "Y" }
   ]);
 
   const HELP_ROWS_EN = Object.freeze([
@@ -1816,7 +2050,7 @@
     { action: "Toggle captions", keyboard: "C", controller: "—" },
     { action: "Copy video/playlist link", keyboard: "Ctrl+Shift+C", controller: "—" },
     { action: "Playback speed slower/faster", keyboard: "Shift+, / Shift+.", controller: "—" },
-    { action: "Toggle this help", keyboard: "? / F1", controller: "—" }
+    { action: "Toggle this help", keyboard: "? / F1", controller: "Y" }
   ]);
 
   const helpRows = (lang) => (lang === "en" ? HELP_ROWS_EN : HELP_ROWS_TH).slice();
@@ -2076,7 +2310,7 @@
     return bridge();
   };
 
-  const initPrefsAndDeepLink = async (doc, win, state) => {
+  const initPrefsAndDeepLink = async (doc, win, state, sleepOsd) => {
     const tauri = await waitForBridge();
     if (!tauri?.event?.listen) return;
 
@@ -2087,7 +2321,8 @@
     });
 
     await initDeepLinkListener(win, tauri);
-    await initSleepListener(doc, win, tauri);
+    await initSleepListener(doc, win, tauri, sleepOsd);
+    await initRemoteListener(doc, win, tauri);
   };
 
   const boot = () => {
@@ -2109,16 +2344,22 @@
 
     const state = { prefs };
 
-    const gamepadController = createGamepadController(document, window, {
-      getEnabled: () => state.prefs.controllerEnabled,
-      onOpenSettings: () => emitShell(SHELL_ACTIONS.OPEN_SETTINGS)
-    });
-    if (state.prefs.controllerEnabled) gamepadController.start();
-
-    // Wave 5 additions — see docs/plans/W5_DESKTOP_PLAN.md. Built before
-    // createKeybindHandler below so its callbacks can close over them.
+    // Wave 5 additions — see docs/plans/W5_DESKTOP_PLAN.md. Built before the
+    // gamepad controller and createKeybindHandler below so both sets of
+    // callbacks can close over them (wave 6 adds the gamepad Y button to the
+    // same helpOverlay.toggle() the keybind handler already calls).
     const speedControl = createSpeedControl(document, window);
     const helpOverlay = createHelpOverlay(document, window, { getLang: () => state.prefs.lang });
+
+    const gamepadController = createGamepadController(document, window, {
+      getEnabled: () => state.prefs.controllerEnabled,
+      onOpenSettings: () => emitShell(SHELL_ACTIONS.OPEN_SETTINGS),
+      // Wave 6 (docs/plans/W6_POLISH_PLAN.md, "Controller"): Y button.
+      // Gated on controllerEnabled implicitly — gamepadController never
+      // polls at all while the pref is off (see state.onPrefsChange below).
+      onToggleHelp: () => helpOverlay.toggle()
+    });
+    if (state.prefs.controllerEnabled) gamepadController.start();
 
     createKeybindHandler(document, window, {
       onOpenSettings: () => emitShell(SHELL_ACTIONS.OPEN_SETTINGS),
@@ -2132,6 +2373,13 @@
     createMouseHandler(document, window);
     createPauseOnBlurHandler(document, window, () => state.prefs);
     createMediaSignal(document, window);
+    // Wave 6 — see docs/plans/W6_POLISH_PLAN.md, "Sleep at end of video".
+    // One createSleepOsd() instance shared with initSleepListener (wired via
+    // initPrefsAndDeepLink below) so the wave 4 sleep-timer OSD and the
+    // sleep-at-end OSD are genuinely the same #lalin-cast-sleep-osd element
+    // and hide timer, not two independently-timed copies.
+    const sleepOsd = createSleepOsd(document, window);
+    createSleepAtEndHandler(document, window, { getPref: () => state.prefs.sleepAtEndOfVideo, osd: sleepOsd });
 
     const volumeControl = createVolumeControl(document, { win: window });
     createVolumeKeydownHandler(document, window, volumeControl);
@@ -2149,7 +2397,7 @@
       touchOverlay.setEnabled(next.touchOverlay);
     };
 
-    initPrefsAndDeepLink(document, window, state);
+    initPrefsAndDeepLink(document, window, state, sleepOsd);
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -2169,6 +2417,7 @@
       GAMEPAD_KEY_CODE_MAP,
       GAMEPAD_FALLBACK_KEYCODE,
       GAMEPAD_SETTINGS_BUTTON,
+      GAMEPAD_HELP_BUTTON,
       GAMEPAD_AXIS_CODES,
       GAMEPAD_AXIS_DEADZONE,
       SHELL_ACTIONS,
@@ -2207,7 +2456,17 @@
       MEDIA_TITLE_MAX_LENGTH,
       mediaStateFor,
       readMediaTitle,
-      createMediaSignal
+      createMediaSignal,
+      // Wave 6 — see docs/plans/W6_POLISH_PLAN.md.
+      REMOTE_RATE_LIMIT_MS,
+      remoteActionAllowed,
+      toggleRemotePlayback,
+      createRemoteHandler,
+      initRemoteListener,
+      SLEEP_AT_END_WINDOW_MS,
+      SLEEP_AT_END_OSD_TEXT,
+      sleepAtEndDecision,
+      createSleepAtEndHandler
     };
   }
 

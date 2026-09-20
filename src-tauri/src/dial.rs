@@ -1201,6 +1201,119 @@ mod tests {
     }
 
     #[test]
+    fn header_size_check_is_strictly_greater_than_the_limit_not_greater_or_equal() {
+        // Exactly at the limit, with no terminator and the client closing
+        // the connection: still under the `> MAX_HEADER_BYTES` check, so
+        // this hits EOF (`Invalid`) rather than `TooLarge`.
+        let at_limit: &'static [u8] = Box::leak(vec![b'A'; MAX_HEADER_BYTES].into_boxed_slice());
+        assert!(matches!(
+            read_request_over_tcp(at_limit),
+            Err(HttpReadError::Invalid)
+        ));
+
+        // One byte over the limit tips the same check into `TooLarge`.
+        let over_limit: &'static [u8] =
+            Box::leak(vec![b'A'; MAX_HEADER_BYTES + 1].into_boxed_slice());
+        assert!(matches!(
+            read_request_over_tcp(over_limit),
+            Err(HttpReadError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn rejects_a_header_that_never_reaches_the_blank_line_terminator_and_times_out() {
+        // Unlike `rejects_an_incomplete_request_that_closes_before_the_header_ends`
+        // (an early close), this keeps the connection open with a single
+        // CRLF and no blank-line terminator, so the server's read timeout
+        // — not EOF — is what ends the read. The server's read timeout is
+        // set to an already-elapsed duration (1ms) so the blocking read on
+        // its side costs ~1ms instead of really waiting; the client thread
+        // never sleeps, it just blocks on a channel until the server's read
+        // has returned, so no real wait happens on either side.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let addr = listener.local_addr().expect("test listener local addr");
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect(addr).expect("connect test client");
+            let _ = stream.write_all(b"GET /apps HTTP/1.1\r\nHost: 192.168.1.5\r\n");
+            // Park here (no sleep) until the server's read has returned,
+            // then drop the connection.
+            let _ = done_rx.recv();
+        });
+        let (mut server_stream, _) = listener.accept().expect("accept test connection");
+        server_stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(1)))
+            .expect("set test read timeout");
+        let result = read_http_request(&mut server_stream);
+        let _ = done_tx.send(());
+        let _ = client.join();
+        assert!(matches!(result, Err(HttpReadError::Invalid)));
+    }
+
+    #[test]
+    fn rejects_a_header_containing_invalid_utf8_bytes() {
+        let mut payload = b"GET /apps HTTP/1.1\r\nX-Bad: ".to_vec();
+        payload.extend_from_slice(&[0xFF, 0xFE]);
+        payload.extend_from_slice(b"\r\n\r\n");
+        let payload: &'static [u8] = Box::leak(payload.into_boxed_slice());
+        let result = read_request_over_tcp(payload);
+        assert!(matches!(result, Err(HttpReadError::Invalid)));
+    }
+
+    #[test]
+    fn accepts_a_lowercase_http_method_without_case_folding() {
+        let payload: &'static [u8] = b"get /apps HTTP/1.1\r\nHost: 192.168.1.5\r\n\r\n";
+        let request = read_request_over_tcp(payload).expect("lowercase method should still parse");
+        assert_eq!(request.method, "get");
+    }
+
+    #[test]
+    fn rejects_a_request_target_long_enough_to_exceed_the_header_size_limit() {
+        let long_path = format!("/{}", "a".repeat(MAX_HEADER_BYTES));
+        let payload = format!("GET {long_path} HTTP/1.1\r\nHost: x\r\n\r\n");
+        let payload: &'static [u8] = Box::leak(payload.into_bytes().into_boxed_slice());
+        let result = read_request_over_tcp(payload);
+        // The request-line target check (`target.len() > MAX_HEADER_BYTES`)
+        // is what actually rejects this — the header as a whole still fits
+        // under the combined header+body size check by the time the
+        // terminating blank line arrives, so this is `Invalid`, not
+        // `TooLarge`.
+        assert!(matches!(result, Err(HttpReadError::Invalid)));
+    }
+
+    #[test]
+    fn rejects_m_search_missing_the_st_header() {
+        let missing_st = b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\n\r\n";
+        assert!(!is_dial_search(missing_st));
+    }
+
+    #[test]
+    fn accepts_m_search_even_with_an_incorrect_man_header() {
+        // `is_dial_search` only inspects the request line and `ST`; a wrong
+        // or missing `MAN` header is not currently part of the whitelist
+        // check — documented here so a future change to add MAN validation
+        // is a deliberate, visible diff rather than a silent behavior
+        // change.
+        let wrong_man = b"M-SEARCH * HTTP/1.1\r\nMAN: wrong-value\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n\r\n";
+        assert!(is_dial_search(wrong_man));
+    }
+
+    #[test]
+    fn rejects_a_packet_with_only_whitespace_or_blank_lines() {
+        assert!(!is_dial_search(b"\r\n\r\n"));
+        assert!(!is_dial_search(b"   "));
+    }
+
+    #[test]
+    fn accepts_an_oversized_m_search_packet_with_padding_after_a_valid_st() {
+        let padding = format!("X-Pad: {}\r\n", "a".repeat(8000));
+        let packet = format!(
+            "M-SEARCH * HTTP/1.1\r\nST: urn:dial-multiscreen-org:service:dial:1\r\n{padding}\r\n"
+        );
+        assert!(is_dial_search(packet.as_bytes()));
+    }
+
+    #[test]
     fn reads_a_well_formed_request_with_a_body() {
         let payload: &'static [u8] =
             b"POST /apps/YouTube HTTP/1.1\r\nHost: 192.168.1.5\r\nContent-Length: 5\r\n\r\nhello";

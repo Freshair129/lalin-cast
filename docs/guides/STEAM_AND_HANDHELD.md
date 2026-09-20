@@ -1,13 +1,13 @@
 ---
-version: "0.3.0b"
+version: "0.4.0b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:58:00+07:00,LALIN"
+last_update: "2026-09-21T00:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
   domain: "product"
   doc_type: "guide"
-  scope: "Adding Lalin Cast to Steam as a non-Steam game, Big Picture, controller support, touch overlay, mini-player and hardware decoding on handheld PCs (ROG Ally, Legion Go)"
+  scope: "Adding Lalin Cast to Steam as a non-Steam game, Big Picture, controller support, touch overlay, mini-player, hardware decoding, the handheld settings profile and the copy-launch-command button on handheld PCs (ROG Ally, Legion Go)"
 ---
 
 # Lalin Cast — Steam และอุปกรณ์พกพา (Handheld) / Steam and Handheld Guide
@@ -55,8 +55,14 @@ testing already done on every device model.
 
 ## Launch options / ตัวเลือกการเปิดโปรแกรม
 
-**ภาษาไทย:** ในหน้า **Properties** ของ Lalin Cast ใส่พารามิเตอร์ในช่อง **Launch Options** ได้ตาม
-รายการที่อธิบายไว้ใน [`README.md`](../../README.md) หัวข้อ "Command line" เช่น:
+**ภาษาไทย:** วิธีที่แนะนำคือเปิด Lalin Cast ครั้งหนึ่งบนเครื่องนี้ก่อน แล้วในหน้าต่างการตั้งค่า กดปุ่ม
+"คัดลอกคำสั่งเปิดสำหรับ Steam" (กลุ่ม "อัปเดตและเกี่ยวกับ" — ดูหัวข้อ "Settings" ใน
+[`README.md`](../../README.md#settings)) แอปจะสร้างคำสั่งที่มี path เต็มของ `lalin-cast.exe` บนเครื่องนี้
+ให้เองแล้วคัดลอกไปยังคลิปบอร์ด (`"<path เต็มของ .exe>" --fullscreen`) วางลงในช่อง **Launch Options** ของ
+หน้า **Properties** ได้ทันที ไม่ต้องพิมพ์ path เอง (ลดโอกาสพิมพ์ผิด)
+
+ถ้าต้องการพิมพ์เอง หรือเพิ่มวิดีโอ/เพลย์ลิสต์ที่ต้องการเปิดทันที ใส่พารามิเตอร์ในช่อง **Launch Options**
+ได้ตามรายการที่อธิบายไว้ใน [`README.md`](../../README.md) หัวข้อ "Command line" เช่น:
 
 ```
 --fullscreen "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -66,9 +72,16 @@ testing already done on every device model.
 เจาะจง ใส่แค่ `--fullscreen` เฉย ๆ ก็พอ แนะนำให้ใส่ `--fullscreen` เสมอเมื่อเปิดผ่าน Big Picture หรือ
 อุปกรณ์พกพา เพราะ Lalin Cast ไม่เปิดเต็มจอเองโดยอัตโนมัติถ้าไม่ได้สั่ง
 
-**English:** On Lalin Cast's **Properties** page, add arguments to the **Launch Options** field
-using the flags documented in the "Command line" section of [`README.md`](../../README.md), for
-example:
+**English:** The recommended way is to open Lalin Cast once on this machine first, then, from the
+settings window, press "copy launch command for Steam" (in the Updates & About group — see the
+"Settings" section of [`README.md`](../../README.md#settings)). The app builds a command containing
+this machine's full path to `lalin-cast.exe` and copies it to the clipboard
+(`"<full path to the .exe>" --fullscreen`) — paste it straight into the **Launch Options** field on
+the **Properties** page, with no typing required (and no risk of a typo in the path).
+
+To type it by hand instead, or to add a specific video/playlist to open immediately, add arguments
+to the **Launch Options** field using the flags documented in the "Command line" section of
+[`README.md`](../../README.md), for example:
 
 ```
 --fullscreen "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -142,6 +155,10 @@ Lalin Cast fix of an upstream slip and is verified under human gate H8.
   `lalin-cast.exe` ตรง ๆ จาก Desktop mode ของ Windows บนอุปกรณ์นั้นก็ได้เช่นกัน
 - แนะนำให้ใส่ `--fullscreen` ใน Launch Options เสมอ เพราะหน้าจออุปกรณ์พกพามีความละเอียดจำกัดและควรใช้
   เต็มพื้นที่
+- หน้าต่างการตั้งค่ามีปุ่มโปรไฟล์ "อุปกรณ์พกพา" (`handheld`) ที่ตั้งค่าที่เหมาะกับอุปกรณ์ประเภทนี้ให้ครบ
+  ในคลิกเดียว (เต็มจอ, คอนโทรลเลอร์เปิด, ปุ่มควบคุมบนหน้าจอสัมผัสเปิด, ตัวกรอง codec เป็น H.264 เท่านั้น,
+  มาตราส่วน UI 125%) แทนที่จะต้องตั้งค่าทีละอย่าง — ดูหัวข้อ "Settings" ใน
+  [`README.md`](../../README.md#settings) สำหรับตารางค่าที่แต่ละโปรไฟล์ตั้งให้
 - คอนโทรลเลอร์ในตัวเครื่อง (built-in gamepad) ของ ROG Ally และ Legion Go จะถูกอ่านผ่าน Gamepad API
   เหมือนคอนโทรลเลอร์ภายนอกได้ **เมื่อโหมดโอเวอร์เลย์ของผู้ผลิต (Armoury Crate Command Center / Legion
   Space) ตั้งเป็นโหมดที่ปล่อยให้อินพุตผ่านไปยัง Windows ตามปกติ (เช่น "Desktop"/"Gamepad Mode" ที่ไม่
@@ -164,6 +181,10 @@ Lalin Cast fix of an upstream slip and is verified under human gate H8.
   open `lalin-cast.exe` directly from that device's Windows desktop mode
 - Always add `--fullscreen` to Launch Options — handheld screens have a fixed, limited resolution
   and should use the full display
+- The settings window has a "handheld" (`handheld`) profile button that sets everything suited to
+  this kind of device in one click (fullscreen on, controller on, touch overlay on, codec filter set
+  to H.264 only, UI scale 125%) instead of setting each option one at a time — see the "Settings"
+  section of [`README.md`](../../README.md#settings) for the table of what each profile sets
 - The built-in controller on ROG Ally and Legion Go is read through the Gamepad API like any
   external controller **as long as the vendor's own overlay (Armoury Crate Command Center / Legion
   Space) is set to a mode that passes input through to Windows normally (e.g. a "Desktop"/"Gamepad

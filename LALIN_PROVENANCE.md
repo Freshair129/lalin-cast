@@ -98,3 +98,36 @@ window/process APIs and the browser's standard Media Session API:
 This is a documentation-only record of the port boundary. Runtime evidence for each of these is
 tracked as human gates H13–H16 in `docs/plans/W5_DESKTOP_PLAN.md` and is **NOT_RUN** until recorded
 there.
+
+## Wave 6 living-room polish — Lalin-original, not ported (2026-09-21)
+
+Wave 6 (`docs/plans/W6_POLISH_PLAN.md`) adds seven more pieces of living-room polish and QA
+automation. Like wave 5, none of them are ported from VacuumTube or any other upstream project —
+they have no upstream source path to record:
+
+- **UI scale** (Rust `settings.rs` `uiScale` key, `WebviewWindow::set_zoom`) — a plain Tauri v2/
+  WebView2 zoom call with no VacuumTube counterpart (VacuumTube targets a fixed living-room display,
+  not a user-adjustable zoom level).
+- **Settings profiles** (Rust `settings.rs` `profile_settings`/`settings_apply_profile`, the
+  `livingRoom`/`handheld`/`desktop` presets) — a Lalin Cast–specific convenience over its own
+  existing per-key settings whitelist.
+- **Reset to defaults** (Rust `settings.rs` `reset_plan`/`settings_reset_defaults`) — likewise
+  Lalin-original, built on the same per-key whitelist.
+- **Sleep at end of video** (`injected.js` `sleepAtEnd` section, the `sleepAtEndOfVideo` pref) —
+  SmartTube-parity behavior (not VacuumTube), reusing the wave 4 sleep-timer OSD element.
+- **Tray/menu play-pause** (Rust tray item `tray-play-pause`, menu item `play-pause`, the
+  `lalin-cast-remote` event, `injected.js`'s `remote` section) — a plain use of the standard
+  `HTMLMediaElement.play()`/`pause()` API, with no VacuumTube remote-control equivalent.
+- **Controller Y button → help overlay** (`injected.js` `controller` section, wiring gamepad index 3
+  to the existing wave 5 `toggle-help` action) — VacuumTube's own `util/controller.js` declares this
+  button's keyCode range but never assigns it to an action (the same kind of unused-mapping gap wave
+  3 already noted for the right analog stick); Lalin Cast is the first to bind it, to a Lalin-original
+  feature (the help overlay), not to anything upstream did or intended.
+- **CI smoke job, `scripts/lifecycle-driver.ps1` and CHANGELOG-sourced release notes** (`.github/
+  workflows/ci.yml` `smoke` job, `.github/workflows/release.yml`) — repository/QA automation with no
+  application-code counterpart in VacuumTube at all.
+
+This is a documentation-only record of the port boundary. Runtime evidence for the user-facing
+pieces above is tracked as human gates H18–H21 in `docs/plans/W6_POLISH_PLAN.md` and is **NOT_RUN**
+until recorded there; the CI smoke job is additionally gated by H20 (`continue-on-error` removed only
+after two stable runs).
