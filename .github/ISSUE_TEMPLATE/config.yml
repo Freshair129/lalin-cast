@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "รายงานช่องโหว่ความปลอดภัย / Report a security vulnerability"
+    url: https://github.com/Freshair129/lalin-cast/blob/main/SECURITY.md
+    about: >-
+      อย่าเปิด issue สาธารณะสำหรับช่องโหว่ความปลอดภัย — อ่าน SECURITY.md เพื่อดูวิธีรายงานแบบส่วนตัว /
+      Do not open a public issue for a security vulnerability — read SECURITY.md for how to report
+      it privately.

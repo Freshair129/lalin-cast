@@ -1,0 +1,92 @@
+name: "รายงานข้อผิดพลาด / Bug report"
+description: "แจ้งพฤติกรรมของ Lalin Cast ที่ไม่ตรงกับที่ควรเป็น / Report something in Lalin Cast that isn't working as expected"
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **เจอช่องโหว่ความปลอดภัยหรือเปล่า?** อย่าเปิด issue สาธารณะ — อ่านและทำตาม
+        [`SECURITY.md`](https://github.com/Freshair129/lalin-cast/blob/main/SECURITY.md) แทน
+
+        **Found a security vulnerability instead?** Do not open a public issue — read and follow
+        [`SECURITY.md`](https://github.com/Freshair129/lalin-cast/blob/main/SECURITY.md) instead.
+
+        Lalin Cast เป็นโปรเจกต์อิสระของบุคคลที่สาม ไม่ได้เกี่ยวข้อง ไม่ได้รับการรับรอง และไม่ได้เป็น
+        ส่วนหนึ่งของ YouTube หรือ Google — Lalin Cast is an independent, third-party project with no
+        affiliation to, endorsement from, or sponsorship by YouTube or Google.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: "ค้นหา issue ซ้ำแล้ว / Searched existing issues"
+      options:
+        - label: >-
+            ฉันค้นหา issue ที่เปิดอยู่และที่ปิดไปแล้วก่อนเปิดเรื่องใหม่นี้ / I searched both open and
+            closed issues before filing this one
+          required: true
+  - type: input
+    id: lalin-cast-version
+    attributes:
+      label: "เวอร์ชัน Lalin Cast / Lalin Cast version"
+      description: >-
+        ดูได้จากหัวข้อ "เกี่ยวกับ" ในหน้าต่างตั้งค่า หรือบรรทัดแรกของข้อมูลวินิจฉัยด้านล่าง / Find this
+        in the settings window's About section, or the first line of the diagnostics text below.
+      placeholder: "เช่น / e.g. 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: "เวอร์ชัน Windows / Windows version"
+      description: >-
+        เปิด Settings > System > About บน Windows แล้วคัดลอกรุ่นและ build / Open Settings > System >
+        About on Windows and copy the edition and build number.
+      placeholder: "เช่น / e.g. Windows 11 23H2, build 22631"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "ขั้นตอนที่ทำให้เกิดปัญหา / Steps to reproduce"
+      description: >-
+        เรียงเป็นลำดับขั้น ให้คนอื่นทำตามแล้วเจอปัญหาเดียวกันได้ / Numbered steps someone else can
+        follow to see the same problem.
+      placeholder: |
+        1. เปิด Lalin Cast / Open Lalin Cast
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "ผลที่คาดไว้ / Expected behavior"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "ผลที่เกิดขึ้นจริง / Actual behavior"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: "ข้อมูลวินิจฉัย (ไม่บังคับ) / Diagnostics (optional)"
+      description: >-
+        วางผลลัพธ์จากปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในหน้าต่างตั้งค่าได้ที่นี่ (เวอร์ชัน, OS/WebView2, สถานะ
+        DIAL, ค่าตั้งทั่วไป) **ห้ามวางรหัสจับคู่ทีวี (TV pairing code), อีเมล/ข้อมูลบัญชี Google หรือ
+        YouTube, คุกกี้, โทเคน หรือ URL ที่มี query string ใด ๆ เด็ดขาด** ถ้าไม่แน่ใจว่าข้อความมีข้อมูล
+        อ่อนไหวหรือไม่ ให้เว้นว่างไว้ / Paste the output of the settings window's "Copy diagnostics"
+        button here (version, OS/WebView2, DIAL status, general settings). **Never paste a TV pairing
+        code, a Google/YouTube account email or other account data, cookies, tokens, or any URL with
+        a query string.** When in doubt, leave this blank.
+      render: text
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "ข้อมูลเพิ่มเติม (ไม่บังคับ) / Additional context (optional)"
+      description: >-
+        ภาพหน้าจอ, log ที่ตัดข้อมูลอ่อนไหวออกแล้ว, หรือสิ่งอื่นที่ช่วยวินิจฉัยได้ / Screenshots, logs
+        with sensitive data removed, or anything else that helps diagnose this.
