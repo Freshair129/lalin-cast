@@ -101,6 +101,15 @@ function createStubDom() {
     "hardware-decoding-note",
     "sleep-at-end-toggle",
     "sleep-at-end-label",
+    "keep-display-awake-toggle",
+    "keep-display-awake-label",
+    "keep-display-awake-note",
+    "youtube-page-heading",
+    "hide-shorts-toggle",
+    "hide-shorts-label",
+    "hide-guide-tabs-toggle",
+    "hide-guide-tabs-label",
+    "hide-note",
     "display-heading",
     "fullscreen-toggle",
     "fullscreen-label",
@@ -238,6 +247,9 @@ function baseSettings(overrides) {
       uiScale: 100,
       sleepAtEndOfVideo: false,
       deepLinkScheme: false,
+      keepDisplayAwake: true,
+      hideShorts: false,
+      hideGuideTabs: false,
     },
     overrides,
   );
@@ -361,6 +373,21 @@ pending.push(
     assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "info");
     assert.strictEqual(elements["sleep-at-end-toggle"].checked, false);
     assert.ok(elements["sleep-at-end-label"].textContent.length > 0);
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, true);
+    assert.ok(elements["keep-display-awake-label"].textContent.length > 0);
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("Only while a video is actually playing"));
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("กันจอดับเฉพาะตอนที่กำลังเล่นวิดีโอ"));
+
+    // YouTube page
+    assert.ok(elements["youtube-page-heading"].textContent.includes("หน้า YouTube"));
+    assert.ok(elements["youtube-page-heading"].textContent.includes("YouTube page"));
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, false);
+    assert.ok(elements["hide-shorts-label"].textContent.length > 0);
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, false);
+    assert.ok(elements["hide-guide-tabs-label"].textContent.length > 0);
+    assert.ok(elements["hide-note"].textContent.includes("CSS"));
+    assert.ok(elements["hide-note"].textContent.includes("YouTube's data or behaviour"));
+    assert.ok(elements["hide-note"].textContent.includes("ไม่ได้แก้ไขข้อมูลหรือการทำงานของ YouTube"));
 
     // Display
     assert.strictEqual(elements["fullscreen-toggle"].checked, false);
@@ -420,6 +447,15 @@ pending.push(
     init(doc, win);
     assert.strictEqual(doc.documentElement.lang, "th");
     assert.ok(elements["page-title"].textContent.includes("การตั้งค่า"));
+    assert.ok(elements["keep-display-awake-label"].textContent.length > 0);
+    assert.ok(elements["hide-shorts-label"].textContent.length > 0);
+    assert.ok(elements["hide-guide-tabs-label"].textContent.length > 0);
+    // The heading and notes for these three controls are bilingual-fixed
+    // (same rationale as CONTROLS_TABLE), so they must not change with the
+    // window's active UI language.
+    assert.ok(elements["youtube-page-heading"].textContent.includes("YouTube page"));
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("Only while a video is actually playing"));
+    assert.ok(elements["hide-note"].textContent.includes("This hiding is done only with Lalin Cast's own CSS"));
   }),
 );
 
@@ -476,6 +512,9 @@ const BOOLEAN_CONTROLS = [
   { id: "start-with-windows-toggle", key: "startWithWindows" },
   { id: "sleep-at-end-toggle", key: "sleepAtEndOfVideo" },
   { id: "deep-link-toggle", key: "deepLinkScheme" },
+  { id: "keep-display-awake-toggle", key: "keepDisplayAwake" },
+  { id: "hide-shorts-toggle", key: "hideShorts" },
+  { id: "hide-guide-tabs-toggle", key: "hideGuideTabs" },
 ];
 
 BOOLEAN_CONTROLS.forEach(({ id, key }) => {
@@ -676,6 +715,156 @@ pending.push(
     assert.strictEqual(elements["deep-link-toggle"].checked, true);
     assert.strictEqual(elements["deep-link-status"].hidden, false, "not registered, so the warning must show");
     assert.strictEqual(elements["deep-link-status"].getAttribute("data-level"), "warn");
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 8: keepDisplayAwake, hideShorts, hideGuideTabs — each covered for both
+// its success path (also exercised generically via BOOLEAN_CONTROLS above)
+// and its own settings_set rejection/revert path, per the U3 contract in
+// docs/plans/W8_BOUNDARY_PLAN.md section 4.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("a successful keepDisplayAwake toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ keepDisplayAwake: false }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ keepDisplayAwake: true }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["keep-display-awake-toggle"].checked = false;
+    elements["keep-display-awake-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, false);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for keepDisplayAwake reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("power API unavailable")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ keepDisplayAwake: true }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    // Simulate the user turning the control off (browsers flip `checked`
+    // before the `change` listener runs).
+    elements["keep-display-awake-toggle"].checked = false;
+    elements["keep-display-awake-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, true, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("power API unavailable"));
+  }),
+);
+
+pending.push(
+  test("a successful hideShorts toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ hideShorts: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideShorts: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-shorts-toggle"].checked = true;
+    elements["hide-shorts-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, true);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for hideShorts reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("store locked")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideShorts: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-shorts-toggle"].checked = true;
+    elements["hide-shorts-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("store locked"));
+  }),
+);
+
+pending.push(
+  test("a successful hideGuideTabs toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ hideGuideTabs: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideGuideTabs: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-guide-tabs-toggle"].checked = true;
+    elements["hide-guide-tabs-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, true);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for hideGuideTabs reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("store locked")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideGuideTabs: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-guide-tabs-toggle"].checked = true;
+    elements["hide-guide-tabs-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("store locked"));
   }),
 );
 
