@@ -336,8 +336,8 @@ every push, as a standing floor of evidence under this same driver-and-timeout-p
   `lalin-cast.exe` in debug, asserts `--version` prints `lalin-cast <Cargo.toml version>`, then runs
   `lalin-cast.exe --lifecycle close --request-id ci-smoke` and asserts the resulting
   `lifecycle.json` has `type == stopped`, `requestId == ci-smoke`, and `exitCode == 0`. It is marked
-  `continue-on-error: true` until it has been observed stable across two consecutive runs (human gate
-  H20) — until then, a failure here is a signal to investigate, not a blocking CI failure.
+  a blocking check: human gate H20 closed once the job ran green on two consecutive pull requests,
+  so a failure here now fails CI.
 
 Both are same-machine, same-`close`-command checks — they do not cover `launch`/`focus` against an
 already-running instance, multi-process races, or a genuinely separate Studio process, which remain
