@@ -9,6 +9,9 @@
     "allow-settings-set",
     "allow-settings-open-setup",
     "allow-settings-check-updates",
-    "allow-settings-diagnostics"
+    "allow-settings-diagnostics",
+    "allow-settings-apply-profile",
+    "allow-settings-reset-defaults",
+    "allow-settings-launch-command"
   ]
 }
