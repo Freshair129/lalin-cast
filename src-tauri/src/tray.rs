@@ -9,12 +9,13 @@ use tauri::{AppHandle, Listener, Manager, Runtime};
 
 use crate::dial::{self, DialStateKind, DialStatus};
 use crate::i18n::{self, Key, Lang};
-use crate::{focus_media, setup, updater};
+use crate::{focus_media, settings, setup, updater};
 
 pub const TRAY_ID: &str = "main-tray";
 
 const MENU_SHOW: &str = "tray-show";
 const MENU_SETUP: &str = "tray-setup";
+const MENU_SETTINGS: &str = "tray-settings";
 const MENU_CHECK_UPDATES: &str = "tray-check-updates";
 const MENU_QUIT: &str = "tray-quit";
 
@@ -40,13 +41,21 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> tauri::Result<Menu<
     let show_item = MenuItemBuilder::with_id(MENU_SHOW, i18n::t(lang, Key::TrayShow)).build(app)?;
     let setup_item =
         MenuItemBuilder::with_id(MENU_SETUP, i18n::t(lang, Key::NetworkSetup)).build(app)?;
+    let settings_item =
+        MenuItemBuilder::with_id(MENU_SETTINGS, i18n::t(lang, Key::OpenSettings)).build(app)?;
     let update_item =
         MenuItemBuilder::with_id(MENU_CHECK_UPDATES, i18n::t(lang, Key::CheckUpdates))
             .build(app)?;
     let quit_item = MenuItemBuilder::with_id(MENU_QUIT, i18n::t(lang, Key::Quit)).build(app)?;
 
     MenuBuilder::new(app)
-        .items(&[&show_item, &setup_item, &update_item, &quit_item])
+        .items(&[
+            &show_item,
+            &setup_item,
+            &settings_item,
+            &update_item,
+            &quit_item,
+        ])
         .build()
 }
 
@@ -70,6 +79,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_SHOW => focus_media(app),
             MENU_SETUP => setup::open_setup_window(app),
+            MENU_SETTINGS => settings::open_settings_window(app),
             MENU_CHECK_UPDATES => {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {

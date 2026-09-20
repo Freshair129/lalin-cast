@@ -36,7 +36,10 @@ impl Lang {
         }
     }
 
-    fn from_store_value(value: &str) -> Option<Lang> {
+    /// `pub(crate)` so `settings.rs` can turn a validated `language` store
+    /// value back into a [`Lang`] after `apply_setting` has already
+    /// confirmed it is `"th"` or `"en"`.
+    pub(crate) fn from_store_value(value: &str) -> Option<Lang> {
         match value {
             "th" => Some(Lang::Th),
             "en" => Some(Lang::En),
@@ -110,6 +113,11 @@ pub enum Key {
     /// menu item — both open the same setup window, so they share a label.
     NetworkSetup,
     SetupWindowTitle,
+    /// Shared label for the media window's `settings` menu item and the
+    /// tray's `tray-settings` item — both open the same settings window,
+    /// so they share a label (mirrors [`NetworkSetup`](Key::NetworkSetup)).
+    OpenSettings,
+    SettingsWindowTitle,
     StatusWindowTitle,
     /// Shown in the `status` window when the startup connectivity probe
     /// fails.
@@ -143,6 +151,10 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (En, NetworkSetup) => "Network & DIAL",
         (Th, SetupWindowTitle) => "ตั้งค่า Lalin Cast",
         (En, SetupWindowTitle) => "Lalin Cast Setup",
+        (Th, OpenSettings) => "ตั้งค่า",
+        (En, OpenSettings) => "Settings",
+        (Th, SettingsWindowTitle) => "การตั้งค่า Lalin Cast",
+        (En, SettingsWindowTitle) => "Lalin Cast Settings",
         (Th, StatusWindowTitle) => "สถานะ Lalin Cast",
         (En, StatusWindowTitle) => "Lalin Cast Status",
         (Th, StatusOfflineMessage) => "ไม่พบการเชื่อมต่ออินเทอร์เน็ต — ตรวจสอบเครือข่ายแล้วลองอีกครั้ง",
@@ -225,6 +237,8 @@ mod tests {
             Key::TrayShow,
             Key::NetworkSetup,
             Key::SetupWindowTitle,
+            Key::OpenSettings,
+            Key::SettingsWindowTitle,
             Key::StatusWindowTitle,
             Key::StatusOfflineMessage,
             Key::StatusBlockedSurfaceMessage,

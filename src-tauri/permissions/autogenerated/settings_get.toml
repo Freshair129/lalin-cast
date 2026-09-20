@@ -1,0 +1,11 @@
+# Permission for reading the current settings snapshot from the settings window.
+
+[[permission]]
+identifier = "allow-settings-get"
+description = "Enables the settings_get command without any pre-configured scope."
+commands.allow = ["settings_get"]
+
+[[permission]]
+identifier = "deny-settings-get"
+description = "Denies the settings_get command."
+commands.deny = ["settings_get"]

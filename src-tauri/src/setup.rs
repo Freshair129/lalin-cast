@@ -59,8 +59,20 @@ fn set_setup_completed(app: &AppHandle, value: bool) {
 
 /// Opens the single `setup` window, or focuses it if one is already open.
 /// Callable any time (tray "tray-setup", media menu "network-setup", and
-/// the first-run auto-open timer all funnel through this).
+/// the first-run auto-open timer all funnel through this); `first_run` is
+/// auto-detected from `setupCompleted`. See [`open_setup_window_explicit`]
+/// for callers that need to force it.
 pub fn open_setup_window(app: &AppHandle) {
+    open_setup_window_explicit(app, !is_setup_completed(app));
+}
+
+/// Same as [`open_setup_window`], but with an explicit `first_run` instead
+/// of auto-detecting it from `setupCompleted`. Used by
+/// `settings::settings_open_setup`: the contract specifies that reopening
+/// the wizard from the settings window always shows it as `firstRun=false`
+/// — a user who got there through Settings should never see first-run
+/// framing again, even if `setupCompleted` was never actually set.
+pub fn open_setup_window_explicit(app: &AppHandle, first_run: bool) {
     if let Some(window) = app.get_webview_window(SETUP_LABEL) {
         let _ = window.show();
         let _ = window.set_focus();
@@ -70,7 +82,7 @@ pub fn open_setup_window(app: &AppHandle) {
     let lang = i18n::load(app);
     let payload = SetupPayload {
         lang: lang.store_value(),
-        first_run: !is_setup_completed(app),
+        first_run,
         network: network::detect_network_profile(),
         dial: dial::read_status(app),
     };

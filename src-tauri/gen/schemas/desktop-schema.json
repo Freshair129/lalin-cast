@@ -195,6 +195,30 @@
           "markdownDescription": "Enables the dial_set_device_id command without any pre-configured scope."
         },
         {
+          "description": "Enables the settings_check_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-check-updates",
+          "markdownDescription": "Enables the settings_check_updates command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the settings_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-get",
+          "markdownDescription": "Enables the settings_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the settings_open_setup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-open-setup",
+          "markdownDescription": "Enables the settings_open_setup command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the settings_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-set",
+          "markdownDescription": "Enables the settings_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the setup_complete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-setup-complete",
@@ -241,6 +265,30 @@
           "type": "string",
           "const": "deny-dial-set-device-id",
           "markdownDescription": "Denies the dial_set_device_id command."
+        },
+        {
+          "description": "Denies the settings_check_updates command.",
+          "type": "string",
+          "const": "deny-settings-check-updates",
+          "markdownDescription": "Denies the settings_check_updates command."
+        },
+        {
+          "description": "Denies the settings_get command.",
+          "type": "string",
+          "const": "deny-settings-get",
+          "markdownDescription": "Denies the settings_get command."
+        },
+        {
+          "description": "Denies the settings_open_setup command.",
+          "type": "string",
+          "const": "deny-settings-open-setup",
+          "markdownDescription": "Denies the settings_open_setup command."
+        },
+        {
+          "description": "Denies the settings_set command.",
+          "type": "string",
+          "const": "deny-settings-set",
+          "markdownDescription": "Denies the settings_set command."
         },
         {
           "description": "Denies the setup_complete command.",

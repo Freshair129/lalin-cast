@@ -88,7 +88,7 @@ pub fn validate_surface_event(payload: &str) -> Option<SurfaceEvent> {
 /// another surface-event-triggered status window. Kept separate from
 /// [`SurfaceRateLimiter`] (which needs a real clock/mutex) so it is
 /// unit-testable without sleeping.
-fn rate_limit_allows(last: Option<Instant>, now: Instant, limit: Duration) -> bool {
+pub(crate) fn rate_limit_allows(last: Option<Instant>, now: Instant, limit: Duration) -> bool {
     match last {
         None => true,
         Some(last) => now.saturating_duration_since(last) >= limit,
