@@ -160,5 +160,65 @@
     syncLeanbackDeviceId();
   };
 
+  // Surface detection: tells the shell when YouTube redirected away from
+  // the TV app, or when the Leanback UI never rendered, so it can show the
+  // native "status" window. See docs/plans/W2_LIVING_ROOM_PLAN.md. Emits at
+  // most once per page load, and strips the query string/fragment from the
+  // URL before sending (never a URL with a query string, per the no-PII
+  // logging rule this bridge is held to).
+  const initSurfaceDetection = () => {
+    let emitted = false;
+
+    const stripQueryAndHash = (href) => {
+      try {
+        const url = new URL(href);
+        url.search = "";
+        url.hash = "";
+        return url.toString();
+      } catch {
+        return String(href || "").split(/[?#]/)[0];
+      }
+    };
+
+    const isYouTubeHost = (hostname) => {
+      const host = String(hostname || "").toLowerCase();
+      return host === "youtube.com" || host.endsWith(".youtube.com");
+    };
+
+    const hasLeanbackDom = () =>
+      Boolean(document.querySelector('ytlr-app, [class*="ytlr-"], #app'));
+
+    const checkSurface = () => {
+      if (emitted) return;
+
+      const hostname = window.location.hostname || "";
+      const pathname = window.location.pathname || "";
+
+      let kind = null;
+      if (isYouTubeHost(hostname) && !pathname.startsWith("/tv")) {
+        kind = "redirected";
+      } else if (!hasLeanbackDom()) {
+        kind = "blockedSurface";
+      }
+      if (!kind) return;
+
+      const tauri = bridge();
+      if (!tauri?.event?.emit) return;
+
+      emitted = true;
+      tauri.event
+        .emit("lalin-cast-surface", {
+          kind,
+          url: stripQueryAndHash(window.location.href),
+          title: String(document.title || "").slice(0, 200)
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener("load", checkSurface);
+    window.setTimeout(checkSurface, 12000);
+  };
+
   installBridge();
+  initSurfaceDetection();
 })();

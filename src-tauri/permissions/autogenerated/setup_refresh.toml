@@ -1,0 +1,11 @@
+# Permission for re-reading the network profile and DIAL status in the setup window.
+
+[[permission]]
+identifier = "allow-setup-refresh"
+description = "Enables the setup_refresh command without any pre-configured scope."
+commands.allow = ["setup_refresh"]
+
+[[permission]]
+identifier = "deny-setup-refresh"
+description = "Denies the setup_refresh command."
+commands.deny = ["setup_refresh"]

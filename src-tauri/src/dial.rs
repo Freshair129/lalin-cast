@@ -7,14 +7,19 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
 const MEDIA_LABEL: &str = "media";
 const DIAL_EVENT: &str = "lalin-cast-dial-request";
+/// App-wide event carrying [`DialStatus`], emitted on every state
+/// transition (including the first one, from [`start`]). Consumed by
+/// `tray.rs` (tooltip) and read on demand via [`current_status`] /
+/// [`read_status`] by the setup/status windows.
+pub const DIAL_STATUS_EVENT: &str = "lalin-cast-dial-status";
 const SSDP_ADDRESS: Ipv4Addr = Ipv4Addr::new(239, 255, 255, 250);
 const SSDP_PORT: u16 = 1900;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
@@ -37,6 +42,76 @@ pub struct DialInfo {
     pub host: String,
     pub port: u16,
     pub base: String,
+}
+
+/// One state in the DIAL status machine. `starting` = a bind/rebind is in
+/// progress, `ready` = both the SSDP and HTTP listeners are up, `degraded` =
+/// a listener died and the supervisor is retrying, `disabled` = [`start`]
+/// itself failed permanently (the supervisor thread could not be spawned).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DialStateKind {
+    Starting,
+    Ready,
+    Degraded,
+    Disabled,
+}
+
+/// Payload of [`DIAL_STATUS_EVENT`] and the return type of
+/// [`current_status`]/[`read_status`]. `message` is always human-readable
+/// and never carries a hostname, interface name, or other PII (see
+/// PRIVACY.md).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DialStatus {
+    pub state: DialStateKind,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub message: Option<String>,
+}
+
+fn starting_status(message: Option<String>) -> DialStatus {
+    DialStatus {
+        state: DialStateKind::Starting,
+        host: None,
+        port: None,
+        message,
+    }
+}
+
+fn ready_status(info: &DialInfo) -> DialStatus {
+    DialStatus {
+        state: DialStateKind::Ready,
+        host: Some(info.host.clone()),
+        port: Some(info.port),
+        message: None,
+    }
+}
+
+fn degraded_status(message: String) -> DialStatus {
+    DialStatus {
+        state: DialStateKind::Degraded,
+        host: None,
+        port: None,
+        message: Some(message),
+    }
+}
+
+fn disabled_status(message: String) -> DialStatus {
+    DialStatus {
+        state: DialStateKind::Disabled,
+        host: None,
+        port: None,
+        message: Some(message),
+    }
+}
+
+/// Pure decision used by [`emit_status`]: whether `new` differs from
+/// `current` and should therefore replace it and be (re-)emitted. Kept
+/// separate from the emitting side (which needs a live `AppHandle`) so the
+/// no-op-on-repeat behavior is unit-testable without a Tauri app.
+fn status_changed(current: &DialStatus, new: &DialStatus) -> bool {
+    current != new
 }
 
 #[derive(Clone, Serialize)]
@@ -62,6 +137,30 @@ pub struct DialState {
     device_id: Arc<Mutex<String>>,
     responses: ResponseStore,
     stop: Arc<AtomicBool>,
+    status: Arc<Mutex<DialStatus>>,
+}
+
+/// Reads the current [`DialStatus`] out of a managed [`DialState`]. Used by
+/// the `setup`/`status` commands (via [`read_status`], which additionally
+/// tolerates `DialState` not being managed yet).
+pub fn current_status(state: &DialState) -> DialStatus {
+    state
+        .status
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_else(|_| disabled_status("DIAL status is unavailable".to_owned()))
+}
+
+/// Convenience for callers that only have an `AppHandle` (no `State<'_,
+/// DialState>` extraction available), such as the setup window's auto-open
+/// timer. Falls back to a `starting` status if `DialState` is not managed
+/// yet, which can only happen for the brief window between `run()`'s
+/// `setup` hook starting and `dial::start` returning.
+pub fn read_status(app: &AppHandle) -> DialStatus {
+    match app.try_state::<DialState>() {
+        Some(state) => current_status(&state),
+        None => starting_status(None),
+    }
 }
 
 struct HttpRequest {
@@ -70,29 +169,40 @@ struct HttpRequest {
     body: String,
 }
 
-pub fn disabled_state() -> DialState {
+/// Built when [`start`] itself fails (the supervisor thread could not be
+/// spawned): DIAL is permanently off for this run. Emits the `disabled`
+/// transition so the tray/setup window reflect it immediately.
+pub fn disabled_state(app: &AppHandle, reason: impl Into<String>) -> DialState {
+    let status = disabled_status(reason.into());
+    let _ = app.emit(DIAL_STATUS_EVENT, &status);
     DialState {
         info: Arc::new(Mutex::new(None)),
         device_id: Arc::new(Mutex::new(String::new())),
         responses: Arc::new((Mutex::new(HashMap::new()), Condvar::new())),
         stop: Arc::new(AtomicBool::new(true)),
+        status: Arc::new(Mutex::new(status)),
     }
 }
 
 pub fn start(app: &AppHandle) -> Result<DialState, String> {
     let device_id = Arc::new(Mutex::new(load_or_create_device_id(app)));
-    let friendly_name = load_friendly_name(app);
     let info = Arc::new(Mutex::new(None));
     let responses = Arc::new((Mutex::new(HashMap::new()), Condvar::new()));
     let stop = Arc::new(AtomicBool::new(false));
+    // Emitted here (not only once the supervisor's loop starts binding) so
+    // the very first `lalin-cast-dial-status` event fires as soon as
+    // `start()` is called, per the contract.
+    let initial_status = starting_status(None);
+    let status = Arc::new(Mutex::new(initial_status.clone()));
+    let _ = app.emit(DIAL_STATUS_EVENT, &initial_status);
 
     let supervisor = SupervisorState {
         app: app.clone(),
         info: info.clone(),
         device_id: device_id.clone(),
-        friendly_name,
         responses: responses.clone(),
         stop: stop.clone(),
+        status: status.clone(),
     };
     thread::Builder::new()
         .name("lalin-dial-supervisor".to_owned())
@@ -104,6 +214,7 @@ pub fn start(app: &AppHandle) -> Result<DialState, String> {
         device_id,
         responses,
         stop,
+        status,
     })
 }
 
@@ -117,9 +228,31 @@ struct SupervisorState {
     app: AppHandle,
     info: Arc<Mutex<Option<DialInfo>>>,
     device_id: Arc<Mutex<String>>,
-    friendly_name: String,
     responses: ResponseStore,
     stop: Arc<AtomicBool>,
+    status: Arc<Mutex<DialStatus>>,
+}
+
+/// Updates the stored [`DialStatus`] and emits [`DIAL_STATUS_EVENT`], but
+/// only when the new status actually differs from the current one (see
+/// [`status_changed`]) — so a supervisor loop iteration that does not
+/// change state never spams a duplicate event.
+fn emit_status(app: &AppHandle, status_lock: &Arc<Mutex<DialStatus>>, new_status: DialStatus) {
+    let should_emit = match status_lock.lock() {
+        Ok(mut guard) => {
+            let changed = status_changed(&guard, &new_status);
+            if changed {
+                *guard = new_status.clone();
+            }
+            changed
+        }
+        // Poisoned: still emit so the UI is not left showing a stale state
+        // forever, but do not try to update the (now-unreliable) guard.
+        Err(_) => true,
+    };
+    if should_emit {
+        let _ = app.emit(DIAL_STATUS_EVENT, &new_status);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -252,6 +385,11 @@ fn run_supervisor(runtime: SupervisorState) {
                 eprintln!("Lalin Cast: DIAL LAN address changed; rebinding listeners");
                 stop_generation(generation.take());
                 clear_info(&runtime.info);
+                emit_status(
+                    &runtime.app,
+                    &runtime.status,
+                    starting_status(Some("LAN address changed; rebinding".to_owned())),
+                );
                 continue;
             }
 
@@ -267,6 +405,11 @@ fn run_supervisor(runtime: SupervisorState) {
                     );
                     stop_generation(generation.take());
                     clear_info(&runtime.info);
+                    emit_status(
+                        &runtime.app,
+                        &runtime.status,
+                        degraded_status(format!("{listener} listener stopped; retrying")),
+                    );
                     thread::sleep(REBIND_DELAY);
                 }
                 Ok(_) => {}
@@ -278,10 +421,16 @@ fn run_supervisor(runtime: SupervisorState) {
 
         let Some(local_ip) = local_ipv4().ok() else {
             clear_info(&runtime.info);
+            emit_status(
+                &runtime.app,
+                &runtime.status,
+                degraded_status("no LAN address available; retrying".to_owned()),
+            );
             thread::sleep(REBIND_DELAY);
             continue;
         };
 
+        emit_status(&runtime.app, &runtime.status, starting_status(None));
         generation_id = generation_id.wrapping_add(1);
         match start_generation(&runtime, failure_tx.clone(), local_ip, generation_id) {
             Ok(active) => {
@@ -290,11 +439,17 @@ fn run_supervisor(runtime: SupervisorState) {
                     "Lalin Cast: DIAL ready at {} (UDP {SSDP_PORT})",
                     active.info.base
                 );
+                emit_status(&runtime.app, &runtime.status, ready_status(&active.info));
                 generation = Some(active);
             }
             Err(error) => {
                 clear_info(&runtime.info);
                 eprintln!("Lalin Cast: DIAL bind failed; retrying: {error}");
+                emit_status(
+                    &runtime.app,
+                    &runtime.status,
+                    degraded_status("bind failed; retrying".to_owned()),
+                );
                 thread::sleep(REBIND_DELAY);
             }
         }
@@ -310,6 +465,10 @@ fn start_generation(
     local_ip: Ipv4Addr,
     generation_id: u64,
 ) -> Result<Generation, String> {
+    // Re-read the friendly name from the settings store on every generation
+    // (every bind/rebind), not once at `dial::start()`, so a rename in the
+    // store takes effect on the next rebind without an app restart.
+    let friendly_name = load_friendly_name(&runtime.app);
     let http_listener = TcpListener::bind(http_bind_addr(local_ip))
         .map_err(|error| format!("HTTP bind failed: {error}"))?;
     http_listener
@@ -341,7 +500,7 @@ fn start_generation(
     let http_state = RuntimeState {
         info: info.clone(),
         device_id: runtime.device_id.clone(),
-        friendly_name: runtime.friendly_name.clone(),
+        friendly_name: friendly_name.clone(),
         responses: runtime.responses.clone(),
         stop: stop.clone(),
         failure_tx: failure_tx.clone(),
@@ -356,7 +515,7 @@ fn start_generation(
     let ssdp_state = RuntimeState {
         info: info.clone(),
         device_id: runtime.device_id.clone(),
-        friendly_name: runtime.friendly_name.clone(),
+        friendly_name,
         responses: runtime.responses.clone(),
         stop: stop.clone(),
         failure_tx,
@@ -812,9 +971,10 @@ fn xml_escape(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        device_description, http_bind_addr, is_dial_search, read_http_request,
-        sanitize_friendly_name, ssdp_response, DialInfo, HttpReadError, Route, RuntimeState,
-        DEFAULT_FRIENDLY_NAME, MAX_BODY_BYTES, MAX_HEADER_BYTES,
+        current_status, degraded_status, device_description, disabled_status, http_bind_addr,
+        is_dial_search, read_http_request, ready_status, sanitize_friendly_name, ssdp_response,
+        starting_status, status_changed, DialInfo, DialState, DialStateKind, HttpReadError, Route,
+        RuntimeState, DEFAULT_FRIENDLY_NAME, MAX_BODY_BYTES, MAX_HEADER_BYTES,
     };
     use std::collections::HashMap;
     use std::io::Write;
@@ -1026,5 +1186,130 @@ mod tests {
         assert_eq!(request.method, "POST");
         assert_eq!(request.path, "/apps/YouTube");
         assert_eq!(request.body, "hello");
+    }
+
+    // -- DialStatus transitions (pure constructors + the emit-dedupe decision) --
+
+    #[test]
+    fn starting_status_carries_no_host_or_port() {
+        let status = starting_status(Some("rebinding".to_owned()));
+        assert_eq!(status.state, DialStateKind::Starting);
+        assert_eq!(status.host, None);
+        assert_eq!(status.port, None);
+        assert_eq!(status.message.as_deref(), Some("rebinding"));
+    }
+
+    #[test]
+    fn ready_status_carries_the_generations_host_and_port() {
+        let info = DialInfo {
+            host: "192.168.1.5".to_owned(),
+            port: 43210,
+            base: "http://192.168.1.5:43210".to_owned(),
+        };
+        let status = ready_status(&info);
+        assert_eq!(status.state, DialStateKind::Ready);
+        assert_eq!(status.host.as_deref(), Some("192.168.1.5"));
+        assert_eq!(status.port, Some(43210));
+        assert_eq!(status.message, None);
+    }
+
+    #[test]
+    fn degraded_and_disabled_status_carry_a_message_and_no_host_or_port() {
+        let degraded = degraded_status("listener stopped; retrying".to_owned());
+        assert_eq!(degraded.state, DialStateKind::Degraded);
+        assert_eq!(degraded.host, None);
+        assert_eq!(degraded.port, None);
+        assert_eq!(
+            degraded.message.as_deref(),
+            Some("listener stopped; retrying")
+        );
+
+        let disabled = disabled_status("DIAL supervisor thread failed".to_owned());
+        assert_eq!(disabled.state, DialStateKind::Disabled);
+        assert_eq!(disabled.host, None);
+        assert_eq!(disabled.port, None);
+        assert_eq!(
+            disabled.message.as_deref(),
+            Some("DIAL supervisor thread failed")
+        );
+    }
+
+    #[test]
+    fn status_changed_is_false_only_for_an_identical_status() {
+        let a = starting_status(None);
+        let b = starting_status(None);
+        assert!(!status_changed(&a, &b));
+
+        let c = starting_status(Some("rebinding".to_owned()));
+        assert!(status_changed(&a, &c));
+
+        let info = DialInfo {
+            host: "192.168.1.5".to_owned(),
+            port: 1,
+            base: "http://192.168.1.5:1".to_owned(),
+        };
+        let ready = ready_status(&info);
+        assert!(status_changed(&a, &ready));
+        assert!(!status_changed(&ready, &ready.clone()));
+    }
+
+    #[test]
+    fn current_status_reads_whatever_is_stored_in_dial_state() {
+        let info = DialInfo {
+            host: "192.168.1.5".to_owned(),
+            port: 43210,
+            base: "http://192.168.1.5:43210".to_owned(),
+        };
+        let dial_state = DialState {
+            info: Arc::new(Mutex::new(None)),
+            device_id: Arc::new(Mutex::new(String::new())),
+            responses: Arc::new((Mutex::new(HashMap::new()), Condvar::new())),
+            stop: Arc::new(AtomicBool::new(true)),
+            status: Arc::new(Mutex::new(ready_status(&info))),
+        };
+
+        let status = current_status(&dial_state);
+        assert_eq!(status.state, DialStateKind::Ready);
+        assert_eq!(status.host.as_deref(), Some("192.168.1.5"));
+        assert_eq!(status.port, Some(43210));
+    }
+
+    #[test]
+    fn dial_status_serializes_to_the_documented_camel_case_json_contract() {
+        let info = DialInfo {
+            host: "192.168.1.5".to_owned(),
+            port: 43210,
+            base: "http://192.168.1.5:43210".to_owned(),
+        };
+        let json = serde_json::to_string(&ready_status(&info)).expect("status should serialize");
+        assert!(json.contains("\"state\":\"ready\""));
+        assert!(json.contains("\"host\":\"192.168.1.5\""));
+        assert!(json.contains("\"port\":43210"));
+
+        let degraded_json = serde_json::to_string(&degraded_status("bind failed".to_owned()))
+            .expect("status should serialize");
+        assert!(degraded_json.contains("\"state\":\"degraded\""));
+        assert!(degraded_json.contains("\"host\":null"));
+    }
+
+    #[test]
+    fn device_description_reflects_whatever_friendly_name_a_generation_was_built_with() {
+        // `start_generation` calls `load_friendly_name(&runtime.app)` fresh
+        // on every call (not once at `dial::start()`), so each generation's
+        // `RuntimeState` carries whatever value is currently in the
+        // settings store at bind/rebind time. This checks the render side
+        // of that contract: two `RuntimeState`s built with different
+        // friendly names produce different device descriptions, i.e.
+        // nothing caches a stale name at this layer.
+        let mut first = state();
+        first.friendly_name = "Living Room Lalin Cast".to_owned();
+        let mut second = state();
+        second.friendly_name = "Bedroom Lalin Cast".to_owned();
+
+        assert!(device_description(&first)
+            .contains("<friendlyName>Living Room Lalin Cast</friendlyName>"));
+        assert!(
+            device_description(&second).contains("<friendlyName>Bedroom Lalin Cast</friendlyName>")
+        );
     }
 }

@@ -1,0 +1,11 @@
+# Permission for dismissing the setup window and persisting setupCompleted.
+
+[[permission]]
+identifier = "allow-setup-complete"
+description = "Enables the setup_complete command without any pre-configured scope."
+commands.allow = ["setup_complete"]
+
+[[permission]]
+identifier = "deny-setup-complete"
+description = "Denies the setup_complete command."
+commands.deny = ["setup_complete"]

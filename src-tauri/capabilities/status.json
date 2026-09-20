@@ -1,0 +1,11 @@
+{
+  "identifier": "status-default",
+  "description": "สิทธิ์ของหน้าต่างสถานะออฟไลน์/บล็อกของ Lalin Cast (หน้า local status.html เท่านั้น)",
+  "windows": ["status"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "allow-status-retry",
+    "allow-status-quit"
+  ]
+}

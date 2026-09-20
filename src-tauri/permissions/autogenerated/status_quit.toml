@@ -1,0 +1,11 @@
+# Permission for quitting the app from the status window.
+
+[[permission]]
+identifier = "allow-status-quit"
+description = "Enables the status_quit command without any pre-configured scope."
+commands.allow = ["status_quit"]
+
+[[permission]]
+identifier = "deny-status-quit"
+description = "Denies the status_quit command."
+commands.deny = ["status_quit"]

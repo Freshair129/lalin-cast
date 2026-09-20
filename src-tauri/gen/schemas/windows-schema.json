@@ -195,6 +195,36 @@
           "markdownDescription": "Enables the dial_set_device_id command without any pre-configured scope."
         },
         {
+          "description": "Enables the setup_complete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-setup-complete",
+          "markdownDescription": "Enables the setup_complete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the setup_open_network_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-setup-open-network-settings",
+          "markdownDescription": "Enables the setup_open_network_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the setup_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-setup-refresh",
+          "markdownDescription": "Enables the setup_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the status_quit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-status-quit",
+          "markdownDescription": "Enables the status_quit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the status_retry command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-status-retry",
+          "markdownDescription": "Enables the status_retry command without any pre-configured scope."
+        },
+        {
           "description": "Denies the cast_update_install command.",
           "type": "string",
           "const": "deny-cast-update-install",
@@ -211,6 +241,36 @@
           "type": "string",
           "const": "deny-dial-set-device-id",
           "markdownDescription": "Denies the dial_set_device_id command."
+        },
+        {
+          "description": "Denies the setup_complete command.",
+          "type": "string",
+          "const": "deny-setup-complete",
+          "markdownDescription": "Denies the setup_complete command."
+        },
+        {
+          "description": "Denies the setup_open_network_settings command.",
+          "type": "string",
+          "const": "deny-setup-open-network-settings",
+          "markdownDescription": "Denies the setup_open_network_settings command."
+        },
+        {
+          "description": "Denies the setup_refresh command.",
+          "type": "string",
+          "const": "deny-setup-refresh",
+          "markdownDescription": "Denies the setup_refresh command."
+        },
+        {
+          "description": "Denies the status_quit command.",
+          "type": "string",
+          "const": "deny-status-quit",
+          "markdownDescription": "Denies the status_quit command."
+        },
+        {
+          "description": "Denies the status_retry command.",
+          "type": "string",
+          "const": "deny-status-retry",
+          "markdownDescription": "Denies the status_retry command."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

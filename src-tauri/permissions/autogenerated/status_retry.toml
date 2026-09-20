@@ -1,0 +1,11 @@
+# Permission for re-probing connectivity from the status window.
+
+[[permission]]
+identifier = "allow-status-retry"
+description = "Enables the status_retry command without any pre-configured scope."
+commands.allow = ["status_retry"]
+
+[[permission]]
+identifier = "deny-status-retry"
+description = "Denies the status_retry command."
+commands.deny = ["status_retry"]

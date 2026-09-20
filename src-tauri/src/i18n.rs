@@ -104,6 +104,19 @@ pub enum Key {
     ToggleLanguage,
     Quit,
     UpdateWindowTitle,
+    /// Tray menu: focuses/shows the `media` window.
+    TrayShow,
+    /// Tray menu item `tray-setup` and the media window's `network-setup`
+    /// menu item — both open the same setup window, so they share a label.
+    NetworkSetup,
+    SetupWindowTitle,
+    StatusWindowTitle,
+    /// Shown in the `status` window when the startup connectivity probe
+    /// fails.
+    StatusOfflineMessage,
+    /// Shown in the `status` window when a `lalin-cast-surface` event
+    /// (redirected or blocked Leanback UI) opens it.
+    StatusBlockedSurfaceMessage,
 }
 
 pub fn t(lang: Lang, key: Key) -> &'static str {
@@ -124,6 +137,22 @@ pub fn t(lang: Lang, key: Key) -> &'static str {
         (En, Quit) => "Quit Lalin Cast",
         (Th, UpdateWindowTitle) => "อัปเดต Lalin Cast",
         (En, UpdateWindowTitle) => "Lalin Cast Update",
+        (Th, TrayShow) => "แสดง Lalin Cast",
+        (En, TrayShow) => "Show Lalin Cast",
+        (Th, NetworkSetup) => "เครือข่ายและ DIAL",
+        (En, NetworkSetup) => "Network & DIAL",
+        (Th, SetupWindowTitle) => "ตั้งค่า Lalin Cast",
+        (En, SetupWindowTitle) => "Lalin Cast Setup",
+        (Th, StatusWindowTitle) => "สถานะ Lalin Cast",
+        (En, StatusWindowTitle) => "Lalin Cast Status",
+        (Th, StatusOfflineMessage) => "ไม่พบการเชื่อมต่ออินเทอร์เน็ต — ตรวจสอบเครือข่ายแล้วลองอีกครั้ง",
+        (En, StatusOfflineMessage) => "No internet connection — check your network and try again.",
+        (Th, StatusBlockedSurfaceMessage) => {
+            "YouTube ไม่ได้แสดงหน้าทีวี — ลองโหลดใหม่หรืออัปเดต Lalin Cast"
+        }
+        (En, StatusBlockedSurfaceMessage) => {
+            "YouTube isn't showing the TV interface — try reloading or updating Lalin Cast."
+        }
     }
 }
 
@@ -193,6 +222,12 @@ mod tests {
             Key::ToggleLanguage,
             Key::Quit,
             Key::UpdateWindowTitle,
+            Key::TrayShow,
+            Key::NetworkSetup,
+            Key::SetupWindowTitle,
+            Key::StatusWindowTitle,
+            Key::StatusOfflineMessage,
+            Key::StatusBlockedSurfaceMessage,
         ];
         for key in keys {
             let th = super::t(Lang::Th, key);

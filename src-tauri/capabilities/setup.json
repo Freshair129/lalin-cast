@@ -1,0 +1,12 @@
+{
+  "identifier": "setup-default",
+  "description": "สิทธิ์ของหน้าต่างตั้งค่าเครือข่ายและ DIAL ของ Lalin Cast (หน้า local setup.html เท่านั้น)",
+  "windows": ["setup"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "allow-setup-refresh",
+    "allow-setup-open-network-settings",
+    "allow-setup-complete"
+  ]
+}
