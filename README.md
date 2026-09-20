@@ -38,7 +38,18 @@ Current scope:
   after listener/IP failure;
 - a user-settable DIAL friendly name (`dialFriendlyName`, defaults to `Lalin Cast`);
 - narrow `window.h5vcc` DIAL route bridge for the embedded YouTube WebView;
-- continuous Leanback device-id sync with best-effort persistence.
+- continuous Leanback device-id sync with best-effort persistence;
+- a system tray icon (`Lalin Cast · DIAL: <state>`, plus host:port once ready) with menu actions to
+  show the window, open network/DIAL setup, check for updates, and quit;
+- a first-run setup wizard window that reads the Windows network category (Private/Public/Domain,
+  read locally through PowerShell only) and the live DIAL status, explains how to switch a Public
+  profile to Private when needed, and can be reopened anytime from the tray or the media window's
+  menu;
+- a status window shown when the app starts without a working internet connection, or when the
+  embedded YouTube page reports it isn't displaying the expected TV surface, with a manual retry
+  and quit action (no automatic retry loop);
+- surface detection reported by the embedded YouTube page itself (redirected away from the TV
+  surface, or the expected Leanback markup missing) that triggers the status window above.
 
 If the local settings store is unavailable, the shell uses safe defaults and
 still opens; the failure is not allowed to block the media window.

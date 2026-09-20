@@ -1,7 +1,7 @@
 ---
-version: "0.8.0b"
+version: "0.9.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T21:00:00+07:00,LALIN"
+last_update: "2026-09-20T22:30:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -71,6 +71,7 @@ Play owner is replaced by this candidate.
 | DIAL discovery | supervised Rust SSDP + bounded HTTP Rust boundary | local slice implemented with retry/rebind | port/descriptor, listener recovery and same-Wi-Fi device evidence |
 | H5VCC DIAL bridge | narrow initialization script + `dial_respond` command | local slice implemented with continuous device-id sync | route callback and real controller/device evidence |
 | numeric TV-code pairing | not assumed | user-confirmed for current debug runtime | repeat/relink and packaged-app evidence |
+| Network/surface status (not a VacuumTube feature; new in wave 2) | Rust `network.rs` (local PowerShell profile probe, pure JSON parser) and `surface.rs`/`status.rs` (TCP connectivity probe, validated `lalin-cast-surface` event), surfaced through the `setup` and `status` windows | wave 2 local slice — see `docs/plans/W2_LIVING_ROOM_PLAN.md` | parser/probe/validator unit tests plus real Windows Public/Private profile and blocked-Leanback-DOM evidence (human gate H6) |
 
 ## Endpoint and identity boundary
 
@@ -91,14 +92,27 @@ as a promise that every future ad format is blocked.
 
 ## Security and ownership rules
 
+Lalin Cast has four windows, and each one's capability is scoped to only what that window's
+own commands need — `media` (the remote YouTube surface), `update`, `setup` and `status`
+(three local-only windows, each serving its own bundled HTML page and nothing else):
+
 - The remote YouTube WebView receives no broad Lalin filesystem, shell or process
   permission.
 - The remote (`media`, origin `https://www.youtube.com/*`) capability grants
   only `core:default`, `core:event:allow-listen`, `core:event:allow-unlisten`,
-  `allow-dial-respond` and `allow-dial-set-device-id` — i.e. the DIAL
-  response/device-id-set commands plus the event listen/unlisten pair, and
-  nothing else; no filesystem, shell, process, update-install or arbitrary
-  network command is exposed to that window.
+  `allow-dial-respond`, `allow-dial-set-device-id`, and, added in wave 2,
+  `core:event:allow-emit` — i.e. the DIAL response/device-id-set commands, the
+  event listen/unlisten pair, and now the ability to emit an event, and nothing
+  else; no filesystem, shell, process, update-install or arbitrary network
+  command is exposed to that window.
+- `core:event:allow-emit` is the **only** remote-capability addition in wave 2. It exists
+  solely so `injected.js` can emit the `lalin-cast-surface` event (reporting that the
+  YouTube page was redirected away from the TV surface, or that the expected Leanback
+  markup is missing) to the Rust shell, which decides whether to open the local `status`
+  window. It grants no new listen, command or network surface to the remote page: Rust
+  re-validates every emitted payload (`kind` against an allow-list, `url` capped at 512
+  characters and required to start with `https://`, `title` capped at 200 characters) and
+  rate-limits accepted events to one per 30 seconds before acting on it.
 - The Rust DIAL HTTP parser caps headers at 16 KiB and bodies at 100 KiB; only
   `/`, `/apps` and `/apps/*` are handled.
 - Update install is a separate, local-only surface: the `update` window
@@ -106,8 +120,21 @@ as a promise that every future ad format is blocked.
   `allow-cast-update-install`, and `cast_update_install` itself rejects any
   call whose `tauri::Window::label()` is not exactly `"update"`. The remote
   YouTube window has no path to this command.
+- The `setup` window (label `setup`, local `setup.html` only, first-run network/DIAL
+  wizard) capability grants only `core:default`, `core:window:allow-close`,
+  `allow-setup-refresh`, `allow-setup-open-network-settings` and `allow-setup-complete`.
+  Every one of its commands rejects any caller whose `tauri::Window::label()` is not
+  exactly `"setup"`; `setup_open_network_settings` opens the fixed `ms-settings:network-status`
+  page and accepts no page-supplied path or argument.
+- The `status` window (label `status`, local `status.html` only, shown when the app starts
+  offline or the remote page reports a blocked/redirected TV surface) capability grants only
+  `core:default`, `core:window:allow-close`, `allow-status-retry` and `allow-status-quit`,
+  with the same label-gating on every command.
+- Neither the `setup` nor the `status` window is reachable from the remote YouTube origin,
+  and neither exposes filesystem, shell, process or arbitrary network commands.
 - No cookies, account tokens, pairing codes or session data are committed or
-  logged.
+  logged; the local network-category probe (PowerShell) and the surface event's URL/title
+  are never persisted or logged either.
 - Electron remains the fallback until Tauri endpoint, sign-in, playback,
   controller, fullscreen and lifecycle parity is evidenced.
 
@@ -183,3 +210,4 @@ as a promise that every future ad format is blocked.
 | 0.6.0b | 2026-09-20 | beta | Added supervised DIAL retry/rebind, continuous device-id persistence and local runtime listener verification | uncommitted | LALIN |
 | 0.7.0b | 2026-09-20 | beta | Exported the runtime as Lalin Cast and added signed updater integration | uncommitted | LALIN |
 | 0.8.0b | 2026-09-20 | beta | H0: narrowed the documented remote capability to the `dial_*`/event surface only, documented the label-gated `update` window for `cast_update_install`, and corrected the DIAL unit test count from 2 to 3 | uncommitted | LALIN |
+| 0.9.0b | 2026-09-20 | beta | Wave 2: documented the four-window boundary (`media`/`update`/`setup`/`status`), the `core:event:allow-emit` remote-capability addition and its rationale, and added the network/surface-status feature-matrix row (see `docs/plans/W2_LIVING_ROOM_PLAN.md`) | uncommitted | LALIN |
