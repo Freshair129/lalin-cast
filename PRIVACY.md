@@ -40,6 +40,7 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `hardwareDecoding` | เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อ ค่าเริ่มต้นเปิด มีผลหลังเปิดแอปใหม่เท่านั้น — ดูข้อ 8 | ไม่ |
 | `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
 | `startWithWindows` | เปิด/ปิดการเริ่ม Lalin Cast พร้อม Windows (registry Run key ของบัญชีนี้) ค่าเริ่มต้นปิด ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
+| `deepLinkScheme` | เปิด/ปิดการจดทะเบียนให้ลิงก์ `lalin-cast://` เปิดด้วย Lalin Cast (เขียน/ลบค่าใน `HKCU\Software\Classes\lalin-cast` ของบัญชีนี้) ค่าเริ่มต้นปิด เป็น opt-in ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
 | `windowBounds` | ตำแหน่ง (x, y) และขนาด (width, height) ของหน้าต่างสื่อ (media) ล่าสุด เป็นพิกเซล เขียนโดย Rust เท่านั้น ไม่ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า — ดูข้อ 7 | ไม่ |
 | `uiScale` | มาตราส่วนการแสดงผล (zoom) ของหน้าต่างสื่อ ผ่าน API `set_zoom` ของ WebView2 เอง ค่าที่รับ ∈ {100, 125, 150, 175, 200} เปอร์เซ็นต์ มีผลทันทีที่ตั้งค่าและอีกครั้งหลังเปิดแอปใหม่ — ดูข้อ 7 | ไม่ |
 | `sleepAtEndOfVideo` | เปิด/ปิดการหยุดเล่นอัตโนมัติเมื่อวิดีโอปัจจุบันจบ (กัน autoplay-next ของ YouTube หนึ่งครั้ง) ค่าเริ่มต้นปิด ไม่รีเซ็ตกลับเป็นปิดเอง — ดูข้อ 7 | ไม่ |
@@ -145,6 +146,20 @@ argument คงที่ (ไม่มี PowerShell, ไม่มี unsafe cod
 argument อื่นติดไปด้วย ปิดตัวเลือกนี้เพื่อลบค่าออกจาก registry การเขียน/ลบ registry นี้จำกัดอยู่แค่ค่าเดียว
 ในบัญชีผู้ใช้ปัจจุบันเท่านั้น ไม่แตะ registry ระดับเครื่อง (HKLM) หรือของผู้ใช้อื่น
 
+**ลิงก์ผ่าน URL scheme (`lalin-cast://`):** เมื่อผู้ใช้เปิดตัวเลือก "ให้ลิงก์ `lalin-cast://` เปิดด้วย
+Lalin Cast" จากหน้าต่างการตั้งค่าเท่านั้น (ค่าเริ่มต้นปิด, คีย์ `deepLinkScheme`, ไม่มีการเปิดใช้เองโดย
+อัตโนมัติ) แอปจะจดทะเบียน scheme `lalin-cast` เข้ารายการ `HKCU\Software\Classes\lalin-cast` ของบัญชี
+Windows ปัจจุบันเท่านั้น ผ่าน crate `tauri-plugin-deep-link` ที่ทำหน้าที่จดทะเบียน/ยกเลิก/ตรวจสอบ registry
+เพียงอย่างเดียว ไม่มีความสามารถอื่นเพิ่มเติม ไม่ต้องใช้สิทธิ์ผู้ดูแลระบบ และไม่แตะ registry ระดับเครื่อง
+(HKLM) หรือของบัญชีอื่น ปิดตัวเลือกนี้เพื่อยกเลิกการจดทะเบียน (ลบค่าออกจาก registry เดียวกัน) แอปจะบันทึก
+ค่านี้ลงไฟล์การตั้งค่าก็ต่อเมื่อ registry ไปถึงสถานะที่ขอจริงเท่านั้น (ถ้าปิดตัวเลือกขณะที่ยังไม่เคยจดทะเบียนไว้ ถือว่าสำเร็จ
+โดยไม่ต้องเรียกยกเลิก) เมื่อลิงก์ `lalin-cast://` มาถึงแอป (จาก
+Explorer, เบราว์เซอร์ หรือแอปอื่น) Windows จะส่งมาเป็นพารามิเตอร์บรรทัดคำสั่งของโปรเซสใหม่ ผ่านเส้นทางการ
+ตรวจสอบและแปลงเป็น URL ของ YouTube เดียวกันกับลิงก์บรรทัดคำสั่งทุกประการ (ดูข้อ 6) และอยู่ภายใต้กฎเดียวกัน
+ทุกข้อ: ค่าที่ไม่ผ่านการตรวจสอบจะถูกทิ้งไปเฉย ๆ และค่าที่ผ่านแล้ว **ไม่ถูกบันทึกลงไฟล์ log หรือไฟล์การตั้งค่า
+ถาวรใด ๆ** สตริง `lalin-cast://` ดิบเองก็ไม่ถูกส่งเข้าหน้าเว็บ (WebView) หรือถูก log เช่นกัน — เห็นเฉพาะ URL
+ของ YouTube ที่แปลงแล้วเท่านั้น
+
 **ลองใหม่อัตโนมัติเมื่อออฟไลน์:** เมื่อหน้าต่างสถานะแสดงเพราะออฟไลน์ตอนเริ่มแอป (ดูข้อ 4) Lalin Cast จะทำ
 การตรวจสอบการเชื่อมต่อ (TCP handshake ไปยัง `www.youtube.com:443` แบบเดียวกับข้อ 4 ไม่มี HTTP request
 หรือ payload อื่นใด) ซ้ำเองเป็นระยะโดยไม่ต้องกดปุ่ม เริ่มที่ 5 วินาทีแล้วเพิ่มเป็นสูงสุด 30 วินาที และหยุด
@@ -163,7 +178,8 @@ argument อื่นใดติดไปด้วย) แล้วคัดล
 **รีเซ็ตค่าเริ่มต้น (reset to defaults):** ปุ่ม "รีเซ็ตค่าเริ่มต้น" แบบกดสองจังหวะยืนยันในหน้าต่างการ
 ตั้งค่าคืนค่าเกือบทุกการตั้งค่ากลับเป็นค่าเริ่มต้นของแอปผ่าน path เดียวกับที่ใช้บันทึกค่าปกติทีละคีย์
 **แต่ไม่ลบ** รหัส/ชื่ออุปกรณ์ DIAL (`dialDeviceId`, `dialFriendlyName`), ภาษา (`language`), สถานะว่าผ่าน
-ตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows (`startWithWindows`) ออก — ทั้งห้าค่านี้ยังคงเดิมหลังกดรีเซ็ต (ดูข้อ 12 สำหรับวิธีลบ
+ตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows (`startWithWindows`) หรือการจดทะเบียน
+`lalin-cast://` (`deepLinkScheme`) ออก — ทั้งหกค่านี้ยังคงเดิมหลังกดรีเซ็ต (ดูข้อ 12 สำหรับวิธีลบ
 ค่าเหล่านี้ด้วยตัวเองถ้าต้องการ)
 
 **ข้อมูลวินิจฉัย:** ปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในหน้าต่างการตั้งค่าสร้างข้อความสรุปสถานะแอปแบบข้อความล้วน
@@ -300,6 +316,7 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `hardwareDecoding` | Turns hardware-accelerated video decoding on or off for the media window. Defaults to on; takes effect only after restarting the app — see section 8 | No |
 | `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 8 | No |
 | `startWithWindows` | Turns starting Lalin Cast with Windows on or off (this account's registry Run key). Defaults to off; only ever set from the settings window — see section 7 | No |
+| `deepLinkScheme` | Turns registering `lalin-cast://` links to open in Lalin Cast on or off (writes/removes a value under `HKCU\Software\Classes\lalin-cast` for this account). Defaults to off; opt-in, only ever set from the settings window — see section 7 | No |
 | `windowBounds` | The media window's last position (x, y) and size (width, height), in pixels. Written by Rust only; never shown in the settings window's snapshot — see section 7 | No |
 | `uiScale` | The media window's display scale (zoom), through WebView2's own `set_zoom` API. Accepted values are {100, 125, 150, 175, 200} percent; applies immediately when set, and again after the app restarts — see section 7 | No |
 | `sleepAtEndOfVideo` | Turns on/off pausing playback automatically once the current video ends (guarding against one YouTube autoplay-next). Defaults to off; not reset back to off automatically — see section 7 | No |
@@ -419,6 +436,23 @@ with fixed arguments (no PowerShell, no unsafe code). The value written is only 
 registry. This write/delete is limited to that single value in the current user's own account; it
 never touches machine-wide (`HKLM`) registry or another user's account.
 
+**`lalin-cast://` URL scheme link:** Only when the user turns on "Let `lalin-cast://` links open in
+Lalin Cast" from the settings window (off by default, the `deepLinkScheme` key, never enabled
+automatically, and never by the installer) does the app register the `lalin-cast` scheme into
+`HKCU\Software\Classes\lalin-cast` for the current Windows account only, through the
+`tauri-plugin-deep-link` crate, which is used solely to register, unregister, and check that
+registry entry and does nothing else. No administrator rights are required, and it never touches
+machine-wide (`HKLM`) registry or another account's. Turning the setting off unregisters it (removes
+the value from that same registry entry). The app persists this setting only once the registry actually
+reached the requested state (turning the setting off while nothing was registered counts as
+success without an unregister call). When a `lalin-cast://` link reaches the app (from
+Explorer, a browser, or another app), Windows delivers it as a new process's command-line argument,
+going through the exact same validation-and-convert-to-a-YouTube-URL path as the command-line link
+(see section 6) and under all the same rules: a value that fails validation is simply discarded, and
+one that passes is **never written to a log file or persisted to any settings file**. The raw
+`lalin-cast://` string itself is likewise never sent into the webview or logged — only the converted
+YouTube URL is ever seen.
+
 **Offline auto-retry:** When the status window is shown because the app started offline (see
 section 4), Lalin Cast repeats the same connectivity check (a TCP handshake to
 `www.youtube.com:443`, exactly as in section 4 — no HTTP request or payload beyond that) on its own,
@@ -440,10 +474,10 @@ clipboard **only when the user presses that button** — nothing else triggers t
 **Reset to defaults:** The two-step confirm "reset to defaults" button in the settings window resets
 almost every setting back to the app's own defaults, through the same per-key path used for normal
 setting saves, **but does not remove** the DIAL name/id (`dialDeviceId`, `dialFriendlyName`), the
-language (`language`), the setup-wizard-completed flag (`setupCompleted`), or the "start with
-Windows" entry (`startWithWindows`) — those five values
-stay exactly as they were after a reset (see section 12 for how to remove them yourself if you want
-to).
+language (`language`), the setup-wizard-completed flag (`setupCompleted`), the "start with
+Windows" entry (`startWithWindows`), or the `lalin-cast://` scheme registration (`deepLinkScheme`) —
+those six values stay exactly as they were after a reset (see section 12 for how to remove them
+yourself if you want to).
 
 **Diagnostics:** The "copy diagnostics" button in the settings window builds a plain-text summary of
 the app's state: app version, Tauri/WebView2 version, OS/architecture, current language, DIAL status
