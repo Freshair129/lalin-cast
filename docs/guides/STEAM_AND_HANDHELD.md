@@ -1,7 +1,7 @@
 ---
-version: "0.2.0b"
+version: "0.3.0b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:50:00+07:00,LALIN"
+last_update: "2026-09-20T23:58:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -16,20 +16,22 @@ attributes:
 
 **CANDIDATE** — คู่มือนี้อธิบายวิธีตั้งค่าตามสัญญา (contract) ของ
 [`docs/plans/W3_CONTROLS_PLAN.md`](../plans/W3_CONTROLS_PLAN.md) (การรองรับคอนโทรลเลอร์, คีย์ลัด,
-ตัวเลือกบรรทัดคำสั่ง) และ [`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md) (ตัวจับเวลา
-ปิดเล่น, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มควบคุมบนหน้าจอสัมผัส, โหมดหน้าต่างเล็ก) พฤติกรรมจริง
-บนอุปกรณ์ Steam Deck / ROG Ally / Legion Go จริงยังเป็น human gate (H7–H9 ในแผน wave 3, H10–H11 ในแผน
-wave 4) ที่ยังไม่ได้บันทึกหลักฐาน — ขั้นตอนด้านล่างมาจากสัญญาที่ตกลงกันไว้ ไม่ใช่หลักฐานที่ทดสอบแล้วบน
-อุปกรณ์จริงทุกรุ่น
+ตัวเลือกบรรทัดคำสั่ง), [`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md) (ตัวจับเวลา
+ปิดเล่น, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มควบคุมบนหน้าจอสัมผัส, โหมดหน้าต่างเล็ก) และ
+[`docs/plans/W5_DESKTOP_PLAN.md`](../plans/W5_DESKTOP_PLAN.md) (เริ่มพร้อม Windows, ลองใหม่อัตโนมัติเมื่อ
+ออฟไลน์, คีย์ความเร็วเล่น) พฤติกรรมจริงบนอุปกรณ์ Steam Deck / ROG Ally / Legion Go จริงยังเป็น human gate
+(H7–H9 ในแผน wave 3, H10–H11 ในแผน wave 4, H14–H16 ในแผน wave 5) ที่ยังไม่ได้บันทึกหลักฐาน — ขั้นตอน
+ด้านล่างมาจากสัญญาที่ตกลงกันไว้ ไม่ใช่หลักฐานที่ทดสอบแล้วบนอุปกรณ์จริงทุกรุ่น
 
 **CANDIDATE** — this guide follows the contract in
 [`docs/plans/W3_CONTROLS_PLAN.md`](../plans/W3_CONTROLS_PLAN.md) (controller support, keyboard
-shortcuts, command-line options) and
-[`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md) (sleep timer, codec filter,
-hardware decoding, touch overlay, mini-player). Real-device behavior on an actual Steam Deck / ROG
-Ally / Legion Go is still an open human gate (H7–H9 in the wave 3 plan, H10–H11 in the wave 4 plan)
-with no recorded evidence yet — the steps below come from the agreed contract, not from testing
-already done on every device model.
+shortcuts, command-line options), [`docs/plans/W4_PLAYBACK_PLAN.md`](../plans/W4_PLAYBACK_PLAN.md)
+(sleep timer, codec filter, hardware decoding, touch overlay, mini-player), and
+[`docs/plans/W5_DESKTOP_PLAN.md`](../plans/W5_DESKTOP_PLAN.md) (start with Windows, offline
+auto-retry, playback speed keys). Real-device behavior on an actual Steam Deck / ROG Ally / Legion Go
+is still an open human gate (H7–H9 in the wave 3 plan, H10–H11 in the wave 4 plan, H14–H16 in the
+wave 5 plan) with no recorded evidence yet — the steps below come from the agreed contract, not from
+testing already done on every device model.
 
 ## การเพิ่ม Lalin Cast เป็นเกมที่ไม่ใช่ Steam / Adding Lalin Cast as a non-Steam game
 
@@ -200,6 +202,48 @@ restarts) — see the "Mini-player" section of [`README.md`](../../README.md#pla
 Note: most games that run in exclusive fullscreen cover every other window, including Lalin Cast's
 mini-player — this feature works best with a game in "borderless windowed" mode, or when briefly
 switching back to the desktop.
+
+## เริ่มพร้อม Windows, ลองใหม่อัตโนมัติ และคีย์ความเร็ว / Start with Windows, auto-retry, and speed keys
+
+**ภาษาไทย:** สามอย่างต่อไปนี้จากแผน wave 5
+([`docs/plans/W5_DESKTOP_PLAN.md`](../plans/W5_DESKTOP_PLAN.md)) มีประโยชน์เป็นพิเศษกับเครื่อง HTPC ที่
+เปิดทิ้งไว้หน้าทีวี:
+
+- **เริ่มพร้อม Windows** — เปิดตัวเลือก "เริ่มพร้อม Windows" (`startWithWindows`) จากหน้าต่างการตั้งค่า
+  เพื่อให้ Lalin Cast เปิดขึ้นเองทุกครั้งที่เข้าสู่ระบบบัญชี Windows นี้ โดยไม่ต้องมีใครกดเปิดเอง —
+  เหมาะกับ HTPC ที่ต่อจอทีวีไว้ถาวรและอยากให้พร้อมใช้งานทันทีหลังเปิดเครื่อง ดูหัวข้อ "Desktop
+  integration" ใน [`README.md`](../../README.md#desktop-integration) (มีผลตั้งแต่การเข้าสู่ระบบครั้ง
+  ถัดไป — human gate H14)
+- **ลองใหม่อัตโนมัติตอนบูต** — เครื่อง HTPC หลายเครื่องบูต Windows และเริ่มโปรแกรมอัตโนมัติเร็วกว่าที่
+  Wi-Fi จะเชื่อมต่อสำเร็จ ถ้า Lalin Cast เปิดขึ้นมาก่อนอินเทอร์เน็ตพร้อม หน้าต่างสถานะจะขึ้นแล้วลองเชื่อม
+  ต่อใหม่ให้เอง (5 → 30 วินาที ต่อครั้ง สูงสุด 10 นาที) โดยไม่ต้องกดปุ่มใด — ใช้ร่วมกับ "เริ่มพร้อม
+  Windows" ด้านบนได้ดีสำหรับเครื่องที่ไม่มีใครอยู่หน้าจอตอนเปิดเครื่อง ดูหัวข้อ "Desktop integration"
+  ใน [`README.md`](../../README.md#desktop-integration) (human gate H15)
+- **คีย์ความเร็ว** — `Shift+,` ลดความเร็วเล่น, `Shift+.` เพิ่มความเร็วเล่น พร้อมแถบแสดงผลบนจอของ Lalin
+  Cast เอง สะดวกเมื่อควบคุมด้วยคีย์บอร์ดจากโซฟาโดยไม่ต้องเปิดเมนูของ YouTube เอง (สถานะอยู่แค่ในเซสชัน
+  ปัจจุบัน ไม่ persist) ดูผังคีย์ทั้งหมด (รวม `?` / `F1` สำหรับเปิดผังช่วยเหลือ) ใน
+  [`README.md`](../../README.md) หัวข้อ "Controller and keyboard"
+
+**English:** Three more wave 5 features
+([`docs/plans/W5_DESKTOP_PLAN.md`](../plans/W5_DESKTOP_PLAN.md)) are especially useful on an HTPC
+left running in front of a TV:
+
+- **Start with Windows** — turn on "start with Windows" (`startWithWindows`) from the settings
+  window so Lalin Cast opens itself every time this Windows account signs in, with no one needing to
+  launch it. Handy for an HTPC permanently connected to a TV that should be ready right after the
+  machine powers on — see "Desktop integration" in
+  [`README.md`](../../README.md#desktop-integration) (takes effect starting with the next sign-in —
+  human gate H14).
+- **Auto-retry at boot** — many HTPCs finish booting Windows and auto-starting programs faster than
+  Wi-Fi finishes connecting. If Lalin Cast starts before the internet is ready, the status window
+  appears and retries on its own (5 → 30 seconds per attempt, up to 10 minutes total) without any
+  button press — pairs well with "start with Windows" above for a machine no one is sitting in front
+  of when it powers on. See "Desktop integration" in
+  [`README.md`](../../README.md#desktop-integration) (human gate H15).
+- **Speed keys** — `Shift+,` slows playback down, `Shift+.` speeds it up, with Lalin Cast's own
+  on-screen indicator. Handy for keyboard control from the couch without opening YouTube's own menu
+  (session-only state, not persisted). See the full key table (including `?` / `F1` for the help
+  overlay) in the "Controller and keyboard" section of [`README.md`](../../README.md).
 
 ## ข้อจำกัดปัจจุบัน / Current limitations
 

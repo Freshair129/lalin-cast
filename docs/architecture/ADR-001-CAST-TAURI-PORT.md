@@ -1,7 +1,7 @@
 ---
-version: "0.11.0b"
+version: "0.12.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:45:00+07:00,LALIN"
+last_update: "2026-09-20T23:57:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -74,6 +74,14 @@ Play owner is replaced by this candidate.
 | mini-player mode (not a VacuumTube feature; new in wave 4, VTPiP-parity differentiator) | Rust `window_mode.rs`/`lib.rs` (`MiniPlayerState`, `toggle_mini`, pure `mini_position`) wired to the media menu, the tray, the `lalin-cast-shell` `toggle-mini` action and `Ctrl+Shift+M` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | `mini_position` geometry-round-trip unit tests plus real multi-monitor evidence (human gate H10) |
 | hardware-decoding toggle (not a VacuumTube feature; new in wave 4) | Rust media-window builder, a single fixed `additional_browser_args` constant (WebView2's default arguments plus `--disable-accelerated-video-decode`) constant applied only when `hardwareDecoding == false` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | `settings.rs` whitelist/type unit tests plus real "stats for nerds" decode-path evidence (human gate H11) |
 | ARM64 release matrix and winget packaging (not a VacuumTube feature; new in wave 4) | GitHub Actions `release.yml`/`ci.yml` `continue-on-error` `aarch64-pc-windows-msvc` jobs, plus `packaging/winget/*` manifest templates | wave 4 local slice implemented, **experimental** — see `docs/plans/W4_PLAYBACK_PLAN.md` | YAML/workflow static checks plus a real ARM64 build on the first tag and a winget submission (human gate H12) |
+| Studio launcher lifecycle / CLI + state-file IPC (not a VacuumTube feature; new in wave 5, the local half of the `CAST_PLATFORM_PLAN.md` slice P2 contract) | Rust `launch.rs`/`lifecycle.rs` (`--lifecycle launch\|focus\|close --request-id <id>` CLI flags, atomic `lifecycle.json` state file, `RunEvent::Exit` handling) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` and `docs/architecture/CAST_LAUNCHER_IPC.md` | CLI-parser and state-file unit tests plus a real Studio-side driver script exercising launch/focus/close against a built exe (human gate H13) |
+| Window-position memory (not a VacuumTube feature; new in wave 5) | Rust `window_bounds.rs` (`restore_target` pure fn, save on `Moved`/`Resized`/`CloseRequested` debounced 1 s, the `windowBounds` store key rejected by `settings_set`) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | `restore_target` off-screen/partial-overlap/undersized unit tests plus real multi-monitor/DPI evidence (human gate H14) |
+| Start with Windows (not a VacuumTube feature; new in wave 5, HTPC demand) | Rust `autostart.rs` (`run_value`/`reg_args` pure fns, a `reg.exe` runner with a 5 s timeout, the `startWithWindows` setting re-applied to the registry on every startup while it is on — nothing is touched while it is off) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | pure-fn unit tests plus real sign-in evidence that the Run key actually starts the app (human gate H14) |
+| Offline auto-retry (not a VacuumTube feature; new in wave 5, HTPC boot-before-Wi-Fi) | Rust `status.rs` (`retry_delay`/`should_stop` pure fns, an `AutoRetryState` generation counter, the `lalin-cast-status-retry` event) plus the `fallback/status.js` countdown UI | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | delay/stop pure-fn unit tests plus real HTPC-boot evidence (human gate H15) |
+| Diagnostics snapshot (not a VacuumTube feature; new in wave 5) | Rust `diagnostics.rs` (`format_diagnostics` pure fn) plus the `settings_diagnostics` command and the settings window's copy-to-clipboard button | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | a unit test asserting no device id/URL/TV code appears in the output; no dedicated human gate — covered by that test plus manual settings-window review |
+| Now-playing title (not a VacuumTube feature; new in wave 5, standard Media Session API) | `injected.js` `media` section (`navigator.mediaSession.metadata.title`, validated + rate-limited `lalin-cast-media` event) plus Rust `MediaTitleState` and the window-title/`tooltip_text` update | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | validation/rate-limit unit tests plus real Leanback playback evidence that the title tracks what's playing (human gate H16) |
+| Playback speed keys (not a VacuumTube feature; new in wave 5, SmartTube-parity differentiator) | `injected.js` `speed` section (`nextRate` pure fn, `Shift+,`/`Shift+.` keybinds, session-only `desiredRate`, an OSD) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | `nextRate`/adopt-external-`ratechange` unit tests plus real Leanback playback evidence (human gate H16) |
+| Help overlay (not a VacuumTube feature; new in wave 5) | `injected.js` `help` section (`helpRows(lang)` pure fn, `?`/`F1` keybinds, a `role="dialog"` overlay) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | `helpRows` bilingual-parity unit tests plus real Leanback overlay/Escape-handling evidence (human gate H16) |
 | SponsorBlock/DeArrow/Return Dislikes | JS adapter after CSP/runtime review | deferred | feature-by-feature parity |
 | upstream ad-block controls | separate compatibility gate | deferred | setting behavior in real WebView |
 | Electron request/response interception | Rust/native WebView2 adapter | not in P0 | WebView2 API proof and security review |
@@ -153,7 +161,47 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   restricted to `{0, 15, 30, 60, 90, 120}`, routed to `sleep::schedule`), `codecFilter` (the enum
   `"off"`/`"h264"`, save + emit prefs), `hardwareDecoding` (bool, save only), `touchOverlay`
   (bool, save + emit prefs) and `miniPlayer` (bool, routed to `toggle_mini` and never written to
-  the store — see below).
+  the store — see below), plus, added in wave 5, `startWithWindows` (bool, routed to
+  `autostart::apply`/`reg.exe` and saved only when that call succeeds). `windowBounds` is
+  **explicitly not** in this whitelist — `apply_setting` rejects it (unit test) — because it is
+  the one wave 5 store key written by Rust alone, never through this command; see below.
+- Added in wave 5, the `settings` window capability gains `allow-settings-diagnostics` (the
+  `settings_diagnostics` command, same label-gating as every other command on this window) and the
+  `status` window capability (`capabilities/status.json`) gains `core:event:allow-listen` and
+  `core:event:allow-unlisten` — the pair the `status` page needs to receive the
+  `lalin-cast-status-retry` auto-retry event from Rust; no other permission is added to either
+  window in wave 5.
+- Added in wave 5, the `lalin-cast-media` event (page → Rust, now-playing state) rides the existing
+  `core:event:allow-emit` remote capability, the same as `lalin-cast-surface` and
+  `lalin-cast-shell` before it — `capabilities/default.json` is unchanged in wave 5. Rust validates
+  every payload before acting on it: `state` must be one of `playing`/`paused`/`idle`, `title` has
+  control characters stripped and is capped at 120 characters, and accepted events are rate-limited
+  to one per 250 ms (`surface::rate_limit_allows`, the same helper `lalin-cast-shell` uses). The
+  only effect an accepted event has is updating the in-memory `MediaTitleState` used for the window
+  title and the tray tooltip line — it triggers no other command, window, or file write.
+- Added in wave 5, `startWithWindows` is applied only through `src/autostart.rs`'s `reg.exe` runner,
+  never through PowerShell or a direct Win32 registry API call. The registry key path, value name,
+  and command-line shape are all fixed, pure-function output (`reg_args(op, value) -> Vec<String>`);
+  the only variable input is the current executable's own absolute path
+  (`std::env::current_exe()`), which is rejected if it contains a `"` character or a control
+  character before being quoted and passed to `reg.exe`. The runner sets `creation_flags(0x0800_0000
+  /* CREATE_NO_WINDOW */)` on Windows, redirects `stdin`/`stdout`/`stderr` to null, and enforces a
+  5-second timeout through a worker thread plus `mpsc::recv_timeout` — the same pattern
+  `network::detect_network_profile` already uses. The `startWithWindows` store value is persisted
+  only after the `reg.exe` call itself succeeds.
+- Added in wave 5, the `lifecycle.json` state file written by `src/lifecycle.rs` carries no URL, no
+  deep link, and no cookie/token — only an app-chosen lifecycle `type`, the caller-supplied
+  `requestId` (validated against `[A-Za-z0-9_.-]{1,64}`, defaulting to `"cli"` otherwise), and
+  process-technical fields (`pid`, `exitCode`, an error `code`/`message`, the app version, and a
+  timestamp). Every write is atomic (`lifecycle.json.tmp` then `rename`). See
+  `docs/architecture/CAST_LAUNCHER_IPC.md` for the full schema and transition table.
+- Added in wave 5, `windowBounds` (the media window's position and size) is, like `MiniPlayerState`
+  before it, never written through `settings_set` or any page-reachable command — it is written
+  only by Rust itself, from the media window's own `Moved`/`Resized`/`CloseRequested` events
+  (debounced 1 second), and is skipped entirely while the window is fullscreen, in mini-player mode,
+  maximized, or minimized. `window_bounds::restore_target` is a pure function applied before the
+  window is shown on the next launch, and it discards (rather than clamps) any saved rectangle that
+  doesn't overlap a real monitor by at least 64×64 px or that is smaller than 320×180 px.
 - Neither the `setup`, `status` nor `settings` window is reachable from the remote YouTube
   origin, and none of them exposes filesystem, shell, process or arbitrary network commands.
 - Added in wave 3, the `lalin-cast-shell` event (page → Rust) rides the existing
@@ -254,3 +302,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.9.0b | 2026-09-20 | beta | Wave 2: documented the four-window boundary (`media`/`update`/`setup`/`status`), the `core:event:allow-emit` remote-capability addition and its rationale, and added the network/surface-status feature-matrix row (see `docs/plans/W2_LIVING_ROOM_PLAN.md`) | uncommitted | LALIN |
 | 0.10.0b | 2026-09-20 | beta | Wave 3: split the controller/touch feature-matrix row into ported controller, keybinds, native settings window and command-line deep-link rows; documented the `settings` window capability and the `lalin-cast-shell` event on the unchanged remote capability (see `docs/plans/W3_CONTROLS_PLAN.md`) | uncommitted | LALIN |
 | 0.11.0b | 2026-09-20 | beta | Wave 4: added feature-matrix rows for codec filter, touch overlay, sleep timer, mini-player, hardware decoding and the experimental ARM64/winget release matrix; documented the `toggle-mini` addition to the `lalin-cast-shell` whitelist, the single-constant `additional_browser_args` rule, and the wave 4 `settings_set` whitelist keys (see `docs/plans/W4_PLAYBACK_PLAN.md`) | uncommitted | LALIN |
+| 0.12.0b | 2026-09-20 | beta | Wave 5: added feature-matrix rows for the Studio launcher lifecycle (CLI + `lifecycle.json`), window-position memory, start with Windows, offline auto-retry, diagnostics snapshot, now-playing title, playback speed keys and the help overlay; documented the `settings`/`status` capability additions, the validated/rate-limited `lalin-cast-media` event on the unchanged remote capability, the fixed-argument `reg.exe` autostart runner, the URL-free `lifecycle.json` schema, and that `windowBounds` is Rust-only (see `docs/plans/W5_DESKTOP_PLAN.md` and `docs/architecture/CAST_LAUNCHER_IPC.md`) | uncommitted | LALIN |

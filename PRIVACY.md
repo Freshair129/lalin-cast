@@ -35,10 +35,12 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `setupCompleted` | ผู้ใช้กด "ไม่ต้องแสดงอีก" ในตัวช่วยติดตั้งครั้งแรก (setup wizard); ถ้าไม่ใช่ `true` ตัวช่วยติดตั้งจะเปิดอีกทุกครั้งที่เริ่มแอป | ไม่ |
 | `controllerEnabled` | เปิด/ปิดการอ่านค่าคอนโทรลเลอร์เกม (Gamepad API) ในหน้า YouTube ค่าเริ่มต้นเปิด | ไม่ |
 | `pauseOnBlur` | หยุดวิดีโอโดยอัตโนมัติเมื่อหน้าต่างสื่อ (media) เสียโฟกัส ค่าเริ่มต้นปิด | ไม่ |
-| `sleepTimerMinutes` | ตั้งเวลาปิดเล่นอัตโนมัติเป็นนาที ค่าที่รับ ∈ {0, 15, 30, 60, 90, 120}; `0` = ปิดใช้งาน/ยกเลิก เมื่อหมดเวลา Rust จะเขียนค่ากลับเป็น `0` เอง — ดูข้อ 7 | ไม่ |
-| `codecFilter` | ตัวกรอง codec ที่หน้า YouTube เห็นผ่าน Web API มาตรฐาน (`off` หรือ `h264`) มีผลหลังโหลดหน้าใหม่เท่านั้น — ดูข้อ 7 | ไม่ |
-| `hardwareDecoding` | เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อ ค่าเริ่มต้นเปิด มีผลหลังเปิดแอปใหม่เท่านั้น — ดูข้อ 7 | ไม่ |
-| `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 7 | ไม่ |
+| `sleepTimerMinutes` | ตั้งเวลาปิดเล่นอัตโนมัติเป็นนาที ค่าที่รับ ∈ {0, 15, 30, 60, 90, 120}; `0` = ปิดใช้งาน/ยกเลิก เมื่อหมดเวลา Rust จะเขียนค่ากลับเป็น `0` เอง — ดูข้อ 8 | ไม่ |
+| `codecFilter` | ตัวกรอง codec ที่หน้า YouTube เห็นผ่าน Web API มาตรฐาน (`off` หรือ `h264`) มีผลหลังโหลดหน้าใหม่เท่านั้น — ดูข้อ 8 | ไม่ |
+| `hardwareDecoding` | เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อ ค่าเริ่มต้นเปิด มีผลหลังเปิดแอปใหม่เท่านั้น — ดูข้อ 8 | ไม่ |
+| `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
+| `startWithWindows` | เปิด/ปิดการเริ่ม Lalin Cast พร้อม Windows (registry Run key ของบัญชีนี้) ค่าเริ่มต้นปิด ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
+| `windowBounds` | ตำแหน่ง (x, y) และขนาด (width, height) ของหน้าต่างสื่อ (media) ล่าสุด เป็นพิกเซล เขียนโดย Rust เท่านั้น ไม่ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า — ดูข้อ 7 | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -83,7 +85,7 @@ M-SEARCH จากอุปกรณ์อื่นบนเครือข่�
 โดยกำหนดเวลาคอย (timeout) ไว้ 4 วินาที เพื่อตรวจว่าเครื่องต่ออินเทอร์เน็ตอยู่หรือไม่ การเชื่อมต่อนี้เป็น
 เพียงการทำ TCP handshake ไม่มีการส่ง HTTP request หรือ payload ใด ๆ ออกไปเกินกว่านั้น และผลการตรวจไม่ถูก
 บันทึกลงไฟล์การตั้งค่าหรือที่ใดถาวร หากผู้ใช้กดปุ่ม "โหลดใหม่" (Reload) ในหน้าต่างสถานะ แอปจะทำการตรวจซ้ำ
-แบบเดียวกันอีกครั้งหนึ่งเท่านั้น (ไม่มี auto-retry loop อัตโนมัติ)
+แบบเดียวกันอีกครั้งหนึ่ง; นอกจากนี้ยังมีการลองใหม่อัตโนมัติเมื่อหน้าต่างสถานะแสดงเพราะออฟไลน์ (ดูข้อ 7)
 
 แอปยังอาจเปิดหน้าต่างสถานะ (status window) แยกต่างหากเมื่อ (ก) การตรวจสอบการเชื่อมต่อข้างต้นล้มเหลว
 ตอนเริ่มแอป หรือ (ข) หน้า YouTube ที่โหลดอยู่ในหน้าต่างหลักส่ง event ชื่อ `lalin-cast-surface` มาบอกว่าไม่ได้แสดง
@@ -118,7 +120,50 @@ Studio launcher) ดูรายละเอียดที่ [`README.md`](REA
 เดียวกันเปิดวิดีโอ/เพลย์ลิสต์นั้นเท่านั้น ถ้า Lalin Cast กำลังรันอยู่แล้ว ลิงก์จากอินสแตนซ์ใหม่จะถูกส่งต่อ
 ให้หน้าต่างเดิมในลักษณะเดียวกัน ไม่มีการส่งลิงก์นี้ออกนอกเครื่อง
 
-## 7. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์ และปุ่มสัมผัสบนจอ
+## 7. การผสานรวมกับเดสก์ท็อป: ไฟล์วงจรชีวิตของตัวเปิดแอป, ตำแหน่งหน้าต่าง, เริ่มพร้อม Windows, ลองใหม่อัตโนมัติเมื่อออฟไลน์ และข้อมูลวินิจฉัย
+
+รุ่นนี้เพิ่มคีย์การตั้งค่าอีกสองตัวในไฟล์ `media-settings.json` เดียวกับข้อ 2: `startWithWindows` (bool
+เปิด/ปิดการเริ่มแอปพร้อม Windows) และ `windowBounds` (ตำแหน่ง/ขนาดหน้าต่างสื่อ เขียนโดย Rust เท่านั้น ไม่
+ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า) ทั้งสองคีย์ไม่ถูกส่งออกนอกเครื่องเช่นเดียวกับคีย์อื่นทั้งหมดในไฟล์นี้
+— ดูรายละเอียดค่าที่คีย์ `windowBounds` เก็บ (ตำแหน่ง x/y และขนาด width/height ของหน้าต่างเป็นพิกเซล) ที่
+ข้อ 2
+
+**ไฟล์วงจรชีวิต (`lifecycle.json`):** ทุกครั้งที่ทำงาน Lalin Cast จะเขียนสถานะปัจจุบันของตัวเอง (เริ่ม
+ทำงาน/พร้อม/หยุดแล้ว/ล้มเหลว) ลงไฟล์ `lifecycle.json` ที่ `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json`
+เสมอ แบบ atomic (เขียนไฟล์ชั่วคราวแล้ว rename ทับ) เพื่อให้ตัวเปิดแอปภายนอก เช่น Lalin Studio ตรวจสอบ
+สถานะได้ — ไฟล์นี้มีเพียงสถานะทางเทคนิคของกระบวนการ (process id, exit code, รหัสข้อผิดพลาด) และตัวระบุ
+คำขอ (`requestId`) ที่ตัวเปิดแอปกำหนดเอง (ทึบ ไม่ใช่ข้อมูลระบุตัวตนผู้ใช้) **ไม่มี URL, deep link, คุกกี้
+หรือ token ใด ๆ อยู่ในไฟล์นี้** ดูสัญญา (contract) ฉบับเต็มที่
+[`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md)
+
+**เริ่มพร้อม Windows:** เมื่อผู้ใช้เปิดตัวเลือก "เริ่มพร้อม Windows" จากหน้าต่างการตั้งค่าเท่านั้น (ไม่มีการ
+เปิดใช้เองโดยอัตโนมัติ) แอปจะเขียนค่าเข้ารายการ Run ใน registry ของบัญชี Windows ปัจจุบัน
+(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) ผ่านคำสั่ง `reg.exe` ของ Windows เอง ด้วย
+argument คงที่ (ไม่มี PowerShell, ไม่มี unsafe code) ค่าที่เขียนคือ path เต็มของไฟล์ .exe เท่านั้น ไม่มี
+argument อื่นติดไปด้วย ปิดตัวเลือกนี้เพื่อลบค่าออกจาก registry การเขียน/ลบ registry นี้จำกัดอยู่แค่ค่าเดียว
+ในบัญชีผู้ใช้ปัจจุบันเท่านั้น ไม่แตะ registry ระดับเครื่อง (HKLM) หรือของผู้ใช้อื่น
+
+**ลองใหม่อัตโนมัติเมื่อออฟไลน์:** เมื่อหน้าต่างสถานะแสดงเพราะออฟไลน์ตอนเริ่มแอป (ดูข้อ 4) Lalin Cast จะทำ
+การตรวจสอบการเชื่อมต่อ (TCP handshake ไปยัง `www.youtube.com:443` แบบเดียวกับข้อ 4 ไม่มี HTTP request
+หรือ payload อื่นใด) ซ้ำเองเป็นระยะโดยไม่ต้องกดปุ่ม เริ่มที่ 5 วินาทีแล้วเพิ่มเป็นสูงสุด 30 วินาที และหยุด
+เองเมื่อครบ 10 นาที ผลของแต่ละครั้งไม่ถูกบันทึกถาวรเช่นเดียวกับการตรวจครั้งแรก
+
+**ข้อมูลวินิจฉัย:** ปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในหน้าต่างการตั้งค่าสร้างข้อความสรุปสถานะแอปแบบข้อความล้วน
+ประกอบด้วย: เวอร์ชันแอป, เวอร์ชัน Tauri/WebView2, ระบบปฏิบัติการ/สถาปัตยกรรม, ภาษาที่ใช้, สถานะ DIAL
+**รวมที่อยู่ IP และพอร์ตบน LAN ของเครื่องเอง** (เช่น `192.168.1.10:8008`), หมวดหมู่เครือข่ายพร้อมชื่ออินเทอร์เฟซ (เช่น `Ethernet`),
+ชื่อที่แสดงผ่าน DIAL, ค่าตั้งปัจจุบันทั้งหมด, สถานะวงจรชีวิตของแอปพร้อมหมายเลขโปรเซส (pid) และเวลาที่สร้างข้อความ — **ไม่มี** `dialDeviceId`, URL ใด ๆ, deep link,
+รหัสจับคู่ทีวี (TV code), คุกกี้, token หรือชื่อผู้ใช้/hostname อยู่ในข้อความนี้ ข้อความนี้ถูกคัดลอกไปยัง
+คลิปบอร์ดของเครื่อง **เมื่อผู้ใช้กดปุ่มเองเท่านั้น** ไม่มีการคัดลอกอัตโนมัติ และไม่มีการส่งข้อความนี้ออกจาก
+เครื่องโดยแอปไม่ว่ากรณีใด (ผู้ใช้เป็นคนตัดสินใจเองว่าจะวางข้อความนี้ไปที่ใดต่อ เช่นในรายงานปัญหา)
+
+**ชื่อวิดีโอที่กำลังเล่น:** หน้า YouTube อ่านชื่อวิดีโอที่กำลังเล่นผ่าน Media Session API มาตรฐานของ
+เบราว์เซอร์เท่านั้น (`navigator.mediaSession.metadata.title`) ไม่อ่าน DOM อื่นของหน้า แล้วส่งมาที่ Rust
+shell **ในเครื่องเดียวกัน** เพื่อใช้ตั้งชื่อหน้าต่างและบรรทัดใน tooltip ของไอคอนถาดเท่านั้น (ตัดความยาว,
+กรองอักขระควบคุม) ไม่ถูกบันทึกถาวร ไม่ถูกส่งออกนอกเครื่อง
+
+ทุกอย่างในข้อนี้ไม่เกี่ยวข้องกับระบบ telemetry ใด ๆ — Lalin Cast ยังคงไม่มี telemetry เหมือนที่ระบุในข้อ 1
+
+## 8. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์ และปุ่มสัมผัสบนจอ
 
 ตัวจับเวลาปิดเล่นอัตโนมัติ (sleep timer, คีย์ `sleepTimerMinutes`) ทำงานทั้งหมดในเครื่อง: ตัวจับเวลาเป็น
 เธรด Rust ที่นับถอยหลังในหน่วยความจำ ไม่มีการเชื่อมต่อเครือข่ายใด ๆ เกี่ยวข้อง เมื่อหมดเวลา Rust จะส่ง
@@ -145,7 +190,7 @@ YouTube จะ override ฟังก์ชัน Web API มาตรฐาน�
 คีย์ persist ตามที่ระบุในข้อ 2) และไม่มีผลด้านความเป็นส่วนตัวเพิ่มเติม — เป็นเพียงการเปลี่ยนขนาด/ตำแหน่ง/
 กรอบของหน้าต่างที่มีอยู่แล้วเท่านั้น
 
-## 8. การตรวจสอบอัปเดต
+## 9. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
 latest.json`) เพื่อตรวจสอบว่ามีรุ่นใหม่หรือไม่ ทั้งตอนเปิดแอป (แบบ non-blocking) และเมื่อผู้ใช้กด
@@ -154,7 +199,7 @@ User-Agent) ตามกลไกของโปรโตคอล HTTP เอ�
 ในคำขอนี้ การติดตั้งอัปเดตต้องให้ผู้ใช้กดยืนยันเองเสมอ ไม่มีการติดตั้งอัตโนมัติโดยไม่ถาม ดูรายละเอียด
 เพิ่มเติมที่หัวข้อ "Updating" ใน [`README.md`](README.md)
 
-## 9. หน้า YouTube ในหน้าต่างหลัก
+## 10. หน้า YouTube ในหน้าต่างหลัก
 
 หน้าต่างหลักของ Lalin Cast โหลดหน้า YouTube TV จริงจาก `https://www.youtube.com/tv` ผ่าน remote
 WebView ทุกสิ่งที่เกิดขึ้นภายในหน้านั้น (คุกกี้, การเข้าสู่ระบบบัญชี Google, ประวัติการรับชม, โฆษณา,
@@ -162,26 +207,31 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
 
-## 10. Logging
+## 11. Logging
 
 Lalin Cast ไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV code), คุกกี้, หรือ token/key ใด ๆ ลงไฟล์
 log อย่างถาวร ข้อความ debug/log ระหว่างพัฒนา (ถ้ามี) จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น
 สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง (ข้อ 6) ก็อยู่
 ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
 
-## 11. การลบข้อมูล
+## 12. การลบข้อมูล
 
-เนื่องจากข้อมูลทั้งหมดที่แอปเก็บอยู่ในเครื่องของผู้ใช้เอง การลบข้อมูลทำได้โดยลบโฟลเดอร์ข้อมูลแอปทิ้ง:
+เนื่องจากข้อมูลทั้งหมดที่แอปเก็บอยู่ในเครื่องของผู้ใช้เอง การลบข้อมูลทำได้โดยลบโฟลเดอร์ข้อมูลแอปทั้งสองโฟลเดอร์ทิ้ง:
 
 ```
 %APPDATA%\ai.lalin.cast\
+%LOCALAPPDATA%\ai.lalin.cast\
 ```
 
-การลบโฟลเดอร์นี้จะลบทั้ง `media-settings.json` (รวม `dialDeviceId`/`dialFriendlyName` ที่ตั้งไว้) และ
-สถานะภายในอื่น ๆ ของแอป การลบข้อมูลบัญชี Google/YouTube (ประวัติการรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่าน
-การตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุมของ Lalin Cast
+การลบโฟลเดอร์แรกจะลบทั้ง `media-settings.json` (รวม `dialDeviceId`/`dialFriendlyName` ที่ตั้งไว้) และ
+สถานะภายในอื่น ๆ ของแอป ส่วนโฟลเดอร์ที่สองมีไฟล์วงจรชีวิตของตัวเปิดแอป (`lifecycle.json` — ดูข้อ 7)
+หากเคยเปิดตัวเลือก "เริ่มพร้อม Windows" ไว้ ให้ปิดตัวเลือกนั้นจากหน้าต่างการตั้งค่าก่อนลบโฟลเดอร์ (หรือลบค่า
+`Lalin Cast` ออกจาก registry ที่ `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` เอง) มิฉะนั้นแอปจะยัง
+ถูกเรียกให้เริ่มทำงานทุกครั้งที่เข้าสู่ระบบ Windows ต่อไป — ดูข้อ 7 การลบข้อมูลบัญชี Google/YouTube (ประวัติ
+การรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่านการตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุม
+ของ Lalin Cast
 
-## 12. ติดต่อ
+## 13. ติดต่อ
 
 เนื่องจาก Lalin Cast เป็นโปรเจกต์โอเพนซอร์สอิสระ ช่องทางติดต่อหลักคือ GitHub Issues ของ repository
 นี้ (`github.com/Freshair129/lalin-cast`) ก่อนเผยแพร่ต่อสาธารณะ ผู้ก่อตั้งโปรเจกต์ควรพิจารณาเพิ่มช่องทาง
@@ -227,10 +277,12 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `setupCompleted` | Set when the user checks "Don't show again" in the first-run setup wizard; if not `true`, the wizard opens again every time the app starts | No |
 | `controllerEnabled` | Turns game-controller (Gamepad API) reading on or off in the YouTube page. Defaults to on | No |
 | `pauseOnBlur` | Automatically pauses playback when the media window loses focus. Defaults to off | No |
-| `sleepTimerMinutes` | Sleep-timer duration in minutes; accepted values are {0, 15, 30, 60, 90, 120}. `0` disables/cancels it; when it fires, Rust writes it back to `0` itself — see section 7 | No |
-| `codecFilter` | Which codec the YouTube page is told it supports through the standard Web API (`off` or `h264`); takes effect only after the next page reload — see section 7 | No |
-| `hardwareDecoding` | Turns hardware-accelerated video decoding on or off for the media window. Defaults to on; takes effect only after restarting the app — see section 7 | No |
-| `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 7 | No |
+| `sleepTimerMinutes` | Sleep-timer duration in minutes; accepted values are {0, 15, 30, 60, 90, 120}. `0` disables/cancels it; when it fires, Rust writes it back to `0` itself — see section 8 | No |
+| `codecFilter` | Which codec the YouTube page is told it supports through the standard Web API (`off` or `h264`); takes effect only after the next page reload — see section 8 | No |
+| `hardwareDecoding` | Turns hardware-accelerated video decoding on or off for the media window. Defaults to on; takes effect only after restarting the app — see section 8 | No |
+| `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 8 | No |
+| `startWithWindows` | Turns starting Lalin Cast with Windows on or off (this account's registry Run key). Defaults to off; only ever set from the settings window — see section 7 | No |
+| `windowBounds` | The media window's last position (x, y) and size (width, height), in pixels. Written by Rust only; never shown in the settings window's snapshot — see section 7 | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -282,7 +334,8 @@ window is always created regardless of the probe's result), with a 4-second time
 whether the machine has internet connectivity. This connection is only a TCP handshake — it sends
 no HTTP request or payload beyond that — and the result is never persisted to the settings file or
 anywhere else. If the user presses "Reload" in the status window, the app runs this same probe
-exactly once more (there is no automatic retry loop).
+exactly once more; in addition, the offline case retries automatically on a schedule (see
+section 7).
 
 The app may also open a separate status window when either (a) the connectivity probe above fails
 at startup, or (b) the YouTube page loaded in the main window sends a `lalin-cast-surface`
@@ -321,7 +374,58 @@ file** — it is only forwarded, in the same process, to the local media window 
 video/playlist. If Lalin Cast is already running, a link from a new instance is forwarded to the
 existing window the same way. This link is never sent off the device.
 
-## 7. Playback: sleep timer, codec filter, hardware decoding, and touch overlay
+## 7. Desktop integration: launcher lifecycle file, window position, start with Windows, offline auto-retry, and diagnostics
+
+This release adds two more settings keys to the same `media-settings.json` file described in
+section 2: `startWithWindows` (bool, turns starting with Windows on or off) and `windowBounds` (the
+media window's position/size, written by Rust only and never shown in the settings window's
+snapshot). Neither key ever leaves the device, same as every other key in this file — see section 2
+for what `windowBounds` stores (the window's x/y position and width/height, in pixels).
+
+**Lifecycle file (`lifecycle.json`):** Every time it runs, Lalin Cast always writes its current
+lifecycle state (starting/ready/stopped/failed) to `lifecycle.json` at
+`%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json`, atomically (writing a temp file, then renaming it
+into place), so an external launcher such as Lalin Studio can check on it. This file contains only
+the process's own technical state (process id, exit code, an error code) and a request identifier
+(`requestId`) the launcher chooses itself (an opaque token, not user-identifying data). **No URL,
+deep link, cookie, or token of any kind is ever written to this file.** See the full contract at
+[`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md).
+
+**Start with Windows:** Only when the user turns on "start with Windows" from the settings window
+(never enabled automatically) does the app write a value into the current Windows account's own Run
+key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), through Windows' own `reg.exe` command
+with fixed arguments (no PowerShell, no unsafe code). The value written is only the full path to the
+`.exe` file — no other arguments travel with it. Turning the setting off removes that value from the
+registry. This write/delete is limited to that single value in the current user's own account; it
+never touches machine-wide (`HKLM`) registry or another user's account.
+
+**Offline auto-retry:** When the status window is shown because the app started offline (see
+section 4), Lalin Cast repeats the same connectivity check (a TCP handshake to
+`www.youtube.com:443`, exactly as in section 4 — no HTTP request or payload beyond that) on its own,
+on a schedule, without the user pressing anything: starting at 5 seconds, stepping up to a maximum
+of 30 seconds, and stopping on its own after 10 minutes. Each attempt's result is never persisted,
+the same as the initial check.
+
+**Diagnostics:** The "copy diagnostics" button in the settings window builds a plain-text summary of
+the app's state: app version, Tauri/WebView2 version, OS/architecture, current language, DIAL status
+**including the machine's own LAN IP address and port** (for example `192.168.1.10:8008`), network
+category with the interface name (for example `Ethernet`), the DIAL friendly name, every current
+setting, the app's lifecycle state with its process id (pid), and the time the text was generated —
+**none of `dialDeviceId`, any URL, a deep link, a TV pairing code, a cookie, a token, or a
+username/hostname** is ever included. This text is copied to the device's clipboard **only when the
+user presses the button** — there is no automatic copy, and the app never sends this text off the
+device on its own under any circumstance; the user decides where to paste it next (for example, into
+a bug report).
+
+**Now-playing title:** The YouTube page reads the title of the video currently playing only through
+the browser's standard Media Session API (`navigator.mediaSession.metadata.title`), never any other
+DOM content, and sends it to the Rust shell **on the same machine** solely to set the window title
+and a line in the tray icon's tooltip (length-capped, control characters stripped). It is never
+persisted and never leaves the device.
+
+None of this involves any telemetry system — Lalin Cast still has none, as stated in section 1.
+
+## 8. Playback: sleep timer, codec filter, hardware decoding, and touch overlay
 
 The sleep timer (`sleepTimerMinutes`) runs entirely on the device: the timer itself is a Rust thread
 counting down in memory, with no network connection involved. When it fires, Rust sends an event to
@@ -352,7 +456,7 @@ Mini-player mode is current-session state only. It is never written to the setti
 no persisted key for it, as noted in section 2) and has no additional privacy implication — it only
 changes the size, position, and frame of the window that already exists.
 
-## 8. Update checks
+## 9. Update checks
 
 The app contacts `github.com` (specifically
 `github.com/Freshair129/lalin-cast/releases/latest/download/latest.json`) to check for a new
@@ -362,7 +466,7 @@ User-Agent, per the HTTP protocol itself); no additional personal or usage data 
 Installing an update always requires explicit user confirmation; nothing installs automatically
 without being asked. See the "Updating" section of [`README.md`](README.md) for more detail.
 
-## 9. The YouTube page in the main window
+## 10. The YouTube page in the main window
 
 The main Lalin Cast window loads the real YouTube TV page from `https://www.youtube.com/tv`
 through a remote WebView. Everything that happens inside that page — cookies, Google account
@@ -370,7 +474,7 @@ sign-in, watch history, ads, the recommendation algorithm — is entirely under 
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
 
-## 10. Logging
+## 11. Logging
 
 Lalin Cast does not persistently log personal information (PII), TV pairing codes, cookies, or any
 tokens/keys. Whatever debug/log output exists during development prints only the app's own
@@ -378,21 +482,26 @@ technical state (such as port-bind status or connection status), never user-iden
 The command-line deep link (section 6) falls under this same rule — it is never logged, whether or
 not it passes validation.
 
-## 11. Deleting your data
+## 12. Deleting your data
 
 Because everything the app stores lives on the user's own machine, deleting your data means
-deleting the app's data folder:
+deleting both of the app's data folders:
 
 ```
 %APPDATA%\ai.lalin.cast\
+%LOCALAPPDATA%\ai.lalin.cast\
 ```
 
-Deleting this folder removes `media-settings.json` (including any `dialDeviceId`/
-`dialFriendlyName` you set) and any other internal app state. Deleting Google/YouTube account data
-(watch history, sign-in cookies) must be done through your Google account settings directly, since
-that data is not under Lalin Cast's control.
+Deleting the first folder removes `media-settings.json` (including any `dialDeviceId`/
+`dialFriendlyName` you set) and any other internal app state. The second folder holds the launcher
+lifecycle file (`lifecycle.json` — see section 7). If you ever turned on "start with Windows", turn
+it off from the settings window before deleting the folders (or remove the `Lalin Cast` value from
+the registry yourself, at `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) — otherwise the app
+will keep being launched at sign-in — see section 7. Deleting Google/YouTube account data (watch
+history, sign-in cookies) must be done through your Google account settings directly, since that
+data is not under Lalin Cast's control.
 
-## 12. Contact
+## 13. Contact
 
 Since Lalin Cast is an independent open-source project, the primary contact channel is GitHub
 Issues on this repository (`github.com/Freshair129/lalin-cast`). Before a public release, the
