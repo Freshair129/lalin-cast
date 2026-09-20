@@ -15,10 +15,19 @@
  *     message?: string,
  *   };
  *
+ * When the window is already open and the host re-checks (or the state
+ * otherwise changes), the host does:
+ *
+ *   window.eval("window.__LALIN_UPDATE__ = <json>; " +
+ *     "window.dispatchEvent(new CustomEvent('lalin-update'));")
+ *
+ * and this page listens for `lalin-update` on `window` to re-render without
+ * a full page reload.
+ *
  * No inline <script>, no inline event handlers (on*=), no external
  * resources. This file is a plain classic script (no import/export) so it
- * can be loaded as-is in the browser and required as-is under plain Node
- * for the self-test below.
+ * can be loaded as-is in the browser; it exports its testable surface via
+ * `module.exports` when loaded under CommonJS (see fallback/update.test.js).
  */
 
 // ---------------------------------------------------------------------------
@@ -87,7 +96,7 @@ const STRINGS = {
 const STATE_SECTION_IDS = ["state-available", "state-uptodate", "state-error", "state-no-tauri"];
 
 // ---------------------------------------------------------------------------
-// DOM helpers (operate on a `doc` param so the self-test can pass a stub)
+// DOM helpers (operate on a `doc` param so tests can pass a stub)
 // ---------------------------------------------------------------------------
 
 function byId(doc, id) {
@@ -120,8 +129,26 @@ function stringifyError(err, strings) {
   }
 }
 
+function langOf(data) {
+  return data && data.lang === "th" ? "th" : "en";
+}
+
 // ---------------------------------------------------------------------------
-// Close / Escape wiring — shared across every state
+// Per-window mutable state (kept on the `win` object itself, never on the
+// module, so each window — and each test's stub window — is independent).
+// ---------------------------------------------------------------------------
+
+function getState(win) {
+  if (!win.__lalinUpdateState__) {
+    win.__lalinUpdateState__ = { installInFlight: false, wired: false };
+  }
+  return win.__lalinUpdateState__;
+}
+
+// ---------------------------------------------------------------------------
+// Close / Escape wiring — shared across every state. Both are ignored while
+// an install is in flight so a stray Escape or Later click can't abandon an
+// in-progress install.
 // ---------------------------------------------------------------------------
 
 function closeWindow(win) {
@@ -136,18 +163,62 @@ function wireCloseAndEscape(doc, win) {
   const closeButtonIds = ["later-btn", "close-btn-uptodate", "close-btn-error"];
   closeButtonIds.forEach((id) => {
     const el = byId(doc, id);
-    if (el) el.addEventListener("click", () => closeWindow(win));
+    if (el) {
+      el.addEventListener("click", () => {
+        if (getState(win).installInFlight) return;
+        closeWindow(win);
+      });
+    }
   });
   doc.addEventListener("keydown", (event) => {
-    if (event && event.key === "Escape") closeWindow(win);
+    if (!event || event.key !== "Escape") return;
+    if (getState(win).installInFlight) return;
+    closeWindow(win);
   });
 }
 
 // ---------------------------------------------------------------------------
-// Per-state rendering
+// Install button — wired once; reads the latest lang/state at click time so
+// it stays correct across re-renders triggered by `lalin-update`.
+// ---------------------------------------------------------------------------
+
+function wireInstallButton(doc, win) {
+  const installBtn = byId(doc, "install-btn");
+  if (!installBtn) return;
+
+  installBtn.addEventListener("click", () => {
+    const state = getState(win);
+    if (state.installInFlight) return;
+
+    const data = win.__LALIN_UPDATE__ || {};
+    const strings = STRINGS[langOf(data)];
+
+    state.installInFlight = true;
+    installBtn.disabled = true;
+    installBtn.textContent = strings.available.installing;
+    const laterBtn = byId(doc, "later-btn");
+    if (laterBtn) laterBtn.disabled = true;
+    setHidden(doc, "install-error", true);
+    setText(doc, "install-error", "");
+
+    win.__TAURI__.core.invoke("cast_update_install").catch((err) => {
+      state.installInFlight = false;
+      installBtn.disabled = false;
+      installBtn.textContent = strings.available.retry;
+      if (laterBtn) laterBtn.disabled = false;
+      setText(doc, "install-error", strings.available.installErrorPrefix + stringifyError(err, strings));
+      setHidden(doc, "install-error", false);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Per-state rendering — pure UI updates only; no listener registration here
+// so calling render() again (from `lalin-update`) never double-binds.
 // ---------------------------------------------------------------------------
 
 function renderAvailable(doc, win, strings, data) {
+  const state = getState(win);
   showOnly(doc, "state-available");
   setText(doc, "available-title", strings.available.title);
 
@@ -163,23 +234,11 @@ function renderAvailable(doc, win, strings, data) {
 
   const installBtn = byId(doc, "install-btn");
   if (installBtn) {
-    installBtn.disabled = false;
-    installBtn.textContent = strings.available.install;
-    installBtn.addEventListener("click", () => {
-      installBtn.disabled = true;
-      installBtn.textContent = strings.available.installing;
-      setHidden(doc, "install-error", true);
-      setText(doc, "install-error", "");
-
-      win.__TAURI__.core.invoke("cast_update_install").catch((err) => {
-        installBtn.disabled = false;
-        installBtn.textContent = strings.available.retry;
-        setText(doc, "install-error", strings.available.installErrorPrefix + stringifyError(err, strings));
-        setHidden(doc, "install-error", false);
-      });
-    });
+    installBtn.disabled = state.installInFlight;
+    installBtn.textContent = state.installInFlight ? strings.available.installing : strings.available.install;
   }
-
+  const laterBtn = byId(doc, "later-btn");
+  if (laterBtn) laterBtn.disabled = state.installInFlight;
   setText(doc, "later-btn", strings.available.later);
 }
 
@@ -203,6 +262,41 @@ function renderNoTauri(doc, strings) {
   setText(doc, "no-tauri-body", strings.noTauri.body);
 }
 
+function render(doc, win, strings, data) {
+  switch (data.state) {
+    case "available":
+      renderAvailable(doc, win, strings, data);
+      break;
+    case "upToDate":
+      renderUpToDate(doc, strings, data);
+      break;
+    case "error":
+      renderError(doc, strings, data);
+      break;
+    default:
+      renderError(doc, strings, { message: strings.error.unknownState });
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// `lalin-update` — re-render without reload when the host pushes a new
+// state into an already-open window. Ignored while an install is in flight
+// so the host re-checking mid-install can't yank the "installing…" UI out
+// from under the user.
+// ---------------------------------------------------------------------------
+
+function wireLalinUpdateListener(doc, win) {
+  win.addEventListener("lalin-update", () => {
+    if (getState(win).installInFlight) return;
+    const data = win.__LALIN_UPDATE__ || {};
+    const strings = STRINGS[langOf(data)];
+    if (doc.documentElement) doc.documentElement.lang = langOf(data);
+    setText(doc, "app-title", strings.appTitle);
+    render(doc, win, strings, data);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -220,10 +314,9 @@ function hasTauriApi(win) {
 
 function init(doc, win) {
   const data = (win && win.__LALIN_UPDATE__) || {};
-  const lang = data.lang === "th" ? "th" : "en";
-  const strings = STRINGS[lang];
+  const strings = STRINGS[langOf(data)];
 
-  if (doc.documentElement) doc.documentElement.lang = lang;
+  if (doc.documentElement) doc.documentElement.lang = langOf(data);
   setText(doc, "app-title", strings.appTitle);
 
   if (!hasTauriApi(win)) {
@@ -231,22 +324,15 @@ function init(doc, win) {
     return;
   }
 
-  wireCloseAndEscape(doc, win);
-
-  switch (data.state) {
-    case "available":
-      renderAvailable(doc, win, strings, data);
-      break;
-    case "upToDate":
-      renderUpToDate(doc, strings, data);
-      break;
-    case "error":
-      renderError(doc, strings, data);
-      break;
-    default:
-      renderError(doc, strings, { message: strings.error.unknownState });
-      break;
+  const state = getState(win);
+  if (!state.wired) {
+    state.wired = true;
+    wireCloseAndEscape(doc, win);
+    wireInstallButton(doc, win);
+    wireLalinUpdateListener(doc, win);
   }
+
+  render(doc, win, strings, data);
 }
 
 function boot() {
@@ -258,251 +344,8 @@ function boot() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Self-test — only runs when globalThis.__LALIN_TEST__ is truthy. Exercises
-// all three contract states (plus the no-Tauri fallback) against a minimal
-// hand-rolled DOM stub, with no external test framework or dependency.
-//
-// Run with:
-//   node -e "globalThis.__LALIN_TEST__=true;require('./update.js')"
-// ---------------------------------------------------------------------------
-
-function createStubDom() {
-  const elements = {};
-
-  const makeElement = (id) => {
-    const listeners = {};
-    return {
-      id,
-      textContent: "",
-      hidden: false,
-      disabled: false,
-      addEventListener(type, handler) {
-        (listeners[type] = listeners[type] || []).push(handler);
-      },
-      dispatch(type, evt) {
-        (listeners[type] || []).forEach((handler) => handler(evt || {}));
-      },
-    };
-  };
-
-  const ids = [
-    "app-title",
-    "state-available",
-    "available-title",
-    "available-version",
-    "available-notes",
-    "install-error",
-    "install-btn",
-    "later-btn",
-    "state-uptodate",
-    "uptodate-title",
-    "uptodate-body",
-    "close-btn-uptodate",
-    "state-error",
-    "error-title",
-    "error-body",
-    "close-btn-error",
-    "state-no-tauri",
-    "no-tauri-title",
-    "no-tauri-body",
-  ];
-  ids.forEach((id) => {
-    elements[id] = makeElement(id);
-  });
-
-  const docListeners = {};
-  const doc = {
-    documentElement: { lang: "" },
-    getElementById: (id) => elements[id] || null,
-    addEventListener(type, handler) {
-      (docListeners[type] = docListeners[type] || []).push(handler);
-    },
-    dispatch(type, evt) {
-      (docListeners[type] || []).forEach((handler) => handler(evt || {}));
-    },
-  };
-
-  return { doc, elements };
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { init, hasTauriApi };
 }
 
-function makeTauriStub(overrides) {
-  const closeCalls = { count: 0 };
-  const invokeCalls = [];
-  const stub = {
-    core: {
-      invoke(cmd) {
-        invokeCalls.push(cmd);
-        return (overrides && overrides.invokeResult) || Promise.resolve();
-      },
-    },
-    window: {
-      getCurrentWindow: () => ({
-        close: () => {
-          closeCalls.count += 1;
-        },
-      }),
-    },
-  };
-  return { tauri: stub, closeCalls, invokeCalls };
-}
-
-function nextTick() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function runSelfTest() {
-  // Only ever reached when globalThis.__LALIN_TEST__ is set, i.e. under a
-  // plain Node CommonJS run — never in the browser bundle path.
-  const assert = require("assert");
-
-  const results = [];
-
-  function test(name, fn) {
-    const run = Promise.resolve()
-      .then(fn)
-      .then(() => {
-        results.push({ name, ok: true });
-        console.log(`ok - ${name}`);
-      })
-      .catch((err) => {
-        results.push({ name, ok: false, err });
-        console.log(`not ok - ${name} -- ${err && err.message ? err.message : err}`);
-      });
-    return run;
-  }
-
-  const pending = [];
-
-  pending.push(
-    test("available state shows only the available section and fills in version/notes", () => {
-      const { doc, elements } = createStubDom();
-      const { tauri } = makeTauriStub();
-      const win = {
-        __LALIN_UPDATE__: {
-          lang: "en",
-          state: "available",
-          version: "0.2.0",
-          notes: "Bug fixes",
-          pubDate: "2026-09-18",
-        },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      assert.strictEqual(elements["state-available"].hidden, false);
-      assert.strictEqual(elements["state-uptodate"].hidden, true);
-      assert.strictEqual(elements["state-error"].hidden, true);
-      assert.strictEqual(elements["state-no-tauri"].hidden, true);
-      assert.ok(elements["install-btn"].textContent.length > 0);
-      assert.ok(elements["available-version"].textContent.includes("0.2.0"));
-      assert.strictEqual(elements["available-notes"].hidden, false);
-    }),
-  );
-
-  pending.push(
-    test("install click invokes cast_update_install and disables the button while installing", () => {
-      const { doc, elements } = createStubDom();
-      const { tauri, invokeCalls } = makeTauriStub({ invokeResult: new Promise(() => {}) });
-      const win = {
-        __LALIN_UPDATE__: { lang: "th", state: "available", version: "0.2.0" },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      elements["install-btn"].dispatch("click");
-      assert.deepStrictEqual(invokeCalls, ["cast_update_install"]);
-      assert.strictEqual(elements["install-btn"].disabled, true);
-    }),
-  );
-
-  pending.push(
-    test("install failure re-enables the button and shows the error message", async () => {
-      const { doc, elements } = createStubDom();
-      const { tauri } = makeTauriStub({ invokeResult: Promise.reject(new Error("network down")) });
-      const win = {
-        __LALIN_UPDATE__: { lang: "en", state: "available" },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      elements["install-btn"].dispatch("click");
-      await nextTick();
-      assert.strictEqual(elements["install-btn"].disabled, false);
-      assert.strictEqual(elements["install-error"].hidden, false);
-      assert.ok(elements["install-error"].textContent.includes("network down"));
-    }),
-  );
-
-  pending.push(
-    test("upToDate state shows only that section", () => {
-      const { doc, elements } = createStubDom();
-      const { tauri } = makeTauriStub();
-      const win = {
-        __LALIN_UPDATE__: { lang: "en", state: "upToDate" },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      assert.strictEqual(elements["state-uptodate"].hidden, false);
-      assert.strictEqual(elements["state-available"].hidden, true);
-      assert.strictEqual(elements["state-error"].hidden, true);
-      assert.ok(elements["uptodate-body"].textContent.length > 0);
-    }),
-  );
-
-  pending.push(
-    test("error state shows only that section with the provided message", () => {
-      const { doc, elements } = createStubDom();
-      const { tauri } = makeTauriStub();
-      const win = {
-        __LALIN_UPDATE__: { lang: "en", state: "error", message: "boom" },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      assert.strictEqual(elements["state-error"].hidden, false);
-      assert.strictEqual(elements["state-available"].hidden, true);
-      assert.strictEqual(elements["state-uptodate"].hidden, true);
-      assert.strictEqual(elements["error-body"].textContent, "boom");
-    }),
-  );
-
-  pending.push(
-    test("missing Tauri API shows the fallback state and no other section", () => {
-      const { doc, elements } = createStubDom();
-      const win = { __LALIN_UPDATE__: { lang: "en", state: "available" } };
-      init(doc, win);
-      assert.strictEqual(elements["state-no-tauri"].hidden, false);
-      assert.strictEqual(elements["state-available"].hidden, true);
-      assert.ok(elements["no-tauri-body"].textContent.length > 0);
-    }),
-  );
-
-  pending.push(
-    test("Later button and Escape both close the window", () => {
-      const { doc, elements } = createStubDom();
-      const { tauri, closeCalls } = makeTauriStub();
-      const win = {
-        __LALIN_UPDATE__: { lang: "en", state: "upToDate" },
-        __TAURI__: tauri,
-      };
-      init(doc, win);
-      elements["close-btn-uptodate"].dispatch("click");
-      doc.dispatch("keydown", { key: "Escape" });
-      assert.strictEqual(closeCalls.count, 2);
-    }),
-  );
-
-  Promise.all(pending).then(() => {
-    const failed = results.filter((r) => !r.ok);
-    console.log(`${results.length - failed.length}/${results.length} self-tests passed`);
-    if (failed.length > 0) {
-      console.error(`FAILED: ${failed.map((r) => r.name).join(", ")}`);
-      process.exitCode = 1;
-    } else {
-      process.exitCode = 0;
-    }
-  });
-}
-
-if (typeof globalThis !== "undefined" && globalThis.__LALIN_TEST__) {
-  runSelfTest();
-} else {
-  boot();
-}
+boot();

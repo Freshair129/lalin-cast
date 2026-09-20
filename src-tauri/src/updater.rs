@@ -4,6 +4,8 @@
 //! in-page overlay. See `window.__LALIN_UPDATE__` contract below, mirrored
 //! by `fallback/update.html`/`update.js` (owned by the update-page stream).
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -17,6 +19,47 @@ const UPDATE_LABEL: &str = "update";
 const UPDATE_WINDOW_WIDTH: f64 = 480.0;
 const UPDATE_WINDOW_HEIGHT: f64 = 340.0;
 const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(8);
+/// Custom DOM event `update.js` listens for after an `eval`-based refresh
+/// (see `open_update_window`).
+const UPDATE_REFRESH_DOM_EVENT: &str = "lalin-update";
+
+/// Re-entrancy guard around a whole check: only one `run_check` runs at a
+/// time. A manual check that arrives while another is already in flight
+/// does not start a second network round-trip — it just focuses the
+/// `update` window if one is open.
+struct CheckGuard(AtomicBool);
+
+impl CheckGuard {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    /// Attempts to take the guard. `Some(token)` means it was free and is
+    /// now held until the token drops (also on panic); `None` means another
+    /// check already holds it.
+    fn try_acquire(&self) -> Option<CheckGuardToken<'_>> {
+        if self.0.swap(true, Ordering::SeqCst) {
+            None
+        } else {
+            Some(CheckGuardToken(self))
+        }
+    }
+}
+
+/// RAII handle returned by [`CheckGuard::try_acquire`]; releases on drop.
+struct CheckGuardToken<'a>(&'a CheckGuard);
+
+impl Drop for CheckGuardToken<'_> {
+    fn drop(&mut self) {
+        self.0 .0.store(false, Ordering::SeqCst);
+    }
+}
+
+static UPDATE_CHECK_GUARD: CheckGuard = CheckGuard::new();
+/// Last JSON payload sent to the `update` window, used to decide whether an
+/// already-open window needs an `eval`-based refresh (see
+/// `open_update_window`). `None` once no window has been opened yet.
+static LAST_UPDATE_STATE_JSON: Mutex<Option<String>> = Mutex::new(None);
 
 const STATE_AVAILABLE: &str = "available";
 const STATE_UP_TO_DATE: &str = "upToDate";
@@ -47,13 +90,6 @@ struct UpdatePayload {
     message: Option<String>,
 }
 
-impl UpdatePayload {
-    fn init_script(&self) -> String {
-        let json = serde_json::to_string(self).unwrap_or_else(|_| "null".to_owned());
-        format!("window.__LALIN_UPDATE__ = {json};")
-    }
-}
-
 fn to_update_info(update: &tauri_plugin_updater::Update) -> CastUpdateInfo {
     CastUpdateInfo {
         version: update.version.clone(),
@@ -72,18 +108,44 @@ async fn check_update(app: &AppHandle) -> Result<Option<CastUpdateInfo>, String>
     Ok(update.as_ref().map(to_update_info))
 }
 
-/// Opens the single `update` window with the given payload, or just focuses
-/// it if one is already open (per the "single instance" contract; the
-/// already-open window keeps whatever state it was opened with).
+/// Opens the single `update` window with the given payload. If one is
+/// already open: when the new state differs from what it currently shows,
+/// pushes the new state in with `window.eval` and dispatches the
+/// `lalin-update` DOM event so `update.js` re-renders in place; either way,
+/// the window is shown and focused (matching the prior "single instance,
+/// just focus" behavior when the state has not changed).
 fn open_update_window(app: &AppHandle, lang: Lang, payload: UpdatePayload) {
+    let json = serde_json::to_string(&payload).unwrap_or_else(|_| "null".to_owned());
+
     if let Some(window) = app.get_webview_window(UPDATE_LABEL) {
+        let changed = {
+            let mut last = LAST_UPDATE_STATE_JSON
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            let changed = last.as_deref() != Some(json.as_str());
+            *last = Some(json.clone());
+            changed
+        };
+        if changed {
+            let script = format!(
+                "window.__LALIN_UPDATE__ = {json}; window.dispatchEvent(new CustomEvent('{UPDATE_REFRESH_DOM_EVENT}'));"
+            );
+            let _ = window.eval(&script);
+        }
         let _ = window.show();
         let _ = window.set_focus();
         return;
     }
 
+    {
+        let mut last = LAST_UPDATE_STATE_JSON
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        *last = Some(json.clone());
+    }
+
     let title = i18n::t(lang, i18n::Key::UpdateWindowTitle);
-    let init_script = payload.init_script();
+    let init_script = format!("window.__LALIN_UPDATE__ = {json};");
     let result =
         WebviewWindowBuilder::new(app, UPDATE_LABEL, WebviewUrl::App("update.html".into()))
             .title(title)
@@ -97,11 +159,35 @@ fn open_update_window(app: &AppHandle, lang: Lang, payload: UpdatePayload) {
     }
 }
 
+/// Focuses the `update` window if one is open; used when a manual check
+/// arrives while another check is already in flight (the re-entrancy
+/// guard in [`run_check`]).
+fn focus_update_window_if_open(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(UPDATE_LABEL) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// Runs an update check and shows the `update` window per the contract:
 /// - an available update always opens the window (startup or manual);
 /// - "up to date" / an error only opens the window for a manual check
-///   (the startup check stays silent so it never interrupts playback).
+///   (the startup check stays silent so it never interrupts playback);
+/// - a manual check that arrives while another check is already running
+///   does not start a second one — it just focuses the `update` window if
+///   one is open (see [`CheckGuard`]).
 pub async fn run_check(app: &AppHandle, manual: bool) {
+    let Some(_token) = UPDATE_CHECK_GUARD.try_acquire() else {
+        if manual {
+            focus_update_window_if_open(app);
+        }
+        return;
+    };
+
+    run_check_locked(app, manual).await;
+}
+
+async fn run_check_locked(app: &AppHandle, manual: bool) {
     let lang = i18n::load(app);
     let lang_code = lang.store_value();
 
@@ -198,4 +284,26 @@ pub async fn cast_update_install(window: Window) -> Result<(), String> {
         .await
         .map_err(|error| format!("update install failed: {error}"))?;
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CheckGuard;
+
+    #[test]
+    fn check_guard_blocks_reacquisition_until_released() {
+        // A fresh, local guard (not the module-level static) so this test
+        // never interferes with any other test's use of the guard.
+        let guard = CheckGuard::new();
+        let token = guard.try_acquire().expect("first acquire should succeed");
+        assert!(
+            guard.try_acquire().is_none(),
+            "second acquire should fail while the first is held"
+        );
+        drop(token);
+        assert!(
+            guard.try_acquire().is_some(),
+            "acquire should succeed again after the token drops"
+        );
+    }
 }

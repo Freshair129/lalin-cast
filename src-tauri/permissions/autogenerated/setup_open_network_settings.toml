@@ -1,0 +1,11 @@
+# Permission for opening the fixed OS network settings page from the setup window.
+
+[[permission]]
+identifier = "allow-setup-open-network-settings"
+description = "Enables the setup_open_network_settings command without any pre-configured scope."
+commands.allow = ["setup_open_network_settings"]
+
+[[permission]]
+identifier = "deny-setup-open-network-settings"
+description = "Denies the setup_open_network_settings command."
+commands.deny = ["setup_open_network_settings"]

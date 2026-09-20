@@ -85,3 +85,12 @@ debug app, and the user confirmed a same-Wi-Fi iPhone connection using the
 numeric TV code. This is **USER-CONFIRMED LOCAL ACCEPTANCE** for the current
 debug runtime; packaged, clean-VM, repeatability, relink and production
 acceptance remain unverified.
+
+## Follow-up (wave 2)
+
+The wave 2 living-room plan (`docs/plans/W2_LIVING_ROOM_PLAN.md`) now closes the exact profile
+mismatch this RCA describes: a first-run setup wizard reads the Windows network category
+(Private/Public/Domain/Unknown) locally through PowerShell, shows live DIAL status
+(`starting`/`ready`/`degraded`/`disabled`), and explains in-app how to switch a `Public` profile to
+`Private` — so the user no longer has to hit this failure mode blind. See that plan's T1/T2 stream
+specs for the implementation contract.

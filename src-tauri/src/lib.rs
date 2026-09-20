@@ -1,12 +1,17 @@
 mod dial;
 mod i18n;
+mod network;
+mod setup;
+mod status;
+mod surface;
+mod tray;
 mod updater;
 
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 
-const MEDIA_LABEL: &str = "media";
+pub(crate) const MEDIA_LABEL: &str = "media";
 const MEDIA_TITLE: &str = "Lalin Cast";
 const WINDOW_TITLE_SEPARATOR: &str = " — ";
 const WINDOW_TITLE_MAX_CHARS: usize = 120;
@@ -34,7 +39,7 @@ fn window_title(document_title: &str) -> String {
     }
 }
 
-fn focus_media(app: &tauri::AppHandle) {
+pub(crate) fn focus_media(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(MEDIA_LABEL) {
         let _ = window.show();
         let _ = window.unminimize();
@@ -95,6 +100,9 @@ fn build_menu<R: Runtime>(app: &tauri::AppHandle<R>, lang: i18n::Lang) -> tauri:
     let update_item =
         MenuItemBuilder::with_id("check-updates", i18n::t(lang, i18n::Key::CheckUpdates))
             .build(app)?;
+    let network_setup_item =
+        MenuItemBuilder::with_id("network-setup", i18n::t(lang, i18n::Key::NetworkSetup))
+            .build(app)?;
     let language_item =
         MenuItemBuilder::with_id("toggle-language", i18n::t(lang, i18n::Key::ToggleLanguage))
             .build(app)?;
@@ -106,6 +114,7 @@ fn build_menu<R: Runtime>(app: &tauri::AppHandle<R>, lang: i18n::Lang) -> tauri:
             &keep_on_top_item,
             &reload_item,
             &update_item,
+            &network_setup_item,
             &language_item,
             &quit_item,
         ])
@@ -158,6 +167,7 @@ fn build_media_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::
                     updater::run_check(&app_handle, true).await;
                 });
             }
+            "network-setup" => setup::open_setup_window(window.app_handle()),
             "toggle-language" => {
                 let app_handle = window.app_handle().clone();
                 let next = i18n::load(&app_handle).other();
@@ -170,6 +180,7 @@ fn build_media_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::
                         eprintln!("Lalin Cast: could not rebuild the menu: {error}");
                     }
                 }
+                tray::rebuild_menu(&app_handle, next);
             }
             "quit" => window.app_handle().exit(0),
             _ => {}
@@ -181,8 +192,19 @@ fn build_media_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::
         })
         .build()?;
 
+    // Closing the media window means quitting Lalin Cast even while a helper
+    // window (update/setup/status) is still open; Tauri would otherwise keep
+    // the process alive with only the tray icon and that helper window.
+    let exit_app = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            exit_app.exit(0);
+        }
+    });
+
     window.show()?;
     updater::schedule_startup_check(app);
+    setup::schedule_auto_open(app);
 
     Ok(())
 }
@@ -197,15 +219,23 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             seed_settings(app.handle());
+            // Built before `dial::start` so the tray's dial-status listener
+            // is already registered when the very first
+            // `lalin-cast-dial-status` event fires.
+            if let Err(error) = tray::build(app.handle()) {
+                eprintln!("Lalin Cast: could not build the tray icon: {error}");
+            }
             match dial::start(app.handle()) {
                 Ok(state) => {
                     app.manage(state);
                 }
                 Err(error) => {
                     eprintln!("Lalin Cast: DIAL is unavailable: {error}");
-                    app.manage(dial::disabled_state());
+                    app.manage(dial::disabled_state(app.handle(), error));
                 }
             }
+            surface::register_surface_listener(app.handle());
+            status::schedule_startup_probe(app.handle());
             build_media_window(app.handle())?;
             Ok(())
         })
@@ -213,7 +243,12 @@ pub fn run() {
             dial::dial_get_info,
             dial::dial_respond,
             dial::dial_set_device_id,
-            updater::cast_update_install
+            updater::cast_update_install,
+            setup::setup_refresh,
+            setup::setup_open_network_settings,
+            setup::setup_complete,
+            status::status_retry,
+            status::status_quit
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lalin Cast");

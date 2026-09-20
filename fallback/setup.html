@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Lalin Cast — Setup</title>
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <main class="card">
+      <div id="main-content">
+        <h1 id="page-title"></h1>
+        <p id="intro-text" class="muted"></p>
+
+        <section aria-labelledby="network-heading">
+          <h2 id="network-heading"></h2>
+          <p id="network-status" class="status-line" role="status" aria-live="polite"></p>
+          <p id="network-detail" class="muted" hidden></p>
+
+          <div id="network-steps" class="steps-block" hidden>
+            <h3 id="win11-title"></h3>
+            <ol>
+              <li id="win11-step-1"></li>
+              <li id="win11-step-2"></li>
+              <li id="win11-step-3"></li>
+              <li id="win11-step-4"></li>
+            </ol>
+            <h3 id="win10-title"></h3>
+            <ol>
+              <li id="win10-step-1"></li>
+              <li id="win10-step-2"></li>
+              <li id="win10-step-3"></li>
+              <li id="win10-step-4"></li>
+            </ol>
+            <button id="open-network-settings-btn" type="button" class="secondary"></button>
+          </div>
+        </section>
+
+        <section aria-labelledby="dial-heading">
+          <h2 id="dial-heading"></h2>
+          <p id="dial-status" class="status-line" role="status" aria-live="polite"></p>
+        </section>
+
+        <p id="action-error" class="error-text" hidden role="status" aria-live="polite"></p>
+
+        <div class="actions">
+          <button id="refresh-btn" type="button" class="secondary"></button>
+        </div>
+
+        <div class="footer-row">
+          <label class="checkbox-row">
+            <input type="checkbox" id="dont-show-again" />
+            <span id="dont-show-again-label"></span>
+          </label>
+          <button id="continue-btn" type="button" class="primary"></button>
+        </div>
+      </div>
+
+      <section id="state-no-tauri" hidden>
+        <p id="no-tauri-title" role="status" aria-live="polite"></p>
+        <p id="no-tauri-body" class="muted"></p>
+      </section>
+    </main>
+
+    <script src="setup.js"></script>
+  </body>
+</html>

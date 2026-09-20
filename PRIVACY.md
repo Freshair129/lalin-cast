@@ -3,7 +3,7 @@
 _ภาษาไทยเป็นภาษาหลักของเอกสารนี้ คำแปลภาษาอังกฤษอยู่ด้านล่าง (English translation follows the
 Thai text)._
 
-เอกสารฉบับนี้เป็นสถานะปัจจุบันของแผนปรับปรุง H0 (`docs/plans/H0_RELEASE_READINESS_PLAN.md`) ยังไม่
+เอกสารฉบับนี้เป็นสถานะปัจจุบันของแผนปรับปรุง H0 และ wave 2 (`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`) ยังไม่
 ผ่านการอนุมัติจากผู้ก่อตั้งโปรเจกต์ (human gate H1) — ห้าม merge เข้า `main` หรือเผยแพร่เป็นทางการ
 จนกว่าจะผ่านการอนุมัตินั้น
 
@@ -11,9 +11,11 @@ Thai text)._
 
 Lalin Cast ไม่มีระบบ telemetry, ไม่มีการส่ง crash report ออกจากเครื่อง, และไม่มีระบบบัญชีผู้ใช้ของ
 Lalin ผู้ใช้ไม่ต้องสมัครหรือเข้าสู่ระบบอะไรกับ Lalin เพื่อใช้แอปนี้ ข้อมูลเกือบทั้งหมดที่แอปสร้างหรือ
-เก็บไว้อยู่บนเครื่องของผู้ใช้เท่านั้น การเชื่อมต่อเครือข่ายที่แอปทำเองมีอยู่สองทางเท่านั้น: (ก) ตรวจสอบ
-อัปเดตแอปจาก GitHub Releases และ (ข) ตอบสนองการค้นหาอุปกรณ์ผ่านโปรโตคอล DIAL บนเครือข่ายวงเดียวกัน
-(LAN) เพื่อให้แอป YouTube บนมือถือค้นหาเจอ Lalin Cast ได้ นอกเหนือจากนี้ หน้าต่างหลักของแอปจะโหลด
+เก็บไว้อยู่บนเครื่องของผู้ใช้เท่านั้น การเชื่อมต่อเครือข่ายที่แอปทำเองมีอยู่สามทางเท่านั้น: (ก) ตรวจสอบ
+อัปเดตแอปจาก GitHub Releases, (ข) ตอบสนองการค้นหาอุปกรณ์ผ่านโปรโตคอล DIAL บนเครือข่ายวงเดียวกัน (LAN)
+เพื่อให้แอป YouTube บนมือถือค้นหาเจอ Lalin Cast ได้ และ (ค) ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต
+(connectivity probe) ตอนเริ่มแอปและเมื่อผู้ใช้กด "โหลดใหม่" ในหน้าต่างสถานะ ด้วยการเชื่อมต่อ TCP ไปยัง
+`www.youtube.com:443` (ดูข้อ 4) นอกเหนือจากนี้ หน้าต่างหลักของแอปจะโหลด
 หน้า YouTube TV จริงจาก `youtube.com` ซึ่งอยู่ภายใต้นโยบายความเป็นส่วนตัวของ Google/YouTube เอง ไม่ใช่
 ของ Lalin
 
@@ -30,6 +32,7 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `language` | ภาษาของเมนู/หน้าต่างอัปเดต (`th` หรือ `en`) | ไม่ |
 | `dialDeviceId` | รหัสอุปกรณ์ Leanback/DIAL แบบสุ่ม ใช้ให้แอป YouTube มือถือจำอุปกรณ์นี้ได้ต่อเนื่องระหว่างเซสชัน | ตอบผ่าน DIAL บน LAN เท่านั้น (ดูข้อ 3) ไม่ส่งออกอินเทอร์เน็ต |
 | `dialFriendlyName` | ชื่อที่แสดงเมื่อถูกค้นพบผ่าน DIAL ค่าเริ่มต้นคือ `Lalin Cast` ผู้ใช้ตั้งเองได้ | ตอบผ่าน DIAL บน LAN เท่านั้น |
+| `setupCompleted` | ผู้ใช้กด "ไม่ต้องแสดงอีก" ในตัวช่วยติดตั้งครั้งแรก (setup wizard); ถ้าไม่ใช่ `true` ตัวช่วยติดตั้งจะเปิดอีกทุกครั้งที่เริ่มแอป | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -54,7 +57,34 @@ M-SEARCH จากอุปกรณ์อื่นบนเครือข่�
 ข้อมูลที่ตอบผ่าน DIAL (ชื่ออุปกรณ์, `dialDeviceId`) ไม่ถูกส่งออกนอกเครือข่ายท้องถิ่น และไม่ถูกส่งไปยัง
 เซิร์ฟเวอร์ของ Lalin หรือบุคคลที่สามใด ๆ
 
-## 4. การตรวจสอบอัปเดต
+ไอคอนถาด (tray) ของแอปแสดงสถานะ DIAL ปัจจุบันใน tooltip ซึ่งรวมที่อยู่ IP บนเครือข่ายท้องถิ่น (LAN) ของ
+เครื่องผู้ใช้เองเมื่อพร้อมใช้งาน (เช่น `192.168.1.100`) — เป็น IP ของเครื่องผู้ใช้เอง ไม่ใช่ของอุปกรณ์อื่น
+และไม่ถูกส่งออกไปที่ใดนอกเหนือจากที่แสดงบนหน้าจอเครื่องนั้นเอง
+
+## 4. ตัวช่วยติดตั้งครั้งแรก (setup wizard) และหน้าต่างสถานะ (status window)
+
+เมื่อเริ่มแอปครั้งแรก (หรือเมื่อผู้ใช้เปิดเองจากถาดไอคอนหรือเมนู) ตัวช่วยติดตั้งครั้งแรกจะอ่านหมวดหมู่
+เครือข่าย (network category: Private, Public, Domain หรือ Unknown) ของอินเทอร์เฟซที่ต่ออินเทอร์เน็ตอยู่
+โดยรันคำสั่ง PowerShell (`Get-NetConnectionProfile`) **ในเครื่องเท่านั้น** เพื่อแนะนำวิธีเปลี่ยนโปรไฟล์
+เป็น Private หากจำเป็นสำหรับให้ DIAL ทำงานได้ (ดูข้อ 3) ค่าที่อ่านได้นี้**ไม่ถูกบันทึกลงไฟล์การตั้งค่า
+และไม่ถูกส่งออกจากเครื่องไม่ว่ากรณีใด** — ใช้แสดงผลบนหน้าต่างตัวช่วยติดตั้งเท่านั้น
+
+ทุกครั้งที่เริ่มแอป แอปจะเปิดการเชื่อมต่อ TCP ไปยัง `www.youtube.com:443` (connectivity probe) ในเธรด
+แยกต่างหาก รันก่อน/ขนานกับการสร้างหน้าต่าง media (หน้าต่าง media ถูกสร้างเสมอไม่ว่าผลตรวจจะเป็นอย่างไร)
+โดยกำหนดเวลาคอย (timeout) ไว้ 4 วินาที เพื่อตรวจว่าเครื่องต่ออินเทอร์เน็ตอยู่หรือไม่ การเชื่อมต่อนี้เป็น
+เพียงการทำ TCP handshake ไม่มีการส่ง HTTP request หรือ payload ใด ๆ ออกไปเกินกว่านั้น และผลการตรวจไม่ถูก
+บันทึกลงไฟล์การตั้งค่าหรือที่ใดถาวร หากผู้ใช้กดปุ่ม "โหลดใหม่" (Reload) ในหน้าต่างสถานะ แอปจะทำการตรวจซ้ำ
+แบบเดียวกันอีกครั้งหนึ่งเท่านั้น (ไม่มี auto-retry loop อัตโนมัติ)
+
+แอปยังอาจเปิดหน้าต่างสถานะ (status window) แยกต่างหากเมื่อ (ก) การตรวจสอบการเชื่อมต่อข้างต้นล้มเหลว
+ตอนเริ่มแอป หรือ (ข) หน้า YouTube ที่โหลดอยู่ในหน้าต่างหลักส่ง event ชื่อ `lalin-cast-surface` มาบอกว่าไม่ได้แสดง
+หน้าทีวี (Leanback) ตามที่คาดไว้ (เช่นถูก redirect ไปหน้าอื่น หรือหาองค์ประกอบของหน้าทีวีไม่เจอ) event นี้
+มี URL ของหน้าที่ตัดส่วน query string และ hash ออกแล้ว (เหลือเฉพาะ scheme/host/path) กับชื่อหัวเรื่องของหน้า
+(page title) เท่านั้น — ส่งจากหน้า YouTube ในหน้าต่างหลัก **มาที่ Rust shell ในเครื่องเดียวกัน** เพื่อใช้
+ตัดสินใจแสดงหน้าต่างสถานะเท่านั้น ไม่ถูกส่งออกนอกเครื่อง ไม่ถูกบันทึกถาวร และ Rust จะตรวจสอบรูปแบบของ
+ข้อมูลนี้ซ้ำ (ความยาว, ต้องขึ้นต้นด้วย `https://`) ก่อนใช้งานเสมอ
+
+## 5. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
 latest.json`) เพื่อตรวจสอบว่ามีรุ่นใหม่หรือไม่ ทั้งตอนเปิดแอป (แบบ non-blocking) และเมื่อผู้ใช้กด
@@ -63,7 +93,7 @@ User-Agent) ตามกลไกของโปรโตคอล HTTP เอ�
 ในคำขอนี้ การติดตั้งอัปเดตต้องให้ผู้ใช้กดยืนยันเองเสมอ ไม่มีการติดตั้งอัตโนมัติโดยไม่ถาม ดูรายละเอียด
 เพิ่มเติมที่หัวข้อ "Updating" ใน [`README.md`](README.md)
 
-## 5. หน้า YouTube ในหน้าต่างหลัก
+## 6. หน้า YouTube ในหน้าต่างหลัก
 
 หน้าต่างหลักของ Lalin Cast โหลดหน้า YouTube TV จริงจาก `https://www.youtube.com/tv` ผ่าน remote
 WebView ทุกสิ่งที่เกิดขึ้นภายในหน้านั้น (คุกกี้, การเข้าสู่ระบบบัญชี Google, ประวัติการรับชม, โฆษณา,
@@ -71,13 +101,13 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
 
-## 6. Logging
+## 7. Logging
 
 Lalin Cast ไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV code), คุกกี้, หรือ token/key ใด ๆ ลงไฟล์
 log อย่างถาวร ข้อความ debug/log ระหว่างพัฒนา (ถ้ามี) จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น
 สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้
 
-## 7. การลบข้อมูล
+## 8. การลบข้อมูล
 
 เนื่องจากข้อมูลทั้งหมดที่แอปเก็บอยู่ในเครื่องของผู้ใช้เอง การลบข้อมูลทำได้โดยลบโฟลเดอร์ข้อมูลแอปทิ้ง:
 
@@ -89,7 +119,7 @@ log อย่างถาวร ข้อความ debug/log ระหว่�
 สถานะภายในอื่น ๆ ของแอป การลบข้อมูลบัญชี Google/YouTube (ประวัติการรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่าน
 การตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุมของ Lalin Cast
 
-## 8. ติดต่อ
+## 9. ติดต่อ
 
 เนื่องจาก Lalin Cast เป็นโปรเจกต์โอเพนซอร์สอิสระ ช่องทางติดต่อหลักคือ GitHub Issues ของ repository
 นี้ (`github.com/Freshair129/lalin-cast`) ก่อนเผยแพร่ต่อสาธารณะ ผู้ก่อตั้งโปรเจกต์ควรพิจารณาเพิ่มช่องทาง
@@ -103,19 +133,21 @@ log อย่างถาวร ข้อความ debug/log ระหว่�
 _This is an English translation of the Thai text above, which is the primary version of this
 document._
 
-This document reflects the current state of the H0 readiness plan
-(`docs/plans/H0_RELEASE_READINESS_PLAN.md`). It has not yet been approved by the project founder
+This document reflects the current state of the H0 readiness and wave 2 living-room plans
+(`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`). It has not yet been approved by the project founder
 (human gate H1) — do not merge to `main` or publish it as final until that approval happens.
 
 ## 1. Summary
 
 Lalin Cast has no telemetry, sends no crash reports off the device, and has no Lalin user-account
 system. Users never sign up for or log into anything with Lalin to use this app. Almost all data
-the app creates or stores stays on the user's own machine. The app makes exactly two kinds of
-network connections on its own: (a) checking for app updates from GitHub Releases, and (b)
-responding to device discovery over the DIAL protocol on the local network (LAN) so the YouTube
-mobile app can find Lalin Cast. Beyond that, the main window loads the real YouTube TV page from
-`youtube.com`, which is governed by Google's/YouTube's own privacy policy, not Lalin's.
+the app creates or stores stays on the user's own machine. The app makes exactly three kinds of
+network connections on its own: (a) checking for app updates from GitHub Releases, (b) responding
+to device discovery over the DIAL protocol on the local network (LAN) so the YouTube mobile app can
+find Lalin Cast, and (c) a connectivity probe — a TCP connection to `www.youtube.com:443` — at
+startup and whenever the user presses retry in the status window (see section 4). Beyond that, the
+main window loads the real YouTube TV page from `youtube.com`, which is governed by
+Google's/YouTube's own privacy policy, not Lalin's.
 
 ## 2. Data stored on the user's machine
 
@@ -130,6 +162,7 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `language` | Menu/update-window language (`th` or `en`) | No |
 | `dialDeviceId` | A randomly generated Leanback/DIAL device id, used so the YouTube mobile app can recognize this device across sessions | Answered over DIAL on the LAN only (see section 3); never sent over the internet |
 | `dialFriendlyName` | The name shown when discovered over DIAL. Defaults to `Lalin Cast`; user-settable | Answered over DIAL on the LAN only |
+| `setupCompleted` | Set when the user checks "Don't show again" in the first-run setup wizard; if not `true`, the wizard opens again every time the app starts | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -157,7 +190,40 @@ mechanism that lets the YouTube mobile app find Lalin Cast on the same network. 
 Data answered over DIAL (device name, `dialDeviceId`) never leaves the local network and is never
 sent to any Lalin server or third party.
 
-## 4. Update checks
+The app's tray icon shows the current DIAL status in its tooltip, which includes the machine's own
+local-network (LAN) IP address once DIAL is ready (for example `192.168.1.100`) — this is the
+user's own machine's IP, not another device's, and it is never sent anywhere beyond being displayed
+on that same machine's screen.
+
+## 4. First-run setup wizard and status window
+
+The first time the app starts (or whenever the user opens it themselves from the tray icon or
+menu), the first-run setup wizard reads the network category (Private, Public, Domain, or Unknown)
+of the interface that has internet connectivity by running a PowerShell command
+(`Get-NetConnectionProfile`) **locally only**, so it can explain how to switch the profile to
+Private if that's needed for DIAL to work (see section 3). This reading is **never written to the
+settings file and never leaves the device under any circumstance** — it is used only to render the
+setup wizard's screen.
+
+Every time the app starts, it opens a TCP connection to `www.youtube.com:443` (a connectivity
+probe) in its own thread, run before/in parallel with creating the main media window (the media
+window is always created regardless of the probe's result), with a 4-second timeout, to check
+whether the machine has internet connectivity. This connection is only a TCP handshake — it sends
+no HTTP request or payload beyond that — and the result is never persisted to the settings file or
+anywhere else. If the user presses "Reload" in the status window, the app runs this same probe
+exactly once more (there is no automatic retry loop).
+
+The app may also open a separate status window when either (a) the connectivity probe above fails
+at startup, or (b) the YouTube page loaded in the main window sends a `lalin-cast-surface`
+event reporting that it isn't showing the expected TV (Leanback) surface — for example it was
+redirected elsewhere, or the expected TV-surface markup could not be found. That event carries only
+the page's URL with its query string and hash stripped off (leaving just scheme/host/path) and the
+page's title — sent from the YouTube page in the main window **to the local Rust shell on the same
+machine**, solely to decide whether to show the status window. It never leaves the device, is never
+persisted, and Rust re-validates its shape (length limits, must start with `https://`) before using
+it.
+
+## 5. Update checks
 
 The app contacts `github.com` (specifically
 `github.com/Freshair129/lalin-cast/releases/latest/download/latest.json`) to check for a new
@@ -167,7 +233,7 @@ User-Agent, per the HTTP protocol itself); no additional personal or usage data 
 Installing an update always requires explicit user confirmation; nothing installs automatically
 without being asked. See the "Updating" section of [`README.md`](README.md) for more detail.
 
-## 5. The YouTube page in the main window
+## 6. The YouTube page in the main window
 
 The main Lalin Cast window loads the real YouTube TV page from `https://www.youtube.com/tv`
 through a remote WebView. Everything that happens inside that page — cookies, Google account
@@ -175,13 +241,13 @@ sign-in, watch history, ads, the recommendation algorithm — is entirely under 
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
 
-## 6. Logging
+## 7. Logging
 
 Lalin Cast does not persistently log personal information (PII), TV pairing codes, cookies, or any
 tokens/keys. Whatever debug/log output exists during development prints only the app's own
 technical state (such as port-bind status or connection status), never user-identifying content.
 
-## 7. Deleting your data
+## 8. Deleting your data
 
 Because everything the app stores lives on the user's own machine, deleting your data means
 deleting the app's data folder:
@@ -195,7 +261,7 @@ Deleting this folder removes `media-settings.json` (including any `dialDeviceId`
 (watch history, sign-in cookies) must be done through your Google account settings directly, since
 that data is not under Lalin Cast's control.
 
-## 8. Contact
+## 9. Contact
 
 Since Lalin Cast is an independent open-source project, the primary contact channel is GitHub
 Issues on this repository (`github.com/Freshair129/lalin-cast`). Before a public release, the
