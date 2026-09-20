@@ -43,6 +43,89 @@ jobs:
         shell: pwsh
         run: node --check src-tauri/injected.js
 
+  smoke:
+    name: Lifecycle CLI smoke (debug build)
+    # Wave 6 U4 (docs/plans/W6_POLISH_PLAN.md): builds the debug binary and
+    # exercises the real `--version` / `--lifecycle close` CLI contract
+    # end-to-end on a Windows runner, on top of `checks` passing first.
+    # continue-on-error stays true until human gate H20
+    # (docs/plans/W6_POLISH_PLAN.md) confirms this job is stable across two
+    # consecutive runs — only then does a human remove
+    # `continue-on-error: true` to make it blocking.
+    needs: checks
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+
+      - name: cargo build (debug)
+        shell: pwsh
+        run: cargo build --manifest-path src-tauri/Cargo.toml
+
+      - name: Assert --version output
+        shell: pwsh
+        run: |
+          $cargoToml = Get-Content -Raw -Path src-tauri/Cargo.toml
+          if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+            throw "Could not parse [package].version from src-tauri/Cargo.toml"
+          }
+          $version = $Matches[1]
+          $exePath = "src-tauri/target/debug/lalin-cast.exe"
+          $actual = & $exePath --version
+          $expected = "lalin-cast $version"
+          if ($actual -ne $expected) {
+            Write-Host "Expected: $expected"
+            Write-Host "Actual:   $actual"
+            throw "lalin-cast.exe --version did not print the expected string"
+          }
+          Write-Host "OK: $actual"
+
+      - name: Run --lifecycle close --request-id ci-smoke (60s timeout)
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/debug/lalin-cast.exe"
+          $proc = Start-Process -FilePath $exePath -ArgumentList "--lifecycle", "close", "--request-id", "ci-smoke" -PassThru
+          # WaitForExit (not Wait-Process) so a process that already exited
+          # before the wait is not reported as "cannot find process".
+          if (-not $proc.WaitForExit(60000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw "lalin-cast.exe --lifecycle close --request-id ci-smoke did not exit within 60s"
+          }
+          Write-Host "exit code: $($proc.ExitCode)"
+
+      - name: Assert lifecycle.json state
+        shell: pwsh
+        run: |
+          $lifecyclePath = Join-Path $env:LOCALAPPDATA "ai.lalin.cast\lifecycle.json"
+          if (-not (Test-Path $lifecyclePath)) {
+            throw "lifecycle.json not found at $lifecyclePath"
+          }
+          $state = Get-Content -Raw -Path $lifecyclePath | ConvertFrom-Json
+          if ($state.type -ne "stopped" -or $state.requestId -ne "ci-smoke" -or $state.exitCode -ne 0) {
+            Write-Host "lifecycle.json contents:"
+            Get-Content -Raw -Path $lifecyclePath
+            throw "lifecycle.json did not match the expected stopped/ci-smoke/exitCode=0 state"
+          }
+          Write-Host "OK: lifecycle.json matched the expected stopped/ci-smoke/exitCode=0 state"
+
+      - name: Print lifecycle.json on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $lifecyclePath = Join-Path $env:LOCALAPPDATA "ai.lalin.cast\lifecycle.json"
+          if (Test-Path $lifecyclePath) {
+            Write-Host "lifecycle.json contents:"
+            Get-Content -Raw -Path $lifecyclePath
+          } else {
+            Write-Host "lifecycle.json does not exist at $lifecyclePath"
+          }
+
   arm64-check:
     name: ARM64 cross-compile check (experimental)
     # Wave 4 U4 (docs/plans/W4_PLAYBACK_PLAN.md): confirms the ARM64 target

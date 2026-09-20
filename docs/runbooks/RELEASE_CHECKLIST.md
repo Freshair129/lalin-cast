@@ -1,7 +1,7 @@
 ---
-version: "0.1.0b"
+version: "0.1.1b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:15:00+07:00,LALIN"
+last_update: "2026-09-21T00:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -65,6 +65,15 @@ tag — if any item is not done, **do not tag**:
       into a new version heading** with a date (`## [X.Y.Z] - YYYY-MM-DD`), keeping the existing
       Added/Changed/Security groups, then open a fresh, empty `## [Unreleased]` above it for the
       next release
+- [ ] **ส่วน CHANGELOG ของเวอร์ชันต้องมีก่อน tag**: หลังย้ายข้อข้างบนแล้ว ตรวจว่า `CHANGELOG.md` มีหัวข้อ
+      `## [X.Y.Z]` ที่ตรงกับ tag เป๊ะ ๆ (ตัด prefix `v` ออกแล้ว) — `.github/workflows/release.yml`
+      ดึงส่วนนี้มาเป็น release body ของ GitHub Release โดยอัตโนมัติ (ดูขั้นตอน "Extract CHANGELOG
+      section for release body") ถ้าหาไม่เจอจะ fallback ไปเป็นประโยคทั่วไปแทน — **the CHANGELOG
+      section for the version must exist before tagging**: after the item above, confirm
+      `CHANGELOG.md` has a `## [X.Y.Z]` heading that exactly matches the tag (with the `v` prefix
+      stripped) — `.github/workflows/release.yml` automatically extracts this section as the GitHub
+      Release body (see its "Extract CHANGELOG section for release body" step); if it cannot find
+      one, it falls back to a generic sentence instead
 - [ ] **`THIRD_PARTY_NOTICES.md` ตรงกับ `src-tauri/Cargo.lock` ปัจจุบัน** — รัน
       `cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1` แล้วตรวจว่ารายชื่อ
       crate/เวอร์ชัน/สัญญาอนุญาตในไฟล์ตรงกัน (ดูขั้นตอนที่ท้าย `THIRD_PARTY_NOTICES.md`) —
@@ -173,3 +182,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | Version | Date | Status | Summary | Commit Hash | Agent |
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Created the release checklist runbook (pre-tag human gates, tagging, post-tag verification, winget manifest step, post-release follow-up) for wave 5 (U4) | uncommitted | LALIN |
+| 0.1.1b | 2026-09-21 | candidate | Added the "CHANGELOG section for the version must exist before tagging" pre-tag item for wave 6 (U4), matching `release.yml`'s new CHANGELOG-derived release body | uncommitted | LALIN |
