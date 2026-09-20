@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lalin Cast",
-  "version": "0.1.0",
   "identifier": "ai.lalin.cast",
   "build": {
     "frontendDist": "../fallback"
@@ -10,7 +9,7 @@
     "windows": [],
     "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     }
   },
   "bundle": {

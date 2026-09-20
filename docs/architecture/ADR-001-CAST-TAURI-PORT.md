@@ -1,7 +1,7 @@
 ---
-version: "0.7.0b"
+version: "0.8.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T03:44:16+07:00,LALIN"
+last_update: "2026-09-20T21:00:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -93,11 +93,19 @@ as a promise that every future ad format is blocked.
 
 - The remote YouTube WebView receives no broad Lalin filesystem, shell or process
   permission.
-- The remote capability is limited to the official `www.youtube.com` origin and
-  the DIAL response/event contract; no filesystem, shell, process or arbitrary
-  network command is exposed.
+- The remote (`media`, origin `https://www.youtube.com/*`) capability grants
+  only `core:default`, `core:event:allow-listen`, `core:event:allow-unlisten`,
+  `allow-dial-respond` and `allow-dial-set-device-id` — i.e. the DIAL
+  response/device-id-set commands plus the event listen/unlisten pair, and
+  nothing else; no filesystem, shell, process, update-install or arbitrary
+  network command is exposed to that window.
 - The Rust DIAL HTTP parser caps headers at 16 KiB and bodies at 100 KiB; only
   `/`, `/apps` and `/apps/*` are handled.
+- Update install is a separate, local-only surface: the `update` window
+  capability grants only `core:default`, `core:window:allow-close` and
+  `allow-cast-update-install`, and `cast_update_install` itself rejects any
+  call whose `tauri::Window::label()` is not exactly `"update"`. The remote
+  YouTube window has no path to this command.
 - No cookies, account tokens, pairing codes or session data are committed or
   logged.
 - Electron remains the fallback until Tauri endpoint, sign-in, playback,
@@ -132,7 +140,7 @@ as a promise that every future ad format is blocked.
   rebinds after listener errors or LAN IPv4 changes, and continuously syncs the
   official Leanback device id.
 - Static evidence: `cargo fmt --check`, offline `cargo check` and
-  `cargo test` (2 DIAL tests) and `tauri build --debug --no-bundle --ci`
+  `cargo test` (3 DIAL tests) and `tauri build --debug --no-bundle --ci`
   **PASS**. Runtime process evidence shows UDP 1900 and an HTTP `GET /` 200
   descriptor with `Application-URL`.
 - The initial host SSDP probe did not receive a response. The active Ethernet
@@ -174,3 +182,4 @@ as a promise that every future ad format is blocked.
 | 0.5.0b | 2026-09-20 | beta | Recorded user-confirmed same-Wi-Fi iPhone TV-code connection after the Ethernet profile/firewall fix; packaged and production gates remain open | uncommitted | LALIN |
 | 0.6.0b | 2026-09-20 | beta | Added supervised DIAL retry/rebind, continuous device-id persistence and local runtime listener verification | uncommitted | LALIN |
 | 0.7.0b | 2026-09-20 | beta | Exported the runtime as Lalin Cast and added signed updater integration | uncommitted | LALIN |
+| 0.8.0b | 2026-09-20 | beta | H0: narrowed the documented remote capability to the `dial_*`/event surface only, documented the label-gated `update` window for `cast_update_install`, and corrected the DIAL unit test count from 2 to 3 | uncommitted | LALIN |

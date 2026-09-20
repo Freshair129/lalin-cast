@@ -1,6 +1,6 @@
 {
   "identifier": "media-default",
-  "description": "สิทธิ์พื้นฐานของ Lalin Cast WebView, DIAL bridge และ updater",
+  "description": "สิทธิ์พื้นฐานของ Lalin Cast WebView และ DIAL bridge",
   "windows": ["media"],
   "remote": {
     "urls": ["https://www.youtube.com/*"]
@@ -10,8 +10,6 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-dial-respond",
-    "allow-dial-set-device-id",
-    "allow-cast-update-check",
-    "allow-cast-update-install"
+    "allow-dial-set-device-id"
   ]
 }

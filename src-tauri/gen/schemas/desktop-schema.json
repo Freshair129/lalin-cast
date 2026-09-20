@@ -177,12 +177,6 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Enables the cast_update_check command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-cast-update-check",
-          "markdownDescription": "Enables the cast_update_check command without any pre-configured scope."
-        },
-        {
           "description": "Enables the cast_update_install command without any pre-configured scope.",
           "type": "string",
           "const": "allow-cast-update-install",
@@ -199,12 +193,6 @@
           "type": "string",
           "const": "allow-dial-set-device-id",
           "markdownDescription": "Enables the dial_set_device_id command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the cast_update_check command.",
-          "type": "string",
-          "const": "deny-cast-update-check",
-          "markdownDescription": "Denies the cast_update_check command."
         },
         {
           "description": "Denies the cast_update_install command.",

@@ -1,5 +1,7 @@
 # RCA: Lalin Media Tauri shows a TV code but iPhone cannot find the PC
 
+> **Historical path note (added H0, 2026-09-20):** paths below such as `apps/media-desktop/src/preload/modules/h5vcc/...` and `apps/media-tauri/src-tauri/src/lib.rs` refer to the pre-split `Freshair129/Lalin-AI` monorepo layout; this standalone repository's equivalents are `reference/vacuumtube` (Electron/VacuumTube baseline) and `src-tauri/src/lib.rs`. Evidence below is preserved unedited.
+
 ## Symptom
 
 The Lalin Media window shows the official Leanback "Link with TV code" screen,

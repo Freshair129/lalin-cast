@@ -1,0 +1,10 @@
+{
+  "identifier": "update-default",
+  "description": "สิทธิ์ของหน้าต่างอัปเดต Lalin Cast (หน้า local update.html เท่านั้น)",
+  "windows": ["update"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "allow-cast-update-install"
+  ]
+}

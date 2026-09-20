@@ -1,7 +1,7 @@
 ---
-version: "0.7.0b"
+version: "0.9.0b"
 created_at: "2026-09-19T18:01:18+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T03:44:16+07:00,LALIN"
+last_update: "2026-09-20T21:00:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -14,11 +14,12 @@ attributes:
 
 ## Status and approval boundary
 
-**APPROVED FOR LOCAL P1/P2 IMPLEMENTATION AND TAURI P0.** This plan follows
-[ADR-001](ADR-001-LALIN-UMBRELLA-PLATFORM.md). The umbrella direction and this
+**APPROVED FOR LOCAL P1/P2 IMPLEMENTATION AND TAURI P0.** This plan follows the
+umbrella-repository [ADR-001](https://github.com/Freshair129/Lalin-AI/blob/main/docs/architecture/ADR-001-LALIN-UMBRELLA-PLATFORM.md)
+(historical, umbrella repo). The umbrella direction and this
 document were approved on 2026-09-19. The Tauri port boundary is additionally
-defined by [ADR-001](ADR-001-CAST-TAURI-PORT.md). P3 endpoint/account
-capability checks and P5 distribution remain separate gates.
+defined by [ADR-001](ADR-001-CAST-TAURI-PORT.md) (this repository). P3
+endpoint/account capability checks and P5 distribution remain separate gates.
 
 Complexity: **C-3**. Risk: **HIGH**. Baseline: current repository tree on
 `main`; the original proposal boundary is retained, while approved local T1/T2
@@ -234,4 +235,5 @@ clean-VM, account or release readiness.
 | 0.6.0b | 2026-09-20 | beta | Recorded user-confirmed local iPhone TV-code connection after the Ethernet profile/firewall fix; packaging and parity gates remain open | uncommitted | LALIN |
 | 0.7.0b | 2026-09-20 | beta | Added supervised DIAL retry/rebind and continuous Leanback device-id persistence after the disconnect RCA | uncommitted | LALIN |
 | 0.8.0b | 2026-09-20 | beta | Rebased the plan onto the standalone Lalin Cast repository and signed updater boundary | uncommitted | LALIN |
+| 0.9.0b | 2026-09-20 | beta | Repointed the dangling umbrella-repo ADR-001 link to its historical GitHub path and disambiguated it from the local ADR-001-CAST-TAURI-PORT.md | uncommitted | LALIN |
 | 0.1.0b | 2026-09-19 | candidate | Proposed the Media vertical slice, ownership matrix, VacuumTube provenance and ordered gates | uncommitted | LALIN |

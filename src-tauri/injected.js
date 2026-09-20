@@ -1,7 +1,9 @@
 (() => {
-  // Keep this bridge intentionally narrow. It mirrors only the VacuumTube
-  // H5VCC DIAL surface; it does not expose shell, filesystem, process, or
-  // arbitrary network commands to the remote YouTube page.
+  // Provenance: this bridge's H5VCC DIAL surface is ported from VacuumTube
+  // (see LALIN_PROVENANCE.md). Keep it intentionally narrow: it does not
+  // expose shell, filesystem, process, or arbitrary network commands to the
+  // remote YouTube page, and it carries no release-check surface of its own
+  // (that lives entirely on the Rust side and the native window it opens).
   const mark = () => {
     if (document.documentElement) {
       document.documentElement.dataset.lalinCast = "true";
@@ -141,85 +143,6 @@
     window.setInterval(sync, 2000);
   };
 
-  const removeUpdateNotice = () => {
-    document.getElementById("lalin-cast-update-notice")?.remove();
-  };
-
-  const showUpdateNotice = (update) => {
-    removeUpdateNotice();
-    const notice = document.createElement("aside");
-    notice.id = "lalin-cast-update-notice";
-    notice.style.cssText = [
-      "position:fixed", "top:24px", "right:24px", "z-index:2147483647",
-      "width:360px", "padding:18px", "border-radius:14px",
-      "background:#171717", "color:#fff", "font:16px Arial,sans-serif",
-      "box-shadow:0 8px 32px rgba(0,0,0,.45)"
-    ].join(";");
-
-    const title = document.createElement("strong");
-    title.textContent = `Lalin Cast ${update?.version || ""} พร้อมอัปเดต`;
-    title.style.display = "block";
-    title.style.marginBottom = "8px";
-    const notes = document.createElement("p");
-    notes.textContent = update?.notes || "มีเวอร์ชันใหม่พร้อมติดตั้ง";
-    notes.style.margin = "0 0 14px";
-    notes.style.whiteSpace = "pre-wrap";
-    const actions = document.createElement("div");
-    actions.style.display = "flex";
-    actions.style.gap = "8px";
-    const install = document.createElement("button");
-    install.type = "button";
-    install.textContent = "ติดตั้งและเปิดใหม่";
-    install.style.cssText = "border:0;border-radius:8px;padding:8px 12px;background:#3ea6ff;color:#001018;font-weight:700;cursor:pointer";
-    install.addEventListener("click", async () => {
-      install.disabled = true;
-      install.textContent = "กำลังติดตั้ง…";
-      try {
-        await invoke("cast_update_install");
-      } catch (error) {
-        install.disabled = false;
-        install.textContent = "ลองอีกครั้ง";
-        notes.textContent = `ติดตั้งไม่สำเร็จ: ${String(error)}`;
-      }
-    });
-    const dismiss = document.createElement("button");
-    dismiss.type = "button";
-    dismiss.textContent = "ไว้ภายหลัง";
-    dismiss.style.cssText = "border:1px solid #777;border-radius:8px;padding:8px 12px;background:transparent;color:#fff;cursor:pointer";
-    dismiss.addEventListener("click", removeUpdateNotice);
-    actions.append(install, dismiss);
-    notice.append(title, notes, actions);
-    (document.body || document.documentElement).append(notice);
-  };
-
-  const showUpdateStatus = (message, error = false) => {
-    removeUpdateNotice();
-    const notice = document.createElement("aside");
-    notice.id = "lalin-cast-update-notice";
-    notice.textContent = message;
-    notice.style.cssText = [
-      "position:fixed", "top:24px", "right:24px", "z-index:2147483647",
-      "padding:12px 16px", "border-radius:10px", "background:#171717",
-      `color:${error ? "#ff9b9b" : "#fff"}`, "font:15px Arial,sans-serif",
-      "box-shadow:0 8px 24px rgba(0,0,0,.35)"
-    ].join(";");
-    (document.body || document.documentElement).append(notice);
-    window.setTimeout(removeUpdateNotice, 5000);
-  };
-
-  const checkForUpdates = async (manual = false) => {
-    try {
-      const update = await invoke("cast_update_check");
-      if (update) {
-        showUpdateNotice(update);
-      } else if (manual) {
-        showUpdateStatus("Lalin Cast เป็นเวอร์ชันล่าสุด");
-      }
-    } catch (error) {
-      if (manual) showUpdateStatus(`ตรวจสอบการอัปเดตไม่สำเร็จ: ${String(error)}`, true);
-    }
-  };
-
   const installBridge = async () => {
     const started = Date.now();
     while (!bridge()?.event?.listen && Date.now() - started < 10000) {
@@ -228,7 +151,6 @@
     const tauri = bridge();
     if (!tauri?.event?.listen) return;
 
-    await tauri.event.listen("lalin-cast-update-check", () => checkForUpdates(true));
     await tauri.event.listen("lalin-cast-dial-request", dispatchDialRequest);
     window.h5vcc = {
       dial: { DialServer },
@@ -236,7 +158,6 @@
       system: { getVideoContainerSizeOverride: maxResolution }
     };
     syncLeanbackDeviceId();
-    window.setTimeout(() => checkForUpdates(false), 8000);
   };
 
   installBridge();

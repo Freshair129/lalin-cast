@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Lalin Cast — Update</title>
+    <link rel="stylesheet" href="update.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1 id="app-title"></h1>
+
+      <section id="state-available" hidden>
+        <p id="available-title"></p>
+        <p id="available-version" class="muted"></p>
+        <p id="available-notes" class="notes-block" hidden></p>
+        <p id="install-error" class="error-text" hidden></p>
+        <div class="actions">
+          <button id="install-btn" type="button" class="primary"></button>
+          <button id="later-btn" type="button" class="secondary"></button>
+        </div>
+      </section>
+
+      <section id="state-uptodate" hidden>
+        <p id="uptodate-title"></p>
+        <p id="uptodate-body" class="muted"></p>
+        <div class="actions">
+          <button id="close-btn-uptodate" type="button" class="secondary"></button>
+        </div>
+      </section>
+
+      <section id="state-error" hidden>
+        <p id="error-title"></p>
+        <p id="error-body" class="error-text"></p>
+        <div class="actions">
+          <button id="close-btn-error" type="button" class="secondary"></button>
+        </div>
+      </section>
+
+      <section id="state-no-tauri" hidden>
+        <p id="no-tauri-title"></p>
+        <p id="no-tauri-body" class="muted"></p>
+      </section>
+    </main>
+
+    <script src="update.js"></script>
+  </body>
+</html>

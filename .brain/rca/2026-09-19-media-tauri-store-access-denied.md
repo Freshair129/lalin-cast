@@ -1,5 +1,7 @@
 # RCA: Lalin Media Tauri host exits when settings persistence is denied
 
+> **Historical path note (added H0, 2026-09-20):** paths below such as `apps/media-tauri/src-tauri` and `apps/media-desktop` refer to the pre-split `Freshair129/Lalin-AI` monorepo layout; this standalone repository's equivalents are `src-tauri` and `reference/vacuumtube`. Evidence below is preserved unedited.
+
 ## Symptom
 
 The `lalin-media.exe` debug build exited before a targetable window appeared
