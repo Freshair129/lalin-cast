@@ -16,6 +16,7 @@ version from any doc's frontmatter `version` value.
 - [`plans/W3_CONTROLS_PLAN.md`](plans/W3_CONTROLS_PLAN.md) — Wave 3 controls DAG (controller and keyboard support, native settings window, command-line deep link, pause-on-blur), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
 - [`plans/W4_PLAYBACK_PLAN.md`](plans/W4_PLAYBACK_PLAN.md) — Wave 4 playback and handheld DAG (sleep timer, codec filter, hardware-decoding toggle, touch overlay, mini-player, ARM64 release matrix, winget manifest templates), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
 - [`plans/W5_DESKTOP_PLAN.md`](plans/W5_DESKTOP_PLAN.md) — Wave 5 desktop integration and launcher DAG (Studio launcher lifecycle CLI + state file, window-bounds persistence, start with Windows, offline auto-retry, diagnostics snapshot, playback-speed keys, help overlay, now-playing title, repository support files), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
+- [`plans/W6_POLISH_PLAN.md`](plans/W6_POLISH_PLAN.md) — Wave 6 living-room polish and QA DAG (UI scale, settings profiles, reset to defaults, sleep at end of video, tray/menu play-pause, Steam launch-command copy button, controller help binding, CI smoke job, `scripts/lifecycle-driver.ps1`, release-notes-from-CHANGELOG), constants/contracts, file ownership matrix and parallel-stream/verify-gate plan.
 
 ## Product and architecture
 
@@ -29,7 +30,7 @@ version from any doc's frontmatter `version` value.
 
 ## Legal and licensing
 
-- [`../PRIVACY.md`](../PRIVACY.md) — privacy notice (local data, DIAL/SSDP on LAN, updater network contact, startup connectivity probe, first-run network-profile check, local-only Gamepad API reading, the `Ctrl+Shift+C` clipboard copy, validated never-logged command-line deep links, the local-only sleep timer/codec filter/hardware decoding/touch overlay, the atomic `lifecycle.json` launcher state file, the registry Run-key autostart write, offline auto-retry, the local-only diagnostics-copy button, the local-only Media Session now-playing title, no telemetry).
+- [`../PRIVACY.md`](../PRIVACY.md) — privacy notice (local data, DIAL/SSDP on LAN, updater network contact, startup connectivity probe, first-run network-profile check, local-only Gamepad API reading, the `Ctrl+Shift+C` clipboard copy, validated never-logged command-line deep links, the local-only sleep timer/codec filter/hardware decoding/touch overlay/UI scale/sleep-at-end-of-video, the atomic `lifecycle.json` launcher state file, the registry Run-key autostart write, offline auto-retry, the local-only diagnostics-copy and launch-command-copy buttons, what reset to defaults does and does not remove, the local-only Media Session now-playing title, no telemetry).
 - [`../TERMS.md`](../TERMS.md) — terms of use (unofficial/not-affiliated status, YouTube ToS binding, no warranty).
 - [`../SECURITY.md`](../SECURITY.md) — supported versions and how to report a security vulnerability privately.
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party license notices for every `Cargo.lock` package plus VacuumTube/Tauri/WebView2 attributions.
@@ -38,6 +39,10 @@ version from any doc's frontmatter `version` value.
 ## Guides
 
 - [`guides/STEAM_AND_HANDHELD.md`](guides/STEAM_AND_HANDHELD.md) — adding Lalin Cast to Steam as a non-Steam game, launch options, Big Picture, supported controllers, the touch overlay, mini-player while gaming, hardware decoding on handhelds, start with Windows, offline auto-retry at boot, playback speed keys, ROG Ally/Legion Go tips and current limitations.
+
+## Scripts
+
+- [`../scripts/README.md`](../scripts/README.md) — usage for `scripts/lifecycle-driver.ps1`, the read-only PowerShell driver that exercises the Studio launcher lifecycle (`launch`/`focus`/`close`) against a built `lalin-cast.exe` for human gate H13 (see `docs/architecture/CAST_LAUNCHER_IPC.md`) and the CI `smoke` job.
 
 ## Packaging
 

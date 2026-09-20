@@ -1,7 +1,7 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-20T23:55:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:55:00+07:00,LALIN"
+last_update: "2026-09-21T00:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -18,7 +18,13 @@ attributes:
 `feat/wave5-desktop`** (see `docs/plans/W5_DESKTOP_PLAN.md`). This is the local, file-based half of
 the contract from `CAST_PLATFORM_PLAN.md` slice P2. A real Studio-side driver process and the
 launch/focus/close/timeout evidence against a built `lalin-cast.exe` are still open — see human gate
-H13 below.
+H13 below. Wave 6 (`docs/plans/W6_POLISH_PLAN.md`) adds two pieces of automated evidence toward
+H13 without changing this contract itself: the read-only [`scripts/lifecycle-driver.ps1`](../../scripts/README.md)
+driver (a parameterized version of the example below) and a `smoke` job in `ci.yml` that builds a
+debug `lalin-cast.exe` on `windows-latest` and runs it through `--version` and
+`--lifecycle close --request-id ci-smoke`, asserting on the resulting `lifecycle.json`. Neither
+replaces the real Studio-side driver evidence H13 still needs — see "Evidence expected under H13"
+below.
 
 Complexity: **C-2**. Risk: **LOW** (no network surface; a local file and process argv only) —
 narrowed from the original P2 slice's **HIGH** rating now that the transport is a plain local file
@@ -306,6 +312,30 @@ Evidence expected under H13: run this driver (or Studio's own equivalent) agains
 deliberately-broken run (for example a locked/missing executable path) to confirm the timeout path
 above behaves as documented.
 
+### Automated evidence path (wave 6)
+
+Two pieces of repo automation from `docs/plans/W6_POLISH_PLAN.md` exercise this same contract on
+every push, as a standing floor of evidence under this same driver-and-timeout-path shape, alongside
+(not instead of) the manual H13 sign-off above:
+
+- **`scripts/lifecycle-driver.ps1`** — a read-only, parameterized version of the example driver
+  above (`-Command launch|focus|close`, `-RequestId`, `-ExePath`, `-TimeoutSeconds`, default 10s). It
+  never writes `lifecycle.json`, uses the same fixed-argument-list discipline, and exits `0` on a
+  matched `ready`/`stopped` transition, `1` on `failed`, or `2` on timeout (or when `-ExePath` is
+  not found) — see
+  [`scripts/README.md`](../../scripts/README.md) for full usage. A developer or CI can run it
+  directly against a locally built exe instead of retyping the PowerShell example above by hand.
+- **CI `smoke` job (`ci.yml`)** — runs on `windows-latest` after the main `checks` job, builds
+  `lalin-cast.exe` in debug, asserts `--version` prints `lalin-cast <Cargo.toml version>`, then runs
+  `lalin-cast.exe --lifecycle close --request-id ci-smoke` and asserts the resulting
+  `lifecycle.json` has `type == stopped`, `requestId == ci-smoke`, and `exitCode == 0`. It is marked
+  `continue-on-error: true` until it has been observed stable across two consecutive runs (human gate
+  H20) — until then, a failure here is a signal to investigate, not a blocking CI failure.
+
+Both are same-machine, same-`close`-command checks — they do not cover `launch`/`focus` against an
+already-running instance, multi-process races, or a genuinely separate Studio process, which remain
+H13's own scope.
+
 ## Sources
 
 - `docs/architecture/CAST_PLATFORM_PLAN.md` — the `MediaLifecycleCommand`/`MediaLifecycleState`
@@ -320,3 +350,4 @@ above behaves as documented.
 | Version | Date | Status | Summary | Commit Hash | Agent |
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Documented the wave 5 CLI + `lifecycle.json` Studio launcher IPC contract: flag grammar, state-file schema/location, atomic write, launch/focus/close/timeout sequences, exit codes, scope boundary, Studio polling guidance and a PowerShell H13 driver example | uncommitted | LALIN |
+| 0.2.0b | 2026-09-21 | candidate | Wave 6: pointed to `scripts/lifecycle-driver.ps1` and the CI `smoke` job as the automated evidence path toward H13, without changing the underlying CLI/state-file contract (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |

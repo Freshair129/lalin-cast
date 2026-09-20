@@ -1,7 +1,7 @@
 ---
-version: "0.12.0b"
+version: "0.13.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:57:00+07:00,LALIN"
+last_update: "2026-09-21T00:30:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -89,6 +89,13 @@ Play owner is replaced by this candidate.
 | H5VCC DIAL bridge | narrow initialization script + `dial_respond` command | local slice implemented with continuous device-id sync | route callback and real controller/device evidence |
 | numeric TV-code pairing | not assumed | user-confirmed for current debug runtime | repeat/relink and packaged-app evidence |
 | Network/surface status (not a VacuumTube feature; new in wave 2) | Rust `network.rs` (local PowerShell profile probe, pure JSON parser) and `surface.rs`/`status.rs` (TCP connectivity probe, validated `lalin-cast-surface` event), surfaced through the `setup` and `status` windows | wave 2 local slice — see `docs/plans/W2_LIVING_ROOM_PLAN.md` | parser/probe/validator unit tests plus real Windows Public/Private profile and blocked-Leanback-DOM evidence (human gate H6) |
+| UI scale (not a VacuumTube feature; new in wave 6, living-room 4K readability) | Rust `settings.rs` (`uiScale` in `apply_setting`'s whitelist, an int restricted to `{100, 125, 150, 175, 200}`) calling `WebviewWindow::set_zoom(uiScale / 100.0)` immediately on change and again after `show()` on the next launch (post window-bounds restore) | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `apply_setting` set-membership unit tests (values outside the set rejected) plus real 4K-TV readability evidence (human gate H18) |
+| Settings profiles (not a VacuumTube feature; new in wave 6) | Rust `settings.rs` pure fn `profile_settings(profile) -> Vec<(&'static str, Value)>` (`livingRoom`/`handheld`/`desktop`, each exactly 7 keys) driving `settings_apply_profile`, which applies every key through the same `apply_setting` path and side effects as `settings_set` — never a direct store write | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `profile_settings` unit tests (exact key set per profile, forbidden keys such as `language`/`dialFriendlyName`/`startWithWindows` absent) plus real profile-switch evidence on a TV and a handheld (human gate H18) |
+| Reset to defaults (not a VacuumTube feature; new in wave 6) | Rust `settings.rs` pure fn `reset_plan() -> Vec<(&'static str, Value)>` driving `settings_reset_defaults`, which applies every key through `apply_setting` and deletes the `windowBounds` store key directly (the one key never routed through `apply_setting`, as documented below) | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | a unit test asserting `language`/`dialFriendlyName`/`dialDeviceId`/`setupCompleted`/`startWithWindows` are absent from `reset_plan()`'s output, plus the two-step-confirm UI's own test coverage in `fallback/settings.test.js` |
+| Launch command copy button (not a VacuumTube feature; new in wave 6, Steam-shortcut differentiator) | Rust `settings.rs` command `settings_launch_command`, a pure formatter built on the same `autostart::run_value` path-quoting logic already used for the Run-key writer, returning `"<absolute exe path>" --fullscreen` with no URL and no other argument; the settings page copies the result to the clipboard only on a button press (the same textarea-fallback pattern as diagnostics) | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | a unit test on the pure formatter (quoting, no extra arguments) |
+| Sleep at end of video (not a VacuumTube feature; new in wave 6, SmartTube parity) | `injected.js` `sleepAtEnd` section (pure `sleepAtEndDecision(state, eventType, now)`, an 8 s "armed" window on `ended` that pauses the first `play`/`playing` from YouTube's own autoplay-next and shows the existing `#lalin-cast-sleep-osd` element) reading the `sleepAtEndOfVideo` pref | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `sleepAtEndDecision` unit tests (armed/timeout/pref-off) plus real autoplay-next-on-Leanback evidence (human gate H19) |
+| Tray/menu play-pause (not a VacuumTube feature; new in wave 6) | Rust tray item `tray-play-pause` and media-window menu item `play-pause`, both emitting the `lalin-cast-remote` event (`{ action: "toggle-play" }`, a one-action whitelist) to the `media` window via `emit_to`; `injected.js`'s `remote` section listens for it, rate-limited to one per 250 ms, and pauses any playing `<video>` or plays the first paused one | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `injected.test.js` toggle-play/rate-limit/off-whitelist unit tests plus real tray/menu evidence on Leanback (human gate H21) |
+| Controller Y button → help overlay (not a VacuumTube feature; new in wave 6, closes a gap left by wave 5's help overlay) | `injected.js` `controller` section wires the previously-unmapped gamepad index 3 (Y / Triangle) to the existing `toggle-help` action, gated on `controllerEnabled` | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `injected.test.js` unit test (fires only when `controllerEnabled`) plus real controller evidence (human gate H21) |
 
 ## Endpoint and identity boundary
 
@@ -219,6 +226,27 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   neither the page nor the settings store can ever supply a raw browser-argument string.
   Mini-player geometry (`MiniPlayerState`) is likewise never written to the settings store — it is
   process-local session state restored on `toggle_mini`, not a persisted key.
+- Added in wave 6, the `settings` window capability (`capabilities/settings.json`) gains exactly
+  three permissions: `allow-settings-apply-profile`, `allow-settings-reset-defaults` and
+  `allow-settings-launch-command`, each label-gated to `"settings"` the same as every other command
+  on this window; `capabilities/default.json` is unchanged (diff is empty) in wave 6.
+- Added in wave 6, `settings_apply_profile` and `settings_reset_defaults` write the store **only**
+  through the same `apply_setting` whitelist/side-effect path `settings_set` already uses — there is
+  no direct store write in either command, and neither can reach a key outside `apply_setting`'s
+  existing enumerated set. `windowBounds` remains the sole exception, deleted directly by
+  `settings_reset_defaults` (`store.delete`), exactly as it is written directly by Rust and never
+  through `apply_setting` elsewhere in this document.
+- Added in wave 6, `uiScale` is added to `apply_setting`'s whitelist as an int **set-checked**
+  against `{100, 125, 150, 175, 200}` — any other value, including an in-range-looking but
+  unlisted number, is rejected (unit test); it is never interpolated into a shell command or
+  browser argument, only passed to `WebviewWindow::set_zoom`.
+- Added in wave 6, the `lalin-cast-remote` event (Rust → `media` page) rides the existing
+  `core:event:allow-listen` remote capability the `media` window already has for
+  `lalin-cast-prefs`/`lalin-cast-sleep` — no new remote capability is added for it
+  (`capabilities/default.json` diff is empty). Its payload is a **one-action whitelist**,
+  `{ action: "toggle-play" }`; `injected.js` discards anything else and rate-limits accepted events
+  to one per 250 ms. The handler touches only `<video>` elements already on the page (`pause()`/
+  `play()`) — it does not read, modify or navigate any other part of the YouTube DOM.
 - No cookies, account tokens, pairing codes or session data are committed or
   logged; the local network-category probe (PowerShell) and the surface event's URL/title
   are never persisted or logged either. The wave 3 command-line deep link is validated by
@@ -303,3 +331,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.10.0b | 2026-09-20 | beta | Wave 3: split the controller/touch feature-matrix row into ported controller, keybinds, native settings window and command-line deep-link rows; documented the `settings` window capability and the `lalin-cast-shell` event on the unchanged remote capability (see `docs/plans/W3_CONTROLS_PLAN.md`) | uncommitted | LALIN |
 | 0.11.0b | 2026-09-20 | beta | Wave 4: added feature-matrix rows for codec filter, touch overlay, sleep timer, mini-player, hardware decoding and the experimental ARM64/winget release matrix; documented the `toggle-mini` addition to the `lalin-cast-shell` whitelist, the single-constant `additional_browser_args` rule, and the wave 4 `settings_set` whitelist keys (see `docs/plans/W4_PLAYBACK_PLAN.md`) | uncommitted | LALIN |
 | 0.12.0b | 2026-09-20 | beta | Wave 5: added feature-matrix rows for the Studio launcher lifecycle (CLI + `lifecycle.json`), window-position memory, start with Windows, offline auto-retry, diagnostics snapshot, now-playing title, playback speed keys and the help overlay; documented the `settings`/`status` capability additions, the validated/rate-limited `lalin-cast-media` event on the unchanged remote capability, the fixed-argument `reg.exe` autostart runner, the URL-free `lifecycle.json` schema, and that `windowBounds` is Rust-only (see `docs/plans/W5_DESKTOP_PLAN.md` and `docs/architecture/CAST_LAUNCHER_IPC.md`) | uncommitted | LALIN |
+| 0.13.0b | 2026-09-21 | beta | Wave 6: added feature-matrix rows for UI scale, settings profiles, reset to defaults, the launch-command copy button, sleep at end of video, tray/menu play-pause and the controller Y-button help binding; documented the three new `settings` capability permissions, that profiles/reset route through the existing `apply_setting` whitelist only, that `uiScale` is set-checked, and the one-action `lalin-cast-remote` whitelist on the unchanged remote capability (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |

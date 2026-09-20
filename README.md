@@ -28,7 +28,8 @@ Current scope:
 - Lalin Cast's own Leanback-compatible User-Agent (`LalinCast/<version>` identity token built from
   the app's own version, no longer VacuumTube-derived);
 - single-instance focus;
-- fullscreen, keep-on-top, reload, quit, and Thai/English language toggle native menu actions;
+- fullscreen, keep-on-top, reload, quit, play/pause, and Thai/English language toggle native menu
+  actions;
 - signed GitHub Releases updater with a native in-app update window (checked on startup and
   on demand from the menu) that always requires user confirmation before installing and
   restarting;
@@ -40,7 +41,8 @@ Current scope:
 - narrow `window.h5vcc` DIAL route bridge for the embedded YouTube WebView;
 - continuous Leanback device-id sync with best-effort persistence;
 - a system tray icon (`Lalin Cast · DIAL: <state>`, plus host:port once ready) with menu actions to
-  show the window, open network/DIAL setup, check for updates, and quit;
+  show the window, play/pause the current video, open network/DIAL setup, check for updates, and
+  quit;
 - a first-run setup wizard window that reads the Windows network category (Private/Public/Domain,
   read locally through PowerShell only) and the live DIAL status, explains how to switch a Public
   profile to Private when needed, and can be reopened anytime from the tray or the media window's
@@ -169,6 +171,7 @@ turned on or off from the settings window (the "Controller" toggle).
 | Menu / Start | Options | Volume up / เพิ่มเสียง |
 | L3 (left-stick click) | L3 | Mute / ปิดเสียง |
 | R3 (right-stick click) | R3 | Open settings / เปิดหน้าต่างการตั้งค่า |
+| Y | △ (Triangle) | Toggle the keyboard/controller help overlay (only when the controller is enabled) / เปิด-ปิดผังคีย์บอร์ด/คอนโทรลเลอร์ (เฉพาะเมื่อเปิดใช้คอนโทรลเลอร์) |
 | D-pad / left stick | D-pad / left stick | Navigate — arrow keys / เลื่อนทิศทาง |
 | Right stick | Right stick | Navigate — arrow keys (Lalin Cast addition; upstream declared but never emitted these codes) / เลื่อนทิศทาง |
 
@@ -190,11 +193,11 @@ turned on or off from the settings window (the "Controller" toggle).
 
 ## Playback
 
-**ภาษาไทย:** Lalin Cast มีตัวเลือกการเล่นเพิ่มเติมห้าอย่าง ตั้งค่าได้จากหน้าต่างการตั้งค่า (ดู
+**ภาษาไทย:** Lalin Cast มีตัวเลือกการเล่นเพิ่มเติมหกอย่าง ตั้งค่าได้จากหน้าต่างการตั้งค่า (ดู
 [Settings](#settings)) ทั้งหมดทำงานในเครื่องล้วน ๆ ไม่มีการส่งข้อมูลใดออกนอกเครื่องเพิ่มเติม (ดู
 [`PRIVACY.md`](PRIVACY.md))
 
-**English:** Lalin Cast has five additional playback options, all set from the settings window (see
+**English:** Lalin Cast has six additional playback options, all set from the settings window (see
 [Settings](#settings)) and all entirely local — none of them send anything off the device (see
 [`PRIVACY.md`](PRIVACY.md)).
 
@@ -210,6 +213,25 @@ settings window, which also shows a live countdown. When it fires, Lalin Cast pa
 the page immediately and shows an on-screen message ("Sleep timer: playback paused") for 6 seconds,
 then resets the setting back to "off" on its own. The timer can be changed or cancelled at any time
 from the settings window.
+
+### Sleep at end of video / หยุดเล่นเมื่อจบวิดีโอ
+
+**ภาษาไทย:** เปิดตัวเลือก "หยุดเล่นเมื่อจบวิดีโอ" (`sleepAtEndOfVideo`, ค่าเริ่มต้นปิด) จากหน้าต่างการ
+ตั้งค่า เมื่อวิดีโอที่กำลังเล่นอยู่จบลง Lalin Cast จะรอ 8 วินาที — ถ้า YouTube เริ่มเล่นวิดีโอถัดไปเอง
+(autoplay-next) ภายในช่วงนี้ Lalin Cast จะหยุดเล่นทันทีและแสดงข้อความ "จบวิดีโอแล้ว — หยุดเล่นตามที่ตั้งไว้"
+บนหน้าจอเป็นเวลา 6 วินาที (กันแค่ครั้งเดียวต่อวิดีโอที่จบ ไม่ใช่การปิด autoplay-next ของ YouTube อย่าง
+ถาวร) ถ้าไม่มีวิดีโอถัดไปเริ่มเล่นภายใน 8 วินาที Lalin Cast จะเลิกรอเฉย ๆ โดยไม่ทำอะไรเพิ่ม ต่างจากตัวจับ
+เวลาปิดเล่นด้านบน ค่านี้ **ไม่ถูกรีเซ็ตกลับเป็นปิดเอง** — ยังเปิดอยู่จนกว่าผู้ใช้จะปิดเองจากหน้าต่างการ
+ตั้งค่า
+
+**English:** Turn on "sleep at end of video" (`sleepAtEndOfVideo`, off by default) from the settings
+window. When the currently playing video ends, Lalin Cast arms an 8-second window — if YouTube starts
+autoplaying the next video during that time, Lalin Cast immediately pauses it and shows an on-screen
+message ("End of video: playback paused as requested") for 6 seconds (this guards against exactly one
+autoplay-next per ended video; it does not permanently disable YouTube's autoplay-next feature). If no
+next video starts within 8 seconds, Lalin Cast simply stops waiting and does nothing further. Unlike
+the sleep timer above, this setting is **not reset back to off automatically** — it stays on until you
+turn it off yourself from the settings window.
 
 ### Codec filter / ตัวกรอง codec
 
@@ -317,7 +339,7 @@ contract at [`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LA
 ตัวอย่าง Steam launch options (non-Steam game) / example Steam launch options (non-Steam game):
 
 ```
-"C:\Path\To\lalin-cast.exe" --fullscreen "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+--fullscreen "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
 
 ตัวอย่างการเรียกแบบ Studio launcher lifecycle / example Studio-launcher lifecycle call:
@@ -406,19 +428,45 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
 หรือปุ่ม R3 ของคอนโทรลเลอร์ ตั้งค่าได้:
 
 - **การเล่น / Playback** — ตัวจับเวลาปิดเล่นอัตโนมัติ (`sleepTimerMinutes`, พร้อมเวลาที่เหลือแบบนับถอยหลัง),
-  ตัวกรอง codec (`codecFilter`, พร้อมหมายเหตุ "มีผลหลังโหลดใหม่"), การถอดรหัสวิดีโอด้วยฮาร์ดแวร์
+  หยุดเล่นเมื่อจบวิดีโอ (`sleepAtEndOfVideo`, ดู [Playback](#playback)), ตัวกรอง codec (`codecFilter`,
+  พร้อมหมายเหตุ "มีผลหลังโหลดใหม่"), การถอดรหัสวิดีโอด้วยฮาร์ดแวร์
   (`hardwareDecoding`, พร้อมหมายเหตุ "มีผลหลังเปิดแอปใหม่" ที่ขึ้นสีเตือนเมื่อค่ายังไม่ตรงกับค่าที่ใช้งานอยู่
   จริง) — ดู [Playback](#playback)
+- **ทั่วไป / General** — ภาษา, เริ่มพร้อม Windows (`startWithWindows`), มาตราส่วน UI
+  (`uiScale`, 100/125/150/175/200% — ปรับ zoom ของหน้าต่างสื่อผ่าน API ของ WebView2 เอง **มีผลทันที**
+  ทั้งตอนเลือกและตอนเปิดแอปครั้งถัดไป เหมาะกับการดูจากที่นั่งไกลบนทีวี 4K) และปุ่ม profile สามปุ่ม
+  (ห้องนั่งเล่น / อุปกรณ์พกพา / เดสก์ท็อป — ดูรายละเอียดด้านล่าง)
 - **หน้าจอ / Display** — เต็มจอ (fullscreen), อยู่ด้านบนเสมอ (keep on top) และโหมดหน้าต่างเล็ก
   (mini-player, ไม่ persist — สลับได้ด้วย `Ctrl+Shift+M` เช่นกัน)
 - **การควบคุม** — เปิด/ปิดคอนโทรลเลอร์ (`controllerEnabled`, ค่าเริ่มต้นเปิด), หยุดวิดีโอเมื่อหน้าต่างเสีย
   โฟกัส (`pauseOnBlur`, ค่าเริ่มต้นปิด), ปุ่มควบคุมบนหน้าจอสัมผัส (`touchOverlay`, ค่าเริ่มต้นเปิด)
 - **เดสก์ท็อป** — เริ่มพร้อม Windows (`startWithWindows`, ค่าเริ่มต้นปิด — มีผลตั้งแต่การเข้าสู่ระบบครั้ง
   ถัดไป) ดู [Desktop integration](#desktop-integration)
+- **โปรไฟล์การตั้งค่า / Settings profiles** — ปุ่ม "ห้องนั่งเล่น" (living room), "อุปกรณ์พกพา" (handheld)
+  และ "เดสก์ท็อป" (desktop) ตั้งค่าหลายอย่างพร้อมกันในคลิกเดียว ดังตาราง (คีย์ที่ไม่อยู่ในตารางนี้ เช่น
+  ภาษา, ชื่อ DIAL, เริ่มพร้อม Windows จะไม่ถูกแตะเลย):
+
+  | โปรไฟล์ | เต็มจอ | อยู่บนสุดเสมอ | คอนโทรลเลอร์ | ปุ่มสัมผัส | หยุดเมื่อเสียโฟกัส | ตัวกรอง codec | มาตราส่วน UI |
+  |---|---|---|---|---|---|---|---|
+  | ห้องนั่งเล่น (`livingRoom`) | เปิด | ปิด | เปิด | ปิด | ปิด | ปิด | 150% |
+  | อุปกรณ์พกพา (`handheld`) | เปิด | ปิด | เปิด | เปิด | ปิด | H.264 เท่านั้น | 125% |
+  | เดสก์ท็อป (`desktop`) | ปิด | ปิด | เปิด | ปิด | เปิด | ปิด | 100% |
+
+- **รีเซ็ตค่าเริ่มต้น / Reset to defaults** — ปุ่มในกลุ่ม "อัปเดตและเกี่ยวกับ" แบบกดสองจังหวะ (กดครั้งแรก
+  จะขึ้นข้อความให้กดซ้ำอีกครั้งภายใน 5 วินาทีเพื่อยืนยัน มิฉะนั้นจะยกเลิกไปเอง) คืนค่าเกือบทุกการตั้งค่า
+  กลับเป็นค่าเริ่มต้นของแอป (เต็มจอ, อยู่บนสุดเสมอ, หยุดเมื่อเสียโฟกัส, คอนโทรลเลอร์, ตัวจับเวลาปิดเล่น,
+  ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มสัมผัส, มาตราส่วน UI, หยุดเล่นเมื่อจบวิดีโอ, mini-player และ
+  ตำแหน่ง/ขนาดหน้าต่างที่จำไว้) **แต่ไม่ลบ** ภาษา, ชื่อ/รหัสอุปกรณ์ DIAL (`dialFriendlyName`,
+  `dialDeviceId`), สถานะว่าผ่านตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows
+  (`startWithWindows`) — ค่าทั้งห้านี้ยังคงเดิมหลังกดรีเซ็ต
 - ภาษา (ไทย/English)
 - ชื่อที่แสดงผ่าน DIAL (`dialFriendlyName`) — มีผลทันที มองเห็นได้จากมือถือที่ค้นหาอุปกรณ์
 - ปุ่มเปิดตัวช่วยติดตั้งเครือข่าย/DIAL อีกครั้ง
 - ปุ่มตรวจสอบการอัปเดต และเลขรุ่นปัจจุบันของแอป
+- ปุ่ม "คัดลอกคำสั่งเปิดสำหรับ Steam" ในกลุ่ม "อัปเดตและเกี่ยวกับ" — สร้างคำสั่งบรรทัดเดียว
+  (`"<path เต็มของ .exe>" --fullscreen`) แล้วคัดลอกไปยังคลิปบอร์ดของเครื่องเมื่อกดปุ่มเท่านั้น (ถ้าคัดลอก
+  อัตโนมัติไม่สำเร็จ ข้อความจะแสดงในกล่องข้อความให้เลือกคัดลอกเอง) ใช้วางลงช่อง Launch Options ของ Steam
+  ได้ทันที — ดู [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md)
 - ปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในกลุ่ม "อัปเดตและเกี่ยวกับ" — สร้างข้อความสรุปสถานะแอป (เวอร์ชัน,
   OS/WebView2, สถานะ DIAL พร้อม IP:พอร์ตบน LAN, ค่าตั้งปัจจุบัน — **ไม่มี** device id, URL หรือรหัส
   ทีวี) แล้วคัดลอกไปยังคลิปบอร์ดของเครื่องเมื่อกดปุ่มเท่านั้น (ถ้าคัดลอกอัตโนมัติไม่สำเร็จ ข้อความจะแสดง
@@ -430,21 +478,49 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
 **English:** The settings window opens from the media window's menu (`settings`), the tray icon,
 `Ctrl+O`, or the controller's R3 button. It lets you change:
 
-- **Playback** — the sleep timer (`sleepTimerMinutes`, with a live countdown), the codec filter
+- **Playback** — the sleep timer (`sleepTimerMinutes`, with a live countdown), sleep at end of
+  video (`sleepAtEndOfVideo`, see [Playback](#playback)), the codec filter
   (`codecFilter`, noted "effective after reload"), and hardware decoding (`hardwareDecoding`, noted
   "effective after restarting the app" and shown in a warning color when the saved value doesn't
   match what's currently running) — see [Playback](#playback)
+- **General** — language, start with Windows (`startWithWindows`), UI scale (`uiScale`,
+  100/125/150/175/200% — zooms the media window through WebView2's own API. **Applies immediately**,
+  both when you pick it and again the next time the app starts; useful for reading text from across
+  the room on a 4K TV) and the three profile buttons (living room / handheld / desktop — see below)
 - **Display** — fullscreen, keep-on-top, and mini-player (not persisted — can also be toggled with
   `Ctrl+Shift+M`)
 - **Controls** — the controller toggle (`controllerEnabled`, on by default), pause-on-blur
   (`pauseOnBlur`, off by default), and the touch overlay (`touchOverlay`, on by default)
 - **Desktop** — start with Windows (`startWithWindows`, off by default — takes effect starting
   with the next sign-in), see [Desktop integration](#desktop-integration)
+- **Settings profiles** — "living room", "handheld", and "desktop" buttons set several values at
+  once in a single click, as shown below (any key not in this table — language, DIAL name, start
+  with Windows — is left untouched):
+
+  | Profile | Fullscreen | Keep on top | Controller | Touch overlay | Pause on blur | Codec filter | UI scale |
+  |---|---|---|---|---|---|---|---|
+  | Living room (`livingRoom`) | on | off | on | off | off | off | 150% |
+  | Handheld (`handheld`) | on | off | on | on | off | H.264 only | 125% |
+  | Desktop (`desktop`) | off | off | on | off | on | off | 100% |
+
+- **Reset to defaults** — a two-step button in the Updates & About group (the first press shows a
+  message asking you to press again within 5 seconds to confirm; otherwise it cancels itself).
+  Resets almost every setting back to the app's own defaults (fullscreen, keep-on-top, pause-on-blur,
+  controller, sleep timer, codec filter, hardware decoding, touch overlay, UI scale, sleep at end of
+  video, mini-player, and the remembered window position/size) **but does not remove** the language,
+  the DIAL name/id (`dialFriendlyName`, `dialDeviceId`), the setup-wizard-completed flag
+  (`setupCompleted`), or the "start with Windows" entry (`startWithWindows`) — those five stay
+  exactly as they were after a reset.
 - language (Thai/English)
 - the name shown over DIAL (`dialFriendlyName`) — applies immediately, visible right away to
   phones discovering the device
 - a button to reopen the network/DIAL setup wizard
 - a button to check for updates, and the app's current version
+- a "copy launch command for Steam" button in the Updates & About group — builds a single-line
+  command (`"<full path to the .exe>" --fullscreen`) and copies it to the device's clipboard only
+  when the button is pressed (if the automatic copy fails, the text is shown in a box so you can
+  select and copy it yourself); paste it straight into Steam's Launch Options field — see
+  [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md)
 - a "copy diagnostics" button in the Updates & About group — builds a text summary of the app's
   state (version, OS/WebView2, DIAL status with its LAN IP:port, current settings — **never** a
   device id, URL, or TV code) and copies it to the device's clipboard only when the button is
@@ -464,6 +540,26 @@ The public updater key is committed in `src-tauri/tauri.conf.json`. The private
 key must remain outside the repository and is supplied to GitHub Actions through
 `LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY` and its optional password secret. The app
 never installs an update without user confirmation.
+
+## Development
+
+**ภาษาไทย:** นอกจาก `cargo check`/`cargo fmt`/`cargo tauri build` ด้านบน CI (`ci.yml`) ยังมีงาน `smoke`
+(รันบน `windows-latest`, ทำเครื่องหมาย `continue-on-error` จนกว่าจะเสถียร) ที่ build เวอร์ชัน debug ของ
+`lalin-cast.exe` แล้วรันจริงด้วย `--version` และ `--lifecycle close --request-id ci-smoke` เพื่อตรวจสอบ
+ว่าไฟล์ `lifecycle.json` (ดู [`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md))
+ถูกเขียนถูกต้อง — เป็นหลักฐานอัตโนมัติสำหรับ human gate H13 ทุกครั้งที่ push สคริปต์
+[`scripts/lifecycle-driver.ps1`](scripts/lifecycle-driver.ps1) (ตัวอ่านไฟล์วงจรชีวิตอย่างเดียว ไม่มีการเขียนไฟล์ใด ๆ)
+ใช้ทดสอบ launcher lifecycle นี้ด้วยตัวเองบนเครื่องนักพัฒนา — ดูวิธีใช้ที่ `scripts/README.md`
+
+**English:** Beyond the `cargo check`/`cargo fmt`/`cargo tauri build` commands above, CI (`ci.yml`)
+also runs a `smoke` job (on `windows-latest`, marked `continue-on-error` until it's proven stable)
+that builds a debug `lalin-cast.exe` and actually runs it with `--version` and
+`--lifecycle close --request-id ci-smoke`, checking that `lifecycle.json` (see
+[`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md)) is written
+correctly — automated evidence toward human gate H13 on every push. The
+[`scripts/lifecycle-driver.ps1`](scripts/lifecycle-driver.ps1) script (a read-only lifecycle-file poller that
+never writes anything) exercises the same launcher lifecycle locally on a developer machine — see
+`scripts/README.md` for usage.
 
 ## Support
 

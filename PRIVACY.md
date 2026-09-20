@@ -41,6 +41,8 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
 | `startWithWindows` | เปิด/ปิดการเริ่ม Lalin Cast พร้อม Windows (registry Run key ของบัญชีนี้) ค่าเริ่มต้นปิด ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
 | `windowBounds` | ตำแหน่ง (x, y) และขนาด (width, height) ของหน้าต่างสื่อ (media) ล่าสุด เป็นพิกเซล เขียนโดย Rust เท่านั้น ไม่ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า — ดูข้อ 7 | ไม่ |
+| `uiScale` | มาตราส่วนการแสดงผล (zoom) ของหน้าต่างสื่อ ผ่าน API `set_zoom` ของ WebView2 เอง ค่าที่รับ ∈ {100, 125, 150, 175, 200} เปอร์เซ็นต์ มีผลทันทีที่ตั้งค่าและอีกครั้งหลังเปิดแอปใหม่ — ดูข้อ 7 | ไม่ |
+| `sleepAtEndOfVideo` | เปิด/ปิดการหยุดเล่นอัตโนมัติเมื่อวิดีโอปัจจุบันจบ (กัน autoplay-next ของ YouTube หนึ่งครั้ง) ค่าเริ่มต้นปิด ไม่รีเซ็ตกลับเป็นปิดเอง — ดูข้อ 7 | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -147,6 +149,22 @@ argument อื่นติดไปด้วย ปิดตัวเลือ�
 การตรวจสอบการเชื่อมต่อ (TCP handshake ไปยัง `www.youtube.com:443` แบบเดียวกับข้อ 4 ไม่มี HTTP request
 หรือ payload อื่นใด) ซ้ำเองเป็นระยะโดยไม่ต้องกดปุ่ม เริ่มที่ 5 วินาทีแล้วเพิ่มเป็นสูงสุด 30 วินาที และหยุด
 เองเมื่อครบ 10 นาที ผลของแต่ละครั้งไม่ถูกบันทึกถาวรเช่นเดียวกับการตรวจครั้งแรก
+
+**มาตราส่วน UI และหยุดเล่นเมื่อจบวิดีโอ:** รุ่นนี้เพิ่มคีย์การตั้งค่าอีกสองตัวในไฟล์เดียวกับข้อ 2:
+`uiScale` (มาตราส่วนการแสดงผล/zoom ของหน้าต่างสื่อ ผ่าน API ของ WebView2 เอง) และ `sleepAtEndOfVideo`
+(หยุดเล่นอัตโนมัติเมื่อวิดีโอปัจจุบันจบ) ทั้งสองเป็นการตั้งค่าในเครื่องล้วน ๆ เหมือนคีย์อื่นทุกตัวในไฟล์นี้
+— ไม่มีการส่งค่าใดออกนอกเครื่อง
+
+**คำสั่งเปิดสำหรับ Steam (launch command):** ปุ่ม "คัดลอกคำสั่งเปิดสำหรับ Steam" ในหน้าต่างการตั้งค่าสร้าง
+ข้อความที่มีเพียง path เต็มของไฟล์ .exe ของแอปเองบนเครื่องนี้ (`"<path>" --fullscreen` ไม่มี URL หรือ
+argument อื่นใดติดไปด้วย) แล้วคัดลอกไปยังคลิปบอร์ดของเครื่อง **เมื่อผู้ใช้กดปุ่มนี้เท่านั้น** ไม่มีการ
+คัดลอกอัตโนมัติจากเหตุการณ์อื่นใด
+
+**รีเซ็ตค่าเริ่มต้น (reset to defaults):** ปุ่ม "รีเซ็ตค่าเริ่มต้น" แบบกดสองจังหวะยืนยันในหน้าต่างการ
+ตั้งค่าคืนค่าเกือบทุกการตั้งค่ากลับเป็นค่าเริ่มต้นของแอปผ่าน path เดียวกับที่ใช้บันทึกค่าปกติทีละคีย์
+**แต่ไม่ลบ** รหัส/ชื่ออุปกรณ์ DIAL (`dialDeviceId`, `dialFriendlyName`), ภาษา (`language`), สถานะว่าผ่าน
+ตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows (`startWithWindows`) ออก — ทั้งห้าค่านี้ยังคงเดิมหลังกดรีเซ็ต (ดูข้อ 12 สำหรับวิธีลบ
+ค่าเหล่านี้ด้วยตัวเองถ้าต้องการ)
 
 **ข้อมูลวินิจฉัย:** ปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในหน้าต่างการตั้งค่าสร้างข้อความสรุปสถานะแอปแบบข้อความล้วน
 ประกอบด้วย: เวอร์ชันแอป, เวอร์ชัน Tauri/WebView2, ระบบปฏิบัติการ/สถาปัตยกรรม, ภาษาที่ใช้, สถานะ DIAL
@@ -283,6 +301,8 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 8 | No |
 | `startWithWindows` | Turns starting Lalin Cast with Windows on or off (this account's registry Run key). Defaults to off; only ever set from the settings window — see section 7 | No |
 | `windowBounds` | The media window's last position (x, y) and size (width, height), in pixels. Written by Rust only; never shown in the settings window's snapshot — see section 7 | No |
+| `uiScale` | The media window's display scale (zoom), through WebView2's own `set_zoom` API. Accepted values are {100, 125, 150, 175, 200} percent; applies immediately when set, and again after the app restarts — see section 7 | No |
+| `sleepAtEndOfVideo` | Turns on/off pausing playback automatically once the current video ends (guarding against one YouTube autoplay-next). Defaults to off; not reset back to off automatically — see section 7 | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -405,6 +425,25 @@ section 4), Lalin Cast repeats the same connectivity check (a TCP handshake to
 on a schedule, without the user pressing anything: starting at 5 seconds, stepping up to a maximum
 of 30 seconds, and stopping on its own after 10 minutes. Each attempt's result is never persisted,
 the same as the initial check.
+
+**UI scale and sleep at end of video:** This release adds two more settings keys to the same file
+described in section 2: `uiScale` (the media window's display scale/zoom, through WebView2's own
+API) and `sleepAtEndOfVideo` (pauses playback automatically once the current video ends). Both are
+entirely local settings, the same as every other key in this file — neither value ever leaves the
+device.
+
+**Launch command for Steam:** The "copy launch command for Steam" button in the settings window
+builds text containing only the full path to the app's own `.exe` file on this machine
+(`"<path>" --fullscreen` — no URL or other argument travels with it), and copies it to the device's
+clipboard **only when the user presses that button** — nothing else triggers this copy automatically.
+
+**Reset to defaults:** The two-step confirm "reset to defaults" button in the settings window resets
+almost every setting back to the app's own defaults, through the same per-key path used for normal
+setting saves, **but does not remove** the DIAL name/id (`dialDeviceId`, `dialFriendlyName`), the
+language (`language`), the setup-wizard-completed flag (`setupCompleted`), or the "start with
+Windows" entry (`startWithWindows`) — those five values
+stay exactly as they were after a reset (see section 12 for how to remove them yourself if you want
+to).
 
 **Diagnostics:** The "copy diagnostics" button in the settings window builds a plain-text summary of
 the app's state: app version, Tauri/WebView2 version, OS/architecture, current language, DIAL status
