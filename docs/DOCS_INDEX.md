@@ -1,5 +1,18 @@
 # Lalin Cast documentation index
 
+## Document version vs. app version
+
+The `version` field in each doc's frontmatter (e.g. `0.8.0b`) is a **document
+revision number**, tracked independently per file via that file's own
+CHANGELOG table. It is not the Lalin Cast application version. The app version
+comes only from `src-tauri/Cargo.toml` (`package.version`, surfaced at
+runtime through `env!("CARGO_PKG_VERSION")`); do not infer the shipped app
+version from any doc's frontmatter `version` value.
+
+## Planning
+
+- [`plans/H0_RELEASE_READINESS_PLAN.md`](plans/H0_RELEASE_READINESS_PLAN.md) — H0 release-readiness DAG, file ownership matrix and parallel-stream/verify-gate plan.
+
 ## Product and architecture
 
 - [`ADR-001-CAST-TAURI-PORT.md`](architecture/ADR-001-CAST-TAURI-PORT.md) — Rust + Tauri v2 shell, Leanback surface, DIAL boundary and feature gates.
@@ -8,6 +21,17 @@
 - [`CAST_MIGRATION_MAP.md`](architecture/CAST_MIGRATION_MAP.md) — source export and rollback map.
 - [`LALIN_CAST_REPOSITORY_SPLIT_PLAN.md`](architecture/LALIN_CAST_REPOSITORY_SPLIT_PLAN.md) — exact export inventory and release stages.
 - [`LALIN_CAST_UPDATER_SPEC.md`](architecture/LALIN_CAST_UPDATER_SPEC.md) — signed updater and GitHub Actions contract.
+
+## Legal and licensing
+
+- [`../PRIVACY.md`](../PRIVACY.md) — privacy notice (local data, DIAL/SSDP on LAN, updater network contact, no telemetry).
+- [`../TERMS.md`](../TERMS.md) — terms of use (unofficial/not-affiliated status, YouTube ToS binding, no warranty).
+- [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) — third-party license notices for every `Cargo.lock` package plus VacuumTube/Tauri/WebView2 attributions.
+- [`LICENSE_DECISION.md`](LICENSE_DECISION.md) — MIT / Apache-2.0 / proprietary license comparison and the founder decision checklist for Lalin Cast itself.
+
+## Runbooks
+
+- [`runbooks/SIGNING_KEY_CUSTODY.md`](runbooks/SIGNING_KEY_CUSTODY.md) — updater signing-key roles, storage, verification and rotation/leak procedure.
 
 ## Provenance and evidence
 

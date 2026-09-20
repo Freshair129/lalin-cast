@@ -1,5 +1,7 @@
 # RCA: Lalin Media loses the iPhone connection while the PC process remains open
 
+> **Historical path note (added H0, 2026-09-20):** paths below such as `F:\lalin\apps\media-tauri\src-tauri`, `apps/media-tauri/src-tauri/src/lib.rs` and `apps/media-tauri/src-tauri/src/dial.rs` refer to the pre-split `Freshair129/Lalin-AI` monorepo layout; this standalone repository's equivalents are `src-tauri/src/lib.rs` and `src-tauri/src/dial.rs` under `src-tauri`, with `reference/vacuumtube` as the retained Electron fallback. Evidence below is preserved unedited.
+
 ## Symptom
 
 The iPhone can connect to Lalin Media with the numeric TV code, but the

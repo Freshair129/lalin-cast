@@ -1,7 +1,7 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-20T04:12:08+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T04:12:08+07:00,LALIN"
+last_update: "2026-09-20T21:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -26,8 +26,9 @@ updater signing, release automation and cross-repository Studio integration).
 - The current repository is `Freshair129/Lalin-AI` on `main`.
 - The Media Tauri work is already committed locally through `58af113`
   (`fix(media): recover DIAL listeners and persist device identity`).
-- The current Media sources are `apps/media-tauri` (Rust + Tauri v2) and
-  `apps/media-desktop` (pinned VacuumTube Electron reference/fallback).
+- The Media sources at the time of this ADR were `apps/media-tauri` (Rust + Tauri v2) and
+  `apps/media-desktop` (pinned VacuumTube Electron reference/fallback) in the umbrella
+  repository; after the split they live at `src-tauri/` and `reference/vacuumtube/` here.
 - `https://github.com/Freshair129/lalin-cast` exists, is public, uses `main` as
   its default branch, and was empty when inspected on 2026-09-20.
 - The current Tauri candidate is still named `lalin-media`, displays “Lalin
@@ -178,9 +179,9 @@ documented even if the fallback is later removed from release artifacts.
 
 ## Sources
 
-- [Lalin Media Tauri port ADR](ADR-002-LALIN-MEDIA-TAURI-PORT.md)
-- [Lalin Media platform plan](LALIN_MEDIA_PLATFORM_PLAN.md)
-- [Lalin Media migration map](LALIN_MEDIA_MIGRATION_MAP.md)
+- [Lalin Media Tauri port ADR](https://github.com/Freshair129/Lalin-AI/blob/main/docs/architecture/ADR-002-LALIN-MEDIA-TAURI-PORT.md) (historical, umbrella repo)
+- [Lalin Media platform plan](https://github.com/Freshair129/Lalin-AI/blob/main/docs/architecture/LALIN_MEDIA_PLATFORM_PLAN.md) (historical, umbrella repo)
+- [Lalin Media migration map](https://github.com/Freshair129/Lalin-AI/blob/main/docs/architecture/LALIN_MEDIA_MIGRATION_MAP.md) (historical, umbrella repo)
 - [Target repository](https://github.com/Freshair129/lalin-cast)
 - [VacuumTube upstream](https://github.com/shy1132/VacuumTube)
 
@@ -189,3 +190,4 @@ documented even if the fallback is later removed from release artifacts.
 | Version | Date | Status | Summary | Commit Hash | Agent |
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Proposed standalone Lalin Cast repository boundary, identity and approval gates | uncommitted | LALIN |
+| 0.2.0b | 2026-09-20 | candidate | Repointed the three Source links to the umbrella repo's historical paths (files were never exported into this standalone repository) | uncommitted | LALIN |
