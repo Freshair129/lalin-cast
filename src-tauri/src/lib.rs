@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::{Emitter, Listener, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_store::StoreExt;
 
 pub(crate) const MEDIA_LABEL: &str = "media";
@@ -913,6 +914,22 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Registered so `settings::set_one`/startup reconcile can call
+        // `DeepLinkExt::deep_link().register("lalin-cast")` /
+        // `unregister(...)` / `is_registered(...)` to manage the `lalin-cast`
+        // scheme's `HKCU\Software\Classes\lalin-cast` registration
+        // (opt-in, per the `deepLinkScheme` setting). This plugin is used
+        // ONLY for that registry management: `tauri-plugin-single-instance`'s
+        // `deep-link` feature is deliberately NOT enabled, and neither
+        // `handle_cli_arguments` nor `on_open_url` is used here. On Windows
+        // a `lalin-cast://` activation always launches (or forwards to, via
+        // the existing single-instance plugin) a new process with the URL as
+        // a plain argument, and `launch::parse_cli`/`parse_launch_url`
+        // already parse that argument with full test coverage (see
+        // `launch.rs`). Wiring both the plugin's own URL-handling path and
+        // the existing `parse_cli` path at once would create two independent
+        // code paths for the same event with no benefit.
+        .plugin(tauri_plugin_deep_link::init())
         .setup(move |app| {
             let handle = app.handle().clone();
             // Managed before anything below can possibly exit early, so
@@ -964,6 +981,19 @@ pub fn run() {
             if read_bool_setting_or(app.handle(), "startWithWindows", false) {
                 if let Err(error) = autostart::set_enabled(true) {
                     eprintln!("Lalin Cast: could not reconcile Windows startup: {error}");
+                }
+            }
+            // Same idempotent reconcile as `startWithWindows` above, for the
+            // `lalin-cast://` scheme: re-register on every startup when the
+            // store says it should be on (e.g. after an update moved the exe
+            // to a new path), and do nothing when it is off. Best-effort and
+            // never blocks startup; the persisted value is never touched
+            // here (this only mirrors it into the registry).
+            if read_bool_setting_or(app.handle(), "deepLinkScheme", false) {
+                if let Err(error) = app.deep_link().register(launch::LALIN_SCHEME) {
+                    eprintln!(
+                        "Lalin Cast: could not reconcile the lalin-cast:// registration: {error}"
+                    );
                 }
             }
             // Built before `dial::start` so the tray's dial-status listener
@@ -1048,6 +1078,28 @@ mod tests {
         parse_shell_action, resolve_title_source, validate_media_event, window_title,
         MediaPlaybackState, ShellAction,
     };
+
+    #[test]
+    fn tauri_conf_declares_no_deep_link_plugin_config() {
+        // The `lalin-cast` scheme is registered at runtime only, and only
+        // when the user turns `deepLinkScheme` on: `DeepLinkExt::register`
+        // takes the protocol explicitly, so the plugin needs no config of
+        // its own. A `plugins."deep-link"` block would additionally be read
+        // by Tauri's bundler and could associate the scheme at install
+        // time, which would contradict the opt-in promise in README.md and
+        // PRIVACY.md — so its absence is asserted here rather than left to
+        // a future editor's memory.
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json should be valid JSON");
+        let plugins = conf
+            .get("plugins")
+            .and_then(serde_json::Value::as_object)
+            .expect("tauri.conf.json should carry a plugins object");
+        assert!(
+            !plugins.contains_key("deep-link"),
+            "tauri.conf.json must not configure the deep-link plugin; see this test's comment"
+        );
+    }
 
     #[test]
     fn falls_back_to_bare_app_name_for_empty_or_whitespace_title() {

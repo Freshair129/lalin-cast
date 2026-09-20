@@ -306,6 +306,18 @@ be turned off at any time from the settings window.
   ไฟล์ `lifecycle.json` (ดูด้านล่าง); ถ้าไม่ระบุหรือรูปแบบไม่ถูกต้อง จะใช้ค่า `"cli"` แทน (สำหรับคำสั่งที่ส่งต่อ
   ไปยังอินสแตนซ์ที่เปิดอยู่) หรือ `"startup"` (สำหรับการเปิดโปรเซสครั้งแรกโดยไม่มี flag นี้)
 
+Lalin Cast ยังรับลิงก์ `lalin-cast://` ได้อีกทางหนึ่ง เทียบเท่ากับ URL ของ YouTube ด้านบนทุกประการ (ผ่านตัว
+ตรวจสอบเดียวกัน แล้วแปลงเป็น URL ของ YouTube ก่อนใช้งานเสมอ — ดู [`PRIVACY.md`](PRIVACY.md)):
+
+- `lalin-cast://watch?v=<รหัสวิดีโอ 11 ตัวอักษร>` — เปิดวิดีโอนั้นทันที
+- `lalin-cast://playlist?list=<รหัสเพลย์ลิสต์>` — เปิดเพลย์ลิสต์นั้นทันที
+
+รูปแบบอื่นทั้งหมด (host อื่นนอกจาก `watch`/`playlist`, ไม่มีพารามิเตอร์ที่ต้องมี, หรือ `lalin-cast:watch?v=…`
+แบบไม่มี `//`) จะถูกละเว้นเหมือน URL ที่แยกวิเคราะห์ไม่ได้ **scheme นี้ไม่ถูกจดทะเบียนกับ Windows โดย
+อัตโนมัติ** — ต้องเปิดตัวเลือก "ให้ลิงก์ `lalin-cast://` เปิดด้วย Lalin Cast" จากหน้าต่างการตั้งค่าเองก่อน
+(ดู [Settings](#settings)) เป็นการตั้งค่าแบบ opt-in ที่เขียนเฉพาะ `HKCU\Software\Classes\lalin-cast` ของ
+บัญชี Windows ปัจจุบันเท่านั้น ไม่ต้องใช้สิทธิ์ผู้ดูแลระบบ และไม่แตะ registry ของบัญชีอื่นหรือระดับเครื่อง
+
 ทุกครั้งที่ทำงาน Lalin Cast จะเขียนสถานะปัจจุบันของตัวเองลงไฟล์ `lifecycle.json` (ที่
 `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json`) แบบ atomic เสมอ — เป็นกลไกที่ตัวเปิดแอปภายนอกอย่าง
 Lalin Studio ใช้ตรวจสอบว่าแอปเปิดสำเร็จ (`ready`), ปิดแล้ว (`stopped`), หรือล้มเหลว (`failed`) ดู
@@ -330,6 +342,20 @@ Lalin Studio ใช้ตรวจสอบว่าแอปเปิดสำ�
   malformed, `"cli"` is used instead (for a command forwarded to the running instance) or
   `"startup"` (for a first process launch without the flag).
 
+Lalin Cast also accepts a `lalin-cast://` link as a second way in, fully equivalent to the YouTube
+URL above (same validation, then always converted to a YouTube URL before use — see
+[`PRIVACY.md`](PRIVACY.md)):
+
+- `lalin-cast://watch?v=<11-character video id>` — opens that video immediately
+- `lalin-cast://playlist?list=<playlist id>` — opens that playlist immediately
+
+Every other form (a host other than `watch`/`playlist`, a missing required parameter, or
+`lalin-cast:watch?v=…` without `//`) is ignored, the same as an unparseable URL. **This scheme is not
+registered with Windows automatically** — you must turn on "Let `lalin-cast://` links open in Lalin
+Cast" from the settings window first (see [Settings](#settings)). It's an opt-in setting that writes
+only to `HKCU\Software\Classes\lalin-cast` in the current Windows account — no administrator rights
+needed, and it never touches another account's registry or the machine-wide hive.
+
 Every time it runs, Lalin Cast always writes its current lifecycle state to `lifecycle.json`
 (at `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json`) atomically — this is how an external launcher
 such as Lalin Studio can tell that the app is ready, has stopped, or has failed. See the full
@@ -346,6 +372,13 @@ contract at [`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LA
 
 ```
 "C:\Path\To\lalin-cast.exe" --lifecycle launch --request-id studio-42 "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+```
+
+ตัวอย่างลิงก์ `lalin-cast://` (ต้องเปิดตัวเลือกในหน้าต่างการตั้งค่าก่อน) / example `lalin-cast://` link
+(the settings-window toggle must be on first):
+
+```
+lalin-cast://watch?v=dQw4w9WgXcQ
 ```
 
 ดูคู่มือฉบับเต็มสำหรับ Steam Big Picture และอุปกรณ์พกพา (ROG Ally, Legion Go) ที่
@@ -441,7 +474,10 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
 - **การควบคุม** — เปิด/ปิดคอนโทรลเลอร์ (`controllerEnabled`, ค่าเริ่มต้นเปิด), หยุดวิดีโอเมื่อหน้าต่างเสีย
   โฟกัส (`pauseOnBlur`, ค่าเริ่มต้นปิด), ปุ่มควบคุมบนหน้าจอสัมผัส (`touchOverlay`, ค่าเริ่มต้นเปิด)
 - **เดสก์ท็อป** — เริ่มพร้อม Windows (`startWithWindows`, ค่าเริ่มต้นปิด — มีผลตั้งแต่การเข้าสู่ระบบครั้ง
-  ถัดไป) ดู [Desktop integration](#desktop-integration)
+  ถัดไป) ดู [Desktop integration](#desktop-integration), และให้ลิงก์ `lalin-cast://` เปิดด้วย Lalin Cast
+  (`deepLinkScheme`, ค่าเริ่มต้นปิด — opt-in, เขียนเฉพาะ registry ของบัญชี Windows นี้เท่านั้นที่
+  `HKCU\Software\Classes\lalin-cast` ไม่ต้องใช้สิทธิ์ผู้ดูแลระบบ — ดู [Command line](#command-line) และ
+  [`PRIVACY.md`](PRIVACY.md)) พร้อมข้อความเตือนถ้าเปิดตัวเลือกไว้แต่ยังไม่ได้จดทะเบียนจริงในเครื่อง
 - **โปรไฟล์การตั้งค่า / Settings profiles** — ปุ่ม "ห้องนั่งเล่น" (living room), "อุปกรณ์พกพา" (handheld)
   และ "เดสก์ท็อป" (desktop) ตั้งค่าหลายอย่างพร้อมกันในคลิกเดียว ดังตาราง (คีย์ที่ไม่อยู่ในตารางนี้ เช่น
   ภาษา, ชื่อ DIAL, เริ่มพร้อม Windows จะไม่ถูกแตะเลย):
@@ -458,7 +494,7 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
   ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มสัมผัส, มาตราส่วน UI, หยุดเล่นเมื่อจบวิดีโอ, mini-player และ
   ตำแหน่ง/ขนาดหน้าต่างที่จำไว้) **แต่ไม่ลบ** ภาษา, ชื่อ/รหัสอุปกรณ์ DIAL (`dialFriendlyName`,
   `dialDeviceId`), สถานะว่าผ่านตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows
-  (`startWithWindows`) — ค่าทั้งห้านี้ยังคงเดิมหลังกดรีเซ็ต
+  (`startWithWindows`) หรือการจดทะเบียน `lalin-cast://` (`deepLinkScheme`) — ค่าทั้งหกนี้ยังคงเดิมหลังกดรีเซ็ต
 - ภาษา (ไทย/English)
 - ชื่อที่แสดงผ่าน DIAL (`dialFriendlyName`) — มีผลทันที มองเห็นได้จากมือถือที่ค้นหาอุปกรณ์
 - ปุ่มเปิดตัวช่วยติดตั้งเครือข่าย/DIAL อีกครั้ง
@@ -492,7 +528,11 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
 - **Controls** — the controller toggle (`controllerEnabled`, on by default), pause-on-blur
   (`pauseOnBlur`, off by default), and the touch overlay (`touchOverlay`, on by default)
 - **Desktop** — start with Windows (`startWithWindows`, off by default — takes effect starting
-  with the next sign-in), see [Desktop integration](#desktop-integration)
+  with the next sign-in), see [Desktop integration](#desktop-integration), and letting
+  `lalin-cast://` links open in Lalin Cast (`deepLinkScheme`, off by default — opt-in, writes only to
+  this Windows account's own registry at `HKCU\Software\Classes\lalin-cast`, no administrator rights
+  needed — see [Command line](#command-line) and [`PRIVACY.md`](PRIVACY.md)), with a warning shown if
+  the toggle is on but the machine's registry doesn't actually have it registered
 - **Settings profiles** — "living room", "handheld", and "desktop" buttons set several values at
   once in a single click, as shown below (any key not in this table — language, DIAL name, start
   with Windows — is left untouched):
@@ -509,8 +549,8 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
   controller, sleep timer, codec filter, hardware decoding, touch overlay, UI scale, sleep at end of
   video, mini-player, and the remembered window position/size) **but does not remove** the language,
   the DIAL name/id (`dialFriendlyName`, `dialDeviceId`), the setup-wizard-completed flag
-  (`setupCompleted`), or the "start with Windows" entry (`startWithWindows`) — those five stay
-  exactly as they were after a reset.
+  (`setupCompleted`), the "start with Windows" entry (`startWithWindows`), or the `lalin-cast://`
+  scheme registration (`deepLinkScheme`) — those six stay exactly as they were after a reset.
 - language (Thai/English)
 - the name shown over DIAL (`dialFriendlyName`) — applies immediately, visible right away to
   phones discovering the device

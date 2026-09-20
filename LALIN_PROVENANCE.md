@@ -131,3 +131,24 @@ This is a documentation-only record of the port boundary. Runtime evidence for t
 pieces above is tracked as human gates H18–H21 in `docs/plans/W6_POLISH_PLAN.md` and is **NOT_RUN**
 until recorded there; the CI smoke job is additionally gated by H20 (`continue-on-error` removed only
 after two stable runs).
+
+## Wave 7 deep link and DIAL hardening — new dependency (2026-09-21)
+
+Wave 7 (`docs/plans/W7_DEEPLINK_PLAN.md`) adds one new third-party dependency, `tauri-plugin-deep-link`
+(resolved version `2.4.10`, license `MIT OR Apache-2.0`), the single crate exception the founder
+approved for this wave only — every other new crate remains forbidden. Its scope in Lalin Cast is
+narrow and entirely local: registering, unregistering, and checking whether the `lalin-cast` URL
+scheme is present under `HKCU\Software\Classes\lalin-cast` for the current Windows account (the
+`deepLinkScheme` setting — see `PRIVACY.md`). Lalin Cast does not use the plugin's CLI-argument or
+`on_open_url` delivery path; a `lalin-cast://` URL still reaches the app the same way the existing,
+already-ported wave 3 command-line deep link does (see the wave 3 row above), through Rust's own
+`parse_cli`/`parse_launch_url` and the single-instance callback. See `THIRD_PARTY_NOTICES.md` for the
+crate's transitive dependency licenses and `docs/architecture/ADR-001-CAST-TAURI-PORT.md` for the
+security rules governing its use.
+
+The `lalin-cast://` URL scheme itself and the stricter SSDP `MAN` header validation
+(`man_header_is_discover`, an intentional DIAL discovery behavior change) are Lalin Cast's own
+design, extending existing Rust modules (`launch.rs`, `dial.rs`) rather than porting anything from
+VacuumTube or another upstream project. This is a documentation-only record of the dependency and
+port boundary. Runtime evidence is tracked as human gates H22–H23 in
+`docs/plans/W7_DEEPLINK_PLAN.md` and is **NOT_RUN** until recorded there.

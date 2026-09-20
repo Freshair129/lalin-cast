@@ -1,7 +1,7 @@
 ---
-version: "0.13.0b"
+version: "0.14.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T00:30:00+07:00,LALIN"
+last_update: "2026-09-21T01:40:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -96,6 +96,8 @@ Play owner is replaced by this candidate.
 | Sleep at end of video (not a VacuumTube feature; new in wave 6, SmartTube parity) | `injected.js` `sleepAtEnd` section (pure `sleepAtEndDecision(state, eventType, now)`, an 8 s "armed" window on `ended` that pauses the first `play`/`playing` from YouTube's own autoplay-next and shows the existing `#lalin-cast-sleep-osd` element) reading the `sleepAtEndOfVideo` pref | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `sleepAtEndDecision` unit tests (armed/timeout/pref-off) plus real autoplay-next-on-Leanback evidence (human gate H19) |
 | Tray/menu play-pause (not a VacuumTube feature; new in wave 6) | Rust tray item `tray-play-pause` and media-window menu item `play-pause`, both emitting the `lalin-cast-remote` event (`{ action: "toggle-play" }`, a one-action whitelist) to the `media` window via `emit_to`; `injected.js`'s `remote` section listens for it, rate-limited to one per 250 ms, and pauses any playing `<video>` or plays the first paused one | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `injected.test.js` toggle-play/rate-limit/off-whitelist unit tests plus real tray/menu evidence on Leanback (human gate H21) |
 | Controller Y button → help overlay (not a VacuumTube feature; new in wave 6, closes a gap left by wave 5's help overlay) | `injected.js` `controller` section wires the previously-unmapped gamepad index 3 (Y / Triangle) to the existing `toggle-help` action, gated on `controllerEnabled` | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `injected.test.js` unit test (fires only when `controllerEnabled`) plus real controller evidence (human gate H21) |
+| Stricter SSDP `MAN` validation (not a VacuumTube feature; new in wave 7, closes a gap wave 6 recorded as a characterization test) | Rust `dial.rs` pure fn `man_header_is_discover(value: &str) -> bool`, required by `is_dial_search` in addition to the existing `ST` check; accepts `MAN: ssdp:discover` with or without the UPnP-mandated surrounding quotes, case-insensitively, and rejects a missing/malformed header | wave 7 local slice — see `docs/plans/W7_DEEPLINK_PLAN.md` | `man_header_is_discover` unit tests (quoted/unquoted/case/missing/trailing-garbage) plus the wave 6 `accepts_m_search_even_with_an_incorrect_man_header` test rewritten to `rejects_…`, an intentional behavior change, plus real iPhone/Android YouTube-app discovery evidence (human gate H22) |
+| `lalin-cast://` URL scheme (not a VacuumTube feature; new in wave 7, roadmap H1) | Rust `launch.rs` `parse_launch_url` extended to accept `lalin-cast://watch?v=<id>`/`lalin-cast://playlist?list=<id>` (case-insensitive scheme/host, the existing `is_valid_video_id`/`is_valid_playlist_id` validators, unchanged for `https`) alongside the existing `https` forms; `canonical()` still always returns an `https://www.youtube.com/...` URL. Opt-in HKCU registration of the scheme itself is via the approved `tauri-plugin-deep-link` crate (`deepLinkScheme` setting, `DeepLinkExt::deep_link().register("lalin-cast")`/`unregister`) — see the security rules below | wave 7 local slice — see `docs/plans/W7_DEEPLINK_PLAN.md` | `parse_launch_url` unit tests (accept/reject matrix, `https` unchanged, `canonical()` still `https`) plus real Explorer/browser-launch and toggle-off evidence (human gate H23) |
 
 ## Endpoint and identity boundary
 
@@ -252,6 +254,30 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   are never persisted or logged either. The wave 3 command-line deep link is validated by
   `parse_launch_url` before use and is likewise never logged or persisted (see
   `docs/plans/W3_CONTROLS_PLAN.md` and `PRIVACY.md`).
+- Added in wave 7, `tauri-plugin-deep-link` is the one crate exception to the standing
+  no-new-crate rule (founder-approved for this wave only). It is used **only** to register,
+  unregister and check the `lalin-cast` URL-scheme entry under
+  `HKCU\Software\Classes\lalin-cast` for the current Windows account (the `deepLinkScheme`
+  setting) — no other capability of the plugin is called. `tauri-plugin-single-instance`'s own
+  `deep-link` feature is **deliberately not enabled**, and neither `handle_cli_arguments` nor
+  `on_open_url` is used: Windows already delivers a `lalin-cast://` URL as a new process's
+  command-line argument, and that argument goes through the same, already-tested `parse_cli` +
+  single-instance-callback path the wave 3 command-line deep link uses — enabling both delivery
+  paths at once would create a second, redundant code path for the same URL with no benefit. No
+  capability file in `capabilities/**` grants any `deep-link:*` permission (`capabilities/default.json`
+  is byte-identical to before wave 7); the plugin's commands are reachable from Rust only, never
+  from a page. `tauri.conf.json` deliberately carries **no** `plugins."deep-link"` block either:
+  `register`/`unregister`/`is_registered` each take the protocol as an argument, so the plugin needs
+  no configuration of its own, and Tauri's bundler reads that block to associate schemes at install
+  time — which would register `lalin-cast://` for every user who installs the app regardless of the
+  opt-in setting and make the opt-in promise in `README.md`/`PRIVACY.md` false. A unit test
+  (`tauri_conf_declares_no_deep_link_plugin_config`) asserts the block stays absent. See `PRIVACY.md` for what is written to the registry and `docs/plans/W7_DEEPLINK_PLAN.md`
+  for the full contract.
+- Added in wave 7, the stricter `MAN` header check on SSDP `M-SEARCH` requests
+  (`man_header_is_discover`) is an **intentional behavior change** to DIAL discovery, not a bug fix —
+  wave 6 had left the missing check as a recorded characterization test. It is gated on real-device
+  evidence, human gate H22 (iPhone/Android YouTube app must still find Lalin Cast after the change);
+  a failure there reverts this check before release.
 - Electron remains the fallback until Tauri endpoint, sign-in, playback,
   controller, fullscreen and lifecycle parity is evidenced.
 
@@ -332,3 +358,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.11.0b | 2026-09-20 | beta | Wave 4: added feature-matrix rows for codec filter, touch overlay, sleep timer, mini-player, hardware decoding and the experimental ARM64/winget release matrix; documented the `toggle-mini` addition to the `lalin-cast-shell` whitelist, the single-constant `additional_browser_args` rule, and the wave 4 `settings_set` whitelist keys (see `docs/plans/W4_PLAYBACK_PLAN.md`) | uncommitted | LALIN |
 | 0.12.0b | 2026-09-20 | beta | Wave 5: added feature-matrix rows for the Studio launcher lifecycle (CLI + `lifecycle.json`), window-position memory, start with Windows, offline auto-retry, diagnostics snapshot, now-playing title, playback speed keys and the help overlay; documented the `settings`/`status` capability additions, the validated/rate-limited `lalin-cast-media` event on the unchanged remote capability, the fixed-argument `reg.exe` autostart runner, the URL-free `lifecycle.json` schema, and that `windowBounds` is Rust-only (see `docs/plans/W5_DESKTOP_PLAN.md` and `docs/architecture/CAST_LAUNCHER_IPC.md`) | uncommitted | LALIN |
 | 0.13.0b | 2026-09-21 | beta | Wave 6: added feature-matrix rows for UI scale, settings profiles, reset to defaults, the launch-command copy button, sleep at end of video, tray/menu play-pause and the controller Y-button help binding; documented the three new `settings` capability permissions, that profiles/reset route through the existing `apply_setting` whitelist only, that `uiScale` is set-checked, and the one-action `lalin-cast-remote` whitelist on the unchanged remote capability (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |
+| 0.14.0b | 2026-09-21 | beta | Wave 7: added feature-matrix rows for the stricter SSDP `MAN` validation and the `lalin-cast://` URL scheme; documented that `tauri-plugin-deep-link` is the sole approved crate exception used only for HKCU registry registration, that `tauri-plugin-single-instance`'s `deep-link` feature is deliberately not enabled so the URL keeps arriving through the existing `parse_cli` path, that no `deep-link:*` capability permission is granted anywhere, and that the `MAN` hardening is an intentional DIAL behavior change gated on human gate H22 (see `docs/plans/W7_DEEPLINK_PLAN.md`) | uncommitted | LALIN |

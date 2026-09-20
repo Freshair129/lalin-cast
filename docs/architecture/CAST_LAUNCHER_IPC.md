@@ -1,7 +1,7 @@
 ---
-version: "0.2.0b"
+version: "0.3.0b"
 created_at: "2026-09-20T23:55:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T00:30:00+07:00,LALIN"
+last_update: "2026-09-21T01:40:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -54,6 +54,13 @@ instead of a live IPC channel.
   account, not a network-reachable resource;
 - no change to the existing deep-link/URL argument behavior from wave 3 — this spec only adds the
   `--lifecycle`/`--request-id` flags and the state file around it.
+- no `lalin-cast://` URL scheme as a Studio IPC channel — that scheme (wave 7,
+  `docs/plans/W7_DEEPLINK_PLAN.md`) exists for end users and the operating system (File Explorer, a
+  browser, or another app) to open a link into Lalin Cast, not for Studio to drive it. Studio should
+  keep launching and controlling Lalin Cast the way this spec already documents: `--lifecycle`
+  plus a trailing YouTube URL argument, the path with existing unit-test and CI-smoke coverage.
+  Nothing about the CLI grammar, the state file, or the sequences below changes because the scheme
+  exists.
 
 ## Contract mapping
 
@@ -351,3 +358,4 @@ H13's own scope.
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Documented the wave 5 CLI + `lifecycle.json` Studio launcher IPC contract: flag grammar, state-file schema/location, atomic write, launch/focus/close/timeout sequences, exit codes, scope boundary, Studio polling guidance and a PowerShell H13 driver example | uncommitted | LALIN |
 | 0.2.0b | 2026-09-21 | candidate | Wave 6: pointed to `scripts/lifecycle-driver.ps1` and the CI `smoke` job as the automated evidence path toward H13, without changing the underlying CLI/state-file contract (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |
+| 0.3.0b | 2026-09-21 | candidate | Wave 7: added a non-goal stating that the new `lalin-cast://` URL scheme is for end users and the OS, not a Studio IPC channel, and that Studio should keep using `--lifecycle` plus a trailing URL argument — no change to the CLI grammar or state-file contract itself (see `docs/plans/W7_DEEPLINK_PLAN.md`) | uncommitted | LALIN |
