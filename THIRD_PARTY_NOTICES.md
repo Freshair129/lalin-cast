@@ -628,13 +628,17 @@ crate name then version.
 `https://github.com/shy1132/VacuumTube`, baseline `v1.8.2` / commit `4dd3ee4`) ไว้เป็นข้อมูล
 อ้างอิงพฤติกรรม/fallback เท่านั้น ไม่ใช่ส่วนหนึ่งของ build output ของ Lalin Cast โค้ดนี้อยู่ภายใต้
 สัญญาอนุญาต MIT ของผู้เขียนเดิม (ชื่อผู้ใช้ "shy") ซึ่งคัดลอกข้อความเต็มไว้ด้านล่างตามเงื่อนไขของ
-สัญญาอนุญาต MIT (ต้องแนบข้อความสัญญาอนุญาตและประกาศลิขสิทธิ์ไว้ในทุกสำเนา) โค้ด Rust/Tauri ของ
-Lalin Cast เองไม่ได้คัดลอกโมดูล DOM ของ VacuumTube มาใช้ (ดู `LALIN_PROVENANCE.md`)
+สัญญาอนุญาต MIT (ต้องแนบข้อความสัญญาอนุญาตและประกาศลิขสิทธิ์ไว้ในทุกสำเนา) ตั้งแต่ wave 3
+`src-tauri/injected.js` ของ Lalin Cast port โมดูลบางส่วนของ VacuumTube ภายใต้ MIT เดียวกัน (ดู
+`LALIN_PROVENANCE.md`) และส่วน codec filter สืบทอดต่อจาก erkserkserks/h264ify (MIT, Copyright (c)
+2015 erkserkserks) ซึ่งข้อความ MIT ด้านล่างครอบคลุมเช่นกัน
 
 The `reference/vacuumtube/` directory retains a copy of the VacuumTube project (upstream
 `https://github.com/shy1132/VacuumTube`, baseline `v1.8.2` / commit `4dd3ee4`) purely as a
 behavior reference and fallback; it is not part of the Lalin Cast Rust/Tauri build output. It is
-distributed under the MIT License of its original author (username "shy"). The full, unmodified
+distributed under the MIT License of its original author (username "shy"). Since wave 3, parts of `src-tauri/injected.js` are ported from
+VacuumTube modules under the same MIT terms (see `LALIN_PROVENANCE.md`), and the codec-filter
+section further derives from erkserkserks/h264ify (MIT, Copyright (c) 2015 erkserkserks). The full, unmodified
 license text from `reference/vacuumtube/LICENSE` is reproduced below, as the MIT License requires
 the license text and copyright notice to accompany every copy of the software:
 

@@ -1,0 +1,41 @@
+# Lalin Cast — winget default-locale manifest (TEMPLATE, not yet submitted)
+#
+# See Lalin.LalinCast.yaml for the PackageIdentifier proposal note, and
+# packaging/winget/README.md for the full fill-and-submit procedure.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: Lalin.LalinCast
+PackageVersion: "{{VERSION}}"
+PackageLocale: en-US
+Publisher: LALIN
+PublisherUrl: https://github.com/Freshair129/lalin-cast
+PublisherSupportUrl: https://github.com/Freshair129/lalin-cast/issues
+PackageName: Lalin Cast
+PackageUrl: https://github.com/Freshair129/lalin-cast
+# Lalin Cast's own source license is UNDECIDED (see docs/LICENSE_DECISION.md
+# — status "ยังไม่ตัดสินใจ" / "Undecided" as of this template). "Proprietary"
+# below reflects the current all-rights-reserved-by-default state and is a
+# PLACEHOLDER, not a final decision. Update this field (and LicenseUrl) once
+# the project founder chooses MIT / Apache-2.0 / a real proprietary EULA —
+# do not submit this manifest to winget-pkgs before that.
+License: Proprietary
+LicenseUrl: https://github.com/Freshair129/lalin-cast/blob/main/docs/LICENSE_DECISION.md
+Copyright: Copyright (c) LALIN
+ShortDescription: Standalone Windows app for the YouTube Leanback (TV) interface with DIAL casting.
+Description: |-
+  Lalin Cast is an independent, third-party Rust + Tauri v2 Windows app that loads the real YouTube
+  Leanback (TV) surface in a remote WebView. It adds DIAL discovery and casting, a system tray icon,
+  game-controller and keyboard shortcuts, a signed auto-updater, and a native settings window. Lalin
+  Cast is not affiliated with, endorsed by, or sponsored by YouTube or Google; use of it remains
+  subject to YouTube's own Terms of Service.
+Moniker: lalincast
+Tags:
+  - youtube
+  - leanback
+  - dial
+  - cast
+  - tv
+  - media-player
+  - tauri
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

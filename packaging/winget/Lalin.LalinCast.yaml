@@ -1,0 +1,15 @@
+# Lalin Cast — winget version manifest (TEMPLATE, not yet submitted)
+#
+# PackageIdentifier "Lalin.LalinCast" is a PROPOSAL, not a final decision —
+# it is pending the project naming decision (H1/H15 in
+# docs/plans/W4_PLAYBACK_PLAN.md). Do not submit this manifest set to
+# microsoft/winget-pkgs until that naming decision is confirmed and every
+# {{PLACEHOLDER}} below and in the other two manifests is filled in. See
+# packaging/winget/README.md for the full fill-and-submit procedure.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+
+PackageIdentifier: Lalin.LalinCast
+PackageVersion: "{{VERSION}}"
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

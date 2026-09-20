@@ -10,7 +10,7 @@
  */
 
 const assert = require("assert");
-const { init } = require("./settings.js");
+const { init, formatRemaining } = require("./settings.js");
 
 // ---------------------------------------------------------------------------
 // Minimal stub DOM
@@ -69,20 +69,35 @@ function createStubDom() {
     "language-th-label",
     "language-en",
     "language-en-label",
-    "fullscreen-toggle",
-    "fullscreen-label",
-    "keep-on-top-toggle",
-    "keep-on-top-label",
     "tv-heading",
     "dial-name-label",
     "dial-name-input",
     "dial-status",
     "open-setup-btn",
+    "playback-heading",
+    "sleep-timer-label",
+    "sleep-timer-select",
+    "sleep-timer-remaining",
+    "codec-filter-label",
+    "codec-filter-select",
+    "codec-filter-note",
+    "hardware-decoding-toggle",
+    "hardware-decoding-label",
+    "hardware-decoding-note",
+    "display-heading",
+    "fullscreen-toggle",
+    "fullscreen-label",
+    "keep-on-top-toggle",
+    "keep-on-top-label",
+    "mini-player-toggle",
+    "mini-player-label",
     "controls-heading",
     "controller-toggle",
     "controller-label",
     "pause-on-blur-toggle",
     "pause-on-blur-label",
+    "touch-overlay-toggle",
+    "touch-overlay-label",
     "controls-table-caption",
     "controls-col-action",
     "controls-col-keyboard",
@@ -103,7 +118,7 @@ function createStubDom() {
   });
   // Match the `hidden` attribute settings.html ships with statically, so the
   // stub starts from the same visibility as a freshly loaded real page.
-  ["settings-error", "check-updates-result", "state-no-tauri"].forEach((id) => {
+  ["settings-error", "check-updates-result", "state-no-tauri", "sleep-timer-remaining"].forEach((id) => {
     elements[id].hidden = true;
   });
   // Match the static `value` attributes on the two radios.
@@ -113,6 +128,8 @@ function createStubDom() {
   const docListeners = {};
   const doc = {
     documentElement: { lang: "" },
+    activeElement: null,
+    hidden: false,
     getElementById: (id) => elements[id] || null,
     createElement: () => makeElement(null),
     addEventListener(type, handler) {
@@ -124,6 +141,23 @@ function createStubDom() {
   };
 
   return { doc, elements };
+}
+
+function makeFakeTimers() {
+  const timers = [];
+  let nextId = 1;
+  return {
+    setInterval(fn, ms) {
+      const id = nextId++;
+      timers.push({ id, fn, ms });
+      return id;
+    },
+    clearInterval(id) {
+      const idx = timers.findIndex((t) => t.id === id);
+      if (idx !== -1) timers.splice(idx, 1);
+    },
+    timers,
+  };
 }
 
 function makeTauriStub(overrides) {
@@ -159,6 +193,11 @@ function baseSettings(overrides) {
       pauseOnBlur: false,
       controllerEnabled: true,
       setupCompleted: true,
+      sleepTimerMinutes: 0,
+      codecFilter: "off",
+      hardwareDecoding: true,
+      touchOverlay: true,
+      miniPlayer: false,
     },
     overrides,
   );
@@ -168,9 +207,11 @@ function baseSettingsData(overrides) {
   return Object.assign(
     {
       lang: "en",
-      version: "0.3.0",
+      version: "0.4.0",
       settings: baseSettings(),
       dial: { state: "ready", host: "192.168.1.50", port: 51234, message: null },
+      sleepRemainingSeconds: null,
+      hardwareDecodingRestartRequired: false,
     },
     overrides,
   );
@@ -178,6 +219,15 @@ function baseSettingsData(overrides) {
 
 function nextTick() {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function makeWinWithTimers(data, tauri, fake) {
+  return {
+    __LALIN_SETTINGS__: data,
+    __TAURI__: tauri,
+    setInterval: fake.setInterval,
+    clearInterval: fake.clearInterval,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,8 +263,6 @@ pending.push(
     // General
     assert.strictEqual(elements["language-en"].checked, true);
     assert.strictEqual(elements["language-th"].checked, false);
-    assert.strictEqual(elements["fullscreen-toggle"].checked, false);
-    assert.strictEqual(elements["keep-on-top-toggle"].checked, false);
 
     // TV and phone
     assert.strictEqual(elements["dial-name-input"].value, "Lalin Cast");
@@ -222,17 +270,33 @@ pending.push(
     assert.strictEqual(elements["dial-status"].getAttribute("data-level"), "good");
     assert.ok(elements["open-setup-btn"].textContent.length > 0);
 
+    // Playback
+    assert.strictEqual(elements["sleep-timer-select"].children.length, 6);
+    assert.strictEqual(elements["sleep-timer-select"].value, "0");
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, true, "no countdown while no timer is running");
+    assert.strictEqual(elements["codec-filter-select"].children.length, 2);
+    assert.strictEqual(elements["codec-filter-select"].value, "off");
+    assert.ok(elements["codec-filter-note"].textContent.length > 0);
+    assert.strictEqual(elements["hardware-decoding-toggle"].checked, true);
+    assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "info");
+
+    // Display
+    assert.strictEqual(elements["fullscreen-toggle"].checked, false);
+    assert.strictEqual(elements["keep-on-top-toggle"].checked, false);
+    assert.strictEqual(elements["mini-player-toggle"].checked, false);
+
     // Controls
     assert.strictEqual(elements["controller-toggle"].checked, true);
     assert.strictEqual(elements["pause-on-blur-toggle"].checked, false);
-    assert.strictEqual(elements["controls-table-body"].children.length, 10);
+    assert.strictEqual(elements["touch-overlay-toggle"].checked, true);
+    assert.strictEqual(elements["controls-table-body"].children.length, 11);
     const firstRow = elements["controls-table-body"].children[0];
     assert.strictEqual(firstRow.children.length, 3);
     assert.ok(firstRow.children[0].textContent.includes("Open settings"));
     assert.ok(firstRow.children[0].textContent.includes("เปิดการตั้งค่า"));
 
     // Updates and about
-    assert.ok(elements["version-line"].textContent.includes("0.3.0"));
+    assert.ok(elements["version-line"].textContent.includes("0.4.0"));
     assert.ok(elements["unofficial-text"].textContent.length > 0);
     assert.ok(elements["legal-files-text"].textContent.includes("PRIVACY.md"));
     assert.ok(elements["legal-files-text"].textContent.includes("TERMS.md"));
@@ -262,6 +326,8 @@ pending.push(
         Promise.resolve({
           settings: baseSettings({ language: args.value }),
           dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
         }),
     });
     const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
@@ -297,8 +363,11 @@ pending.push(
 const BOOLEAN_CONTROLS = [
   { id: "fullscreen-toggle", key: "fullscreen" },
   { id: "keep-on-top-toggle", key: "keepOnTop" },
+  { id: "mini-player-toggle", key: "miniPlayer" },
   { id: "controller-toggle", key: "controllerEnabled" },
   { id: "pause-on-blur-toggle", key: "pauseOnBlur" },
+  { id: "touch-overlay-toggle", key: "touchOverlay" },
+  { id: "hardware-decoding-toggle", key: "hardwareDecoding" },
 ];
 
 BOOLEAN_CONTROLS.forEach(({ id, key }) => {
@@ -310,6 +379,8 @@ BOOLEAN_CONTROLS.forEach(({ id, key }) => {
           Promise.resolve({
             settings: baseSettings({ [key]: args.value }),
             dial: baseSettingsData().dial,
+            sleepRemainingSeconds: null,
+            hardwareDecodingRestartRequired: false,
           }),
       });
       const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
@@ -325,6 +396,57 @@ BOOLEAN_CONTROLS.forEach(({ id, key }) => {
     }),
   );
 });
+
+pending.push(
+  test("selecting a sleep timer duration calls settings_set('sleepTimerMinutes', <int>) and shows the countdown", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_set: (args) =>
+        Promise.resolve({
+          settings: baseSettings({ sleepTimerMinutes: args.value }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: 1800,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+
+    elements["sleep-timer-select"].value = "30";
+    elements["sleep-timer-select"].dispatch("change");
+    await nextTick();
+
+    assert.deepStrictEqual(invokeCalls[0].args, { key: "sleepTimerMinutes", value: 30 });
+    assert.strictEqual(elements["sleep-timer-select"].value, "30");
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, false);
+    assert.ok(elements["sleep-timer-remaining"].textContent.includes("30:00"));
+  }),
+);
+
+pending.push(
+  test("selecting the codec filter calls settings_set('codecFilter', <string>) and applies the note", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_set: (args) =>
+        Promise.resolve({
+          settings: baseSettings({ codecFilter: args.value }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+
+    elements["codec-filter-select"].value = "h264";
+    elements["codec-filter-select"].dispatch("change");
+    await nextTick();
+
+    assert.deepStrictEqual(invokeCalls[0].args, { key: "codecFilter", value: "h264" });
+    assert.strictEqual(elements["codec-filter-select"].value, "h264");
+    assert.ok(elements["codec-filter-note"].textContent.length > 0);
+  }),
+);
 
 pending.push(
   test("a settings_set rejection reverts the toggled control and shows an inline error", async () => {
@@ -346,7 +468,51 @@ pending.push(
 );
 
 pending.push(
-  test("a successful settings_set re-renders every control from the returned snapshot, including DIAL status", async () => {
+  test("a settings_set rejection for an out-of-set sleep timer value reverts the select and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () => Promise.reject(new Error("value not in allowed set")),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ sleepTimerMinutes: 15 }), sleepRemainingSeconds: 900 }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["sleep-timer-select"].value = "60";
+    elements["sleep-timer-select"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["sleep-timer-select"].value, "15", "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("not in allowed set"));
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for an out-of-set codec filter value reverts the select and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () => Promise.reject(new Error("unknown codec filter")),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ codecFilter: "off" }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["codec-filter-select"].value = "h264";
+    elements["codec-filter-select"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["codec-filter-select"].value, "off", "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("unknown codec filter"));
+  }),
+);
+
+pending.push(
+  test("a successful settings_set re-renders every control from the returned snapshot, including DIAL status and playback fields", async () => {
     const { doc, elements } = createStubDom();
     const { tauri } = makeTauriStub({
       settings_set: () =>
@@ -359,8 +525,15 @@ pending.push(
             pauseOnBlur: true,
             controllerEnabled: false,
             setupCompleted: true,
+            sleepTimerMinutes: 60,
+            codecFilter: "h264",
+            hardwareDecoding: false,
+            touchOverlay: false,
+            miniPlayer: true,
           },
           dial: { state: "degraded", host: null, port: null, message: "rebind" },
+          sleepRemainingSeconds: 3599,
+          hardwareDecodingRestartRequired: true,
         }),
     });
     const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
@@ -374,6 +547,14 @@ pending.push(
     assert.strictEqual(elements["keep-on-top-toggle"].checked, true);
     assert.strictEqual(elements["pause-on-blur-toggle"].checked, true);
     assert.strictEqual(elements["controller-toggle"].checked, false);
+    assert.strictEqual(elements["mini-player-toggle"].checked, true);
+    assert.strictEqual(elements["touch-overlay-toggle"].checked, false);
+    assert.strictEqual(elements["hardware-decoding-toggle"].checked, false);
+    assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "warn");
+    assert.strictEqual(elements["sleep-timer-select"].value, "60");
+    assert.strictEqual(elements["codec-filter-select"].value, "h264");
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, false);
+    assert.ok(elements["sleep-timer-remaining"].textContent.includes("59:59"));
     assert.strictEqual(elements["dial-name-input"].value, "Living Room TV");
     assert.ok(elements["dial-status"].textContent.includes("rebind"));
     assert.strictEqual(elements["dial-status"].getAttribute("data-level"), "warn");
@@ -388,6 +569,8 @@ pending.push(
         Promise.resolve({
           settings: baseSettings({ dialFriendlyName: args.value }),
           dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
         }),
     });
     const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
@@ -403,13 +586,15 @@ pending.push(
 );
 
 pending.push(
-  test("pressing Enter in the DIAL name field commits immediately", async () => {
+  test("pressing Enter in the DIAL name field commits immediately (no double-commit)", async () => {
     const { doc, elements } = createStubDom();
     const { tauri, invokeCalls } = makeTauriStub({
       settings_set: (args) =>
         Promise.resolve({
           settings: baseSettings({ dialFriendlyName: args.value }),
           dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
         }),
     });
     const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
@@ -502,6 +687,56 @@ pending.push(
 });
 
 pending.push(
+  test("formatRemaining formats seconds as mm:ss and returns null for anything invalid", () => {
+    assert.strictEqual(formatRemaining(0), "00:00");
+    assert.strictEqual(formatRemaining(5), "00:05");
+    assert.strictEqual(formatRemaining(65), "01:05");
+    assert.strictEqual(formatRemaining(3599), "59:59");
+    assert.strictEqual(formatRemaining(3661), "61:01");
+    assert.strictEqual(formatRemaining(null), null);
+    assert.strictEqual(formatRemaining(undefined), null);
+    assert.strictEqual(formatRemaining(-1), null);
+    assert.strictEqual(formatRemaining("30"), null);
+    assert.strictEqual(formatRemaining(NaN), null);
+  }),
+);
+
+pending.push(
+  test("renders a visible sleep-timer countdown when sleepRemainingSeconds is a number", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ sleepTimerMinutes: 15 }), sleepRemainingSeconds: 125 }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, false);
+    assert.ok(elements["sleep-timer-remaining"].textContent.includes("02:05"));
+  }),
+);
+
+pending.push(
+  test("hides the sleep-timer countdown when sleepRemainingSeconds is null", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = { __LALIN_SETTINGS__: baseSettingsData({ sleepRemainingSeconds: null }), __TAURI__: tauri };
+    init(doc, win);
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("shows the hardware-decoding note as a warning when hardwareDecodingRestartRequired is true", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = { __LALIN_SETTINGS__: baseSettingsData({ hardwareDecodingRestartRequired: true }), __TAURI__: tauri };
+    init(doc, win);
+    assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "warn");
+    assert.ok(elements["hardware-decoding-note"].textContent.length > 0);
+  }),
+);
+
+pending.push(
   test("missing Tauri API shows the fallback state and hides the main content", () => {
     const { doc, elements } = createStubDom();
     const win = { __LALIN_SETTINGS__: baseSettingsData() };
@@ -538,7 +773,13 @@ pending.push(
   test("repeated init() calls do not double-bind listeners", async () => {
     const { doc, elements } = createStubDom();
     const { tauri, invokeCalls } = makeTauriStub({
-      settings_set: () => Promise.resolve({ settings: baseSettings(), dial: baseSettingsData().dial }),
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings(),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
     });
     const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
     init(doc, win);
@@ -549,6 +790,113 @@ pending.push(
     await nextTick();
 
     assert.strictEqual(invokeCalls.filter((c) => c.cmd === "settings_set").length, 1);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Background refresh loop (settings_get every 5s, paused while document.hidden,
+// never overwriting a focused input).
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("starts exactly one 5s settings_get refresh timer, even across repeated init() calls", () => {
+    const { doc } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_get: () => Promise.resolve(baseSettingsData()) });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+    init(doc, win);
+
+    assert.strictEqual(fake.timers.length, 1);
+    assert.strictEqual(fake.timers[0].ms, 5000);
+  }),
+);
+
+pending.push(
+  test("the refresh timer calls settings_get and repaints DIAL status, countdown and mini state", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_get: () =>
+        Promise.resolve({
+          settings: baseSettings({ miniPlayer: true, sleepTimerMinutes: 15 }),
+          dial: { state: "degraded", host: null, port: null, message: "rebind" },
+          sleepRemainingSeconds: 42,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    fake.timers[0].fn();
+    await nextTick();
+
+    assert.ok(invokeCalls.some((c) => c.cmd === "settings_get"));
+    assert.ok(elements["dial-status"].textContent.includes("rebind"));
+    assert.strictEqual(elements["dial-status"].getAttribute("data-level"), "warn");
+    assert.strictEqual(elements["mini-player-toggle"].checked, true);
+    assert.strictEqual(elements["sleep-timer-remaining"].hidden, false);
+    assert.ok(elements["sleep-timer-remaining"].textContent.includes("00:42"));
+  }),
+);
+
+pending.push(
+  test("the refresh timer skips settings_get while document.hidden and resumes once visible", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub({
+      settings_get: () =>
+        Promise.resolve({
+          settings: baseSettings({ dialFriendlyName: "Polled Name" }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData(), tauri, fake);
+    init(doc, win);
+
+    doc.hidden = true;
+    fake.timers[0].fn();
+    await nextTick();
+    assert.strictEqual(invokeCalls.filter((c) => c.cmd === "settings_get").length, 0, "no poll while hidden");
+    assert.strictEqual(elements["dial-name-input"].value, "Lalin Cast", "unchanged while hidden");
+
+    doc.hidden = false;
+    fake.timers[0].fn();
+    await nextTick();
+    assert.strictEqual(invokeCalls.filter((c) => c.cmd === "settings_get").length, 1, "polls once visible again");
+    assert.strictEqual(elements["dial-name-input"].value, "Polled Name");
+  }),
+);
+
+pending.push(
+  test("the refresh timer never overwrites the DIAL name field while it has focus", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_get: () =>
+        Promise.resolve({
+          settings: baseSettings({ dialFriendlyName: "Server Name" }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(baseSettingsData({ settings: baseSettings({ dialFriendlyName: "Old Name" }) }), tauri, fake);
+    init(doc, win);
+
+    elements["dial-name-input"].value = "Typing a new name...";
+    doc.activeElement = elements["dial-name-input"];
+
+    fake.timers[0].fn();
+    await nextTick();
+    assert.strictEqual(elements["dial-name-input"].value, "Typing a new name...", "not overwritten while focused");
+
+    doc.activeElement = null;
+    fake.timers[0].fn();
+    await nextTick();
+    assert.strictEqual(elements["dial-name-input"].value, "Server Name", "applied once focus is elsewhere");
   }),
 );
 

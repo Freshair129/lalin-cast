@@ -4,11 +4,14 @@ mod launch;
 mod network;
 mod settings;
 mod setup;
+mod sleep;
 mod status;
 mod surface;
 mod tray;
 mod updater;
+mod window_mode;
 
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -19,6 +22,10 @@ use tauri_plugin_store::StoreExt;
 
 pub(crate) const MEDIA_LABEL: &str = "media";
 const MEDIA_TITLE: &str = "Lalin Cast";
+/// Minimum inner size of the media window (logical pixels). Shared with
+/// `window_mode` so mini-player can relax and later restore it.
+pub(crate) const MEDIA_MIN_WIDTH: f64 = 720.0;
+pub(crate) const MEDIA_MIN_HEIGHT: f64 = 405.0;
 const WINDOW_TITLE_SEPARATOR: &str = " — ";
 const WINDOW_TITLE_MAX_CHARS: usize = 120;
 const LEANBACK_URL: &str = "https://www.youtube.com/tv";
@@ -27,18 +34,40 @@ const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION")
 );
 const INJECTED_SCRIPT: &str = include_str!("../injected.js");
+/// Browser arguments used for the `media` window when `hardwareDecoding` is
+/// `false`, applied once at window build time (a change to the setting only
+/// takes effect after the app restarts — see `hardware_decoding_restart_required`).
+///
+/// Reading tauri 2.11.5's doc comment on `WebviewWindowBuilder::additional_browser_args`
+/// (`webview/webview_window.rs`) confirms this call **replaces** wry's
+/// default argument string rather than appending to it. wry 0.55.1's
+/// `WebViewAttributes::default()` (`src/lib.rs:843`) defaults `autoplay:
+/// true`, and its `webview2::mod::new` (`src/webview2/mod.rs:294-320`)
+/// appends `--autoplay-policy=no-user-gesture-required` to the default
+/// browser-arg string whenever `attributes.autoplay` is true — in addition
+/// to `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`.
+/// Lalin Cast never calls `.autoplay(false)` (grep confirms it — see
+/// above), so that autoplay flag is part of the default string every
+/// earlier wave has shipped. The constant below therefore repeats wry's
+/// full default — both switches — and appends
+/// `--disable-accelerated-video-decode`, rather than passing the new flag
+/// alone and silently losing the "no WebView2 mini menu / no SmartScreen
+/// prompt / autoplay without a user gesture" behavior every other build
+/// gets for free.
+const HARDWARE_DECODING_DISABLED_BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-accelerated-video-decode";
 
-/// Rust → page: `{ lang, controllerEnabled, pauseOnBlur }`, emitted to the
-/// `media` window whenever one of those settings changes from the settings
-/// window. Never carries `deepLink` — that only ever travels once, in the
-/// `__LALIN_PREFS__` init script or on [`DEEPLINK_EVENT`].
+/// Rust → page: `{ lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay }`,
+/// emitted to the `media` window whenever one of those settings changes from
+/// the settings window. Never carries `deepLink` — that only ever travels
+/// once, in the `__LALIN_PREFS__` init script or on [`DEEPLINK_EVENT`].
 const PREFS_EVENT: &str = "lalin-cast-prefs";
 /// Rust → page: `{ url }`, emitted to the `media` window when a running
 /// instance receives a launch URL via the single-instance callback.
 const DEEPLINK_EVENT: &str = "lalin-cast-deeplink";
-/// Page → Rust: `{ action: "toggle-fullscreen" | "open-settings" }`, emitted
-/// by `injected.js` for Ctrl+O / F11 / controller R3. Validated against a
-/// two-action whitelist and rate-limited (see [`register_shell_listener`]).
+/// Page → Rust: `{ action: "toggle-fullscreen" | "open-settings" | "toggle-mini" }`,
+/// emitted by `injected.js` for Ctrl+O / F11 / controller R3 / Ctrl+Shift+M.
+/// Validated against a three-action whitelist and rate-limited (see
+/// [`register_shell_listener`]).
 const SHELL_EVENT: &str = "lalin-cast-shell";
 const SHELL_RATE_LIMIT: Duration = Duration::from_millis(500);
 
@@ -70,6 +99,8 @@ struct PrefsPayload {
     lang: &'static str,
     controller_enabled: bool,
     pause_on_blur: bool,
+    codec_filter: String,
+    touch_overlay: bool,
     deep_link: Option<String>,
 }
 
@@ -88,17 +119,21 @@ struct PrefsEventPayload {
     lang: &'static str,
     controller_enabled: bool,
     pause_on_blur: bool,
+    codec_filter: String,
+    touch_overlay: bool,
 }
 
-/// Emits the current `lang`/`controllerEnabled`/`pauseOnBlur` to the `media`
-/// window on [`PREFS_EVENT`]. Called from `settings::settings_set` after any
-/// of those three settings changes.
+/// Emits the current `lang`/`controllerEnabled`/`pauseOnBlur`/`codecFilter`/
+/// `touchOverlay` to the `media` window on [`PREFS_EVENT`]. Called from
+/// `settings::settings_set` after any of those settings changes.
 pub(crate) fn emit_prefs(app: &tauri::AppHandle) {
     let lang = i18n::load(app);
     let payload = PrefsEventPayload {
         lang: lang.store_value(),
         controller_enabled: read_bool_setting_or(app, "controllerEnabled", true),
         pause_on_blur: read_bool_setting_or(app, "pauseOnBlur", false),
+        codec_filter: read_string_setting_or(app, "codecFilter", "off"),
+        touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
     };
     let _ = app.emit_to(MEDIA_LABEL, PREFS_EVENT, &payload);
 }
@@ -110,13 +145,39 @@ struct DeepLinkEventPayload {
     url: String,
 }
 
-/// One `lalin-cast-shell` action, per the two-action whitelist in the
-/// contract. Anything else in the payload's `action` field is discarded by
-/// [`parse_shell_action`].
+/// Managed once, at `build_media_window` time, with whatever
+/// `hardwareDecoding` value that build actually used for
+/// `additional_browser_args`. `settings::hardware_decoding_restart_required`
+/// compares this against the live store value: they can only diverge after
+/// the user flips the toggle in Settings, since nothing else ever writes
+/// `hardwareDecoding`, and — unlike `fullscreen`/`keepOnTop` — there is no
+/// live window API to change a webview's browser args after it was built.
+pub(crate) struct HardwareDecodingUsed(pub(crate) AtomicBool);
+
+/// Whether the settings window should tell the user that a
+/// `hardwareDecoding` change needs an app restart to take effect: `true`
+/// when the live store value no longer matches what the `media` window was
+/// actually built with. Before the media window exists at all — the very
+/// brief window between the `setup` hook starting and `build_media_window`
+/// returning — the built-with value is assumed to be `true` (the store
+/// default), so this returns `false` unless the store already says `false`.
+pub(crate) fn hardware_decoding_restart_required(app: &tauri::AppHandle) -> bool {
+    let used = app
+        .try_state::<HardwareDecodingUsed>()
+        .map(|state| state.0.load(AtomicOrdering::Relaxed))
+        .unwrap_or(true);
+    let current = read_bool_setting_or(app, "hardwareDecoding", true);
+    used != current
+}
+
+/// One `lalin-cast-shell` action, per the three-action whitelist in the
+/// contract (`toggle-mini` added in wave 4). Anything else in the payload's
+/// `action` field is discarded by [`parse_shell_action`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShellAction {
     ToggleFullscreen,
     OpenSettings,
+    ToggleMini,
 }
 
 #[derive(Deserialize)]
@@ -132,6 +193,7 @@ fn parse_shell_action(payload: &str) -> Option<ShellAction> {
     match raw.action.as_str() {
         "toggle-fullscreen" => Some(ShellAction::ToggleFullscreen),
         "open-settings" => Some(ShellAction::OpenSettings),
+        "toggle-mini" => Some(ShellAction::ToggleMini),
         _ => None,
     }
 }
@@ -169,10 +231,11 @@ impl ShellRateLimiter {
 }
 
 /// Registers the app-wide listener for [`SHELL_EVENT`]: validates the
-/// payload against the two-action whitelist, applies the 500 ms rate
+/// payload against the three-action whitelist, applies the 500 ms rate
 /// limiter, and dispatches. `toggle-fullscreen` toggles the `media` window
 /// and persists the new value (mirrors the media menu's own
-/// `toggle-fullscreen` item); `open-settings` opens the settings window.
+/// `toggle-fullscreen` item); `open-settings` opens the settings window;
+/// `toggle-mini` toggles mini-player mode.
 fn register_shell_listener(app: &tauri::AppHandle) {
     let limiter = ShellRateLimiter::new();
     let app_handle = app.clone();
@@ -188,12 +251,16 @@ fn register_shell_listener(app: &tauri::AppHandle) {
                 if let Some(window) = app_handle.get_webview_window(MEDIA_LABEL) {
                     if let Ok(current) = window.is_fullscreen() {
                         let next = !current;
+                        if next {
+                            window_mode::leave_mini_if_active(&app_handle);
+                        }
                         let _ = window.set_fullscreen(next);
                         write_bool_setting(&app_handle, "fullscreen", next);
                     }
                 }
             }
             ShellAction::OpenSettings => settings::open_settings_window(&app_handle),
+            ShellAction::ToggleMini => window_mode::toggle_mini(&app_handle),
         }
     });
 }
@@ -227,6 +294,26 @@ fn seed_settings(app: &tauri::AppHandle) {
     if store.get("pauseOnBlur").is_none() {
         store.set("pauseOnBlur", false);
     }
+    // Wave 4 store keys: codecFilter off (no override of the page's own
+    // codec negotiation), hardwareDecoding on, touchOverlay on (matches
+    // controllerEnabled's "should work out of the box" default).
+    if store.get("codecFilter").is_none() {
+        store.set("codecFilter", "off");
+    }
+    if store.get("hardwareDecoding").is_none() {
+        store.set("hardwareDecoding", true);
+    }
+    if store.get("touchOverlay").is_none() {
+        store.set("touchOverlay", true);
+    }
+    // sleepTimerMinutes never survives a restart: a fresh process starts
+    // with no live timer thread (see sleep.rs's SleepState, managed fresh
+    // on every launch), so a nonzero value left over from a previous run
+    // would otherwise show the settings window as "timer set" with no
+    // countdown actually running. Unconditionally reset it to 0 — the
+    // store-keys contract's own "0 = cancel" — on every startup, not just
+    // when the key is missing.
+    store.set("sleepTimerMinutes", 0);
     // adFilterMode was seeded by earlier builds but never implemented; drop the
     // stale key so upgraded installs do not keep a setting that does nothing.
     if store.get("adFilterMode").is_some() {
@@ -265,6 +352,41 @@ pub(crate) fn write_string_setting(app: &tauri::AppHandle, key: &str, value: &st
     }
 }
 
+/// Reads a string setting, falling back to `default` (as an owned `String`)
+/// when the key is missing, the value is not a string, or the store itself
+/// is unavailable. Used for `codecFilter` (`"off"`/`"h264"`) — `language`
+/// and `dialFriendlyName` keep their own dedicated loaders (`i18n::load`,
+/// `dial::load_friendly_name`) since both carry extra fallback/sanitizing
+/// logic this generic helper does not need to duplicate.
+pub(crate) fn read_string_setting_or(app: &tauri::AppHandle, key: &str, default: &str) -> String {
+    app.store("media-settings.json")
+        .ok()
+        .and_then(|store| {
+            store
+                .get(key)
+                .and_then(|value| value.as_str().map(str::to_owned))
+        })
+        .unwrap_or_else(|| default.to_owned())
+}
+
+/// Reads a non-negative integer setting, falling back to `default` when the
+/// key is missing, the value is not a non-negative integer that fits a
+/// `u32`, or the store itself is unavailable. Used for `sleepTimerMinutes`.
+pub(crate) fn read_u32_setting_or(app: &tauri::AppHandle, key: &str, default: u32) -> u32 {
+    app.store("media-settings.json")
+        .ok()
+        .and_then(|store| store.get(key).and_then(|value| value.as_u64()))
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(default)
+}
+
+pub(crate) fn write_u32_setting(app: &tauri::AppHandle, key: &str, value: u32) {
+    if let Ok(store) = app.store("media-settings.json") {
+        store.set(key, value);
+        let _ = store.save();
+    }
+}
+
 /// Builds the media window's menu, localized to `lang`. Reused both at
 /// window creation and when the language toggle rebuilds the menu in place.
 pub(crate) fn build_menu<R: Runtime>(
@@ -279,6 +401,8 @@ pub(crate) fn build_menu<R: Runtime>(
     let keep_on_top_item =
         MenuItemBuilder::with_id("toggle-on-top", i18n::t(lang, i18n::Key::ToggleOnTop))
             .build(app)?;
+    let mini_player_item =
+        MenuItemBuilder::with_id("mini-player", i18n::t(lang, i18n::Key::MiniPlayer)).build(app)?;
     let reload_item =
         MenuItemBuilder::with_id("reload", i18n::t(lang, i18n::Key::Reload)).build(app)?;
     let update_item =
@@ -298,6 +422,7 @@ pub(crate) fn build_menu<R: Runtime>(
         .items(&[
             &fullscreen_item,
             &keep_on_top_item,
+            &mini_player_item,
             &reload_item,
             &update_item,
             &network_setup_item,
@@ -329,14 +454,23 @@ fn build_media_window(
         lang: lang.store_value(),
         controller_enabled: read_bool_setting_or(app, "controllerEnabled", true),
         pause_on_blur: read_bool_setting_or(app, "pauseOnBlur", false),
+        codec_filter: read_string_setting_or(app, "codecFilter", "off"),
+        touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
         deep_link: launch.deep_link.as_ref().map(launch::DeepLink::canonical),
     }
     .init_script();
 
-    let window = WebviewWindowBuilder::new(app, MEDIA_LABEL, WebviewUrl::External(url))
+    // Captured once, here, so `settings::hardware_decoding_restart_required`
+    // can tell whether the live `hardwareDecoding` setting has since
+    // diverged from whatever this window was actually built with — the
+    // webview's browser args cannot be changed after the window exists.
+    let hardware_decoding = read_bool_setting_or(app, "hardwareDecoding", true);
+    app.manage(HardwareDecodingUsed(AtomicBool::new(hardware_decoding)));
+
+    let mut window_builder = WebviewWindowBuilder::new(app, MEDIA_LABEL, WebviewUrl::External(url))
         .title(MEDIA_TITLE)
         .inner_size(1200.0, 675.0)
-        .min_inner_size(720.0, 405.0)
+        .min_inner_size(MEDIA_MIN_WIDTH, MEDIA_MIN_HEIGHT)
         .resizable(true)
         .fullscreen(fullscreen)
         .always_on_top(keep_on_top)
@@ -345,6 +479,9 @@ fn build_media_window(
             "toggle-fullscreen" => {
                 if let Ok(current) = window.is_fullscreen() {
                     let next = !current;
+                    if next {
+                        window_mode::leave_mini_if_active(window.app_handle());
+                    }
                     let _ = window.set_fullscreen(next);
                     write_bool_setting(window.app_handle(), "fullscreen", next);
                 }
@@ -369,6 +506,7 @@ fn build_media_window(
             }
             "network-setup" => setup::open_setup_window(window.app_handle()),
             "settings" => settings::open_settings_window(window.app_handle()),
+            "mini-player" => window_mode::toggle_mini(window.app_handle()),
             "toggle-language" => {
                 let app_handle = window.app_handle().clone();
                 let next = i18n::load(&app_handle).other();
@@ -395,8 +533,21 @@ fn build_media_window(
         .initialization_script(INJECTED_SCRIPT)
         .on_document_title_changed(|window, title| {
             let _ = window.set_title(&window_title(&title));
-        })
-        .build()?;
+        });
+
+    // `additional_browser_args` is Windows-only (unsupported on
+    // macOS/Linux/Android/iOS per its own doc comment) and — see
+    // `HARDWARE_DECODING_DISABLED_BROWSER_ARGS` — replaces wry's default
+    // args outright, so it is only ever applied when hardware decoding is
+    // actually being disabled; the `true` (default) case leaves wry's own
+    // default args exactly as every earlier wave already shipped them.
+    #[cfg(windows)]
+    if !hardware_decoding {
+        window_builder =
+            window_builder.additional_browser_args(HARDWARE_DECODING_DISABLED_BROWSER_ARGS);
+    }
+
+    let window = window_builder.build()?;
 
     // Closing the media window means quitting Lalin Cast even while a helper
     // window (update/setup/status) is still open; Tauri would otherwise keep
@@ -462,6 +613,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             seed_settings(app.handle());
+            // Managed early (before the tray/media window exist) so every
+            // later call site — menu/tray handlers, `lalin-cast-shell`,
+            // `settings_set` — can rely on both being present via
+            // `app.state()`/`app.try_state()` regardless of call order.
+            app.manage(sleep::SleepState::default());
+            app.manage(window_mode::MiniPlayerState::default());
             // Built before `dial::start` so the tray's dial-status listener
             // is already registered when the very first
             // `lalin-cast-dial-status` event fires.
@@ -535,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_action_whitelist_accepts_only_the_two_documented_actions() {
+    fn shell_action_whitelist_accepts_only_the_three_documented_actions() {
         assert_eq!(
             parse_shell_action(r#"{"action":"toggle-fullscreen"}"#),
             Some(ShellAction::ToggleFullscreen)
@@ -543,6 +700,10 @@ mod tests {
         assert_eq!(
             parse_shell_action(r#"{"action":"open-settings"}"#),
             Some(ShellAction::OpenSettings)
+        );
+        assert_eq!(
+            parse_shell_action(r#"{"action":"toggle-mini"}"#),
+            Some(ShellAction::ToggleMini)
         );
     }
 
@@ -553,5 +714,7 @@ mod tests {
         assert_eq!(parse_shell_action("not json"), None);
         assert_eq!(parse_shell_action(""), None);
         assert_eq!(parse_shell_action(r#"{"other":"x"}"#), None);
+        // A near-miss of a real action must never fuzzy-match.
+        assert_eq!(parse_shell_action(r#"{"action":"toggle-mini "}"#), None);
     }
 }

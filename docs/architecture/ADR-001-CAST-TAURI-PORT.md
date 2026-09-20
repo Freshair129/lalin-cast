@@ -1,7 +1,7 @@
 ---
-version: "0.10.0b"
+version: "0.11.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T23:15:00+07:00,LALIN"
+last_update: "2026-09-20T23:45:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -68,7 +68,12 @@ Play owner is replaced by this candidate.
 | keyboard extras / keybinds | initialization script (`injected.js` `keybinds`/`volume`/`pauseOnBlur` sections) — `Ctrl+O`, `F11`, `Shift+Enter`, right-click back, `+`/`-`/`M` volume with OSD, `C` captions, `Ctrl+Shift+C` copy-URL, pause-on-blur, ported from VacuumTube `keybinds.js`/`mouse.js`/`no-f11.js`/`volume-control`/`pause-on-blur.js` | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | `injected.test.js` pure-function unit tests plus real-device keyboard evidence (human gate H8) |
 | native settings window | Rust `settings.rs` (`settings` window, `settings_get`/`settings_set`/`settings_open_setup`/`settings_check_updates` commands, `apply_setting` whitelist) plus `fallback/settings.html/js/css` | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | whitelist/type-check unit tests plus real settings live-apply evidence (DIAL rename, language, fullscreen — human gate H9) |
 | command-line deep link | Rust `launch.rs` (`parse_cli`/`parse_launch_url`), the single-instance callback, the `lalin-cast-deeplink` event, and `injected.js`'s `deeplink` section (`window.h5vcc.runtime.initialDeepLink` / hash-route), the last ported from VacuumTube `preload/modules/h5vcc/index.js` (lines 50–56) | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | parser unit tests (host whitelist, scheme, id/list format) plus real Leanback `initialDeepLink`/hash-route evidence (human gate H7) |
-| touch DOM behavior | initialization script / later JS adapter | deferred to wave 4 | real touch evidence |
+| codec filter (H.264-only) | initialization script (`injected.js` `codecFilter` section), ported from VacuumTube `h264ify.js` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | pure-fn `codecAllowed(type, filter)` unit tests plus real playback/"stats for nerds" evidence (human gate H11) |
+| touch overlay | initialization script (`injected.js` `touchOverlay` section), ported from VacuumTube `touch-support.js` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | pure-fn `touchButtons(lang)` unit tests plus real touchscreen/handheld evidence (human gate H10) |
+| sleep timer (not a VacuumTube feature; new in wave 4, SmartTube-parity differentiator) | Rust `sleep.rs` (`SleepState`, `sleep::schedule`/`remaining_seconds`, pure `validate_sleep_minutes`) plus `injected.js`'s `sleep` section (pause-all + OSD on the `lalin-cast-sleep` event) | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | `validate_sleep_minutes` and cancel/generation unit tests plus real timer-firing evidence (human gate H10) |
+| mini-player mode (not a VacuumTube feature; new in wave 4, VTPiP-parity differentiator) | Rust `window_mode.rs`/`lib.rs` (`MiniPlayerState`, `toggle_mini`, pure `mini_position`) wired to the media menu, the tray, the `lalin-cast-shell` `toggle-mini` action and `Ctrl+Shift+M` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | `mini_position` geometry-round-trip unit tests plus real multi-monitor evidence (human gate H10) |
+| hardware-decoding toggle (not a VacuumTube feature; new in wave 4) | Rust media-window builder, a single fixed `additional_browser_args` constant (WebView2's default arguments plus `--disable-accelerated-video-decode`) constant applied only when `hardwareDecoding == false` | wave 4 local slice implemented — see `docs/plans/W4_PLAYBACK_PLAN.md` | `settings.rs` whitelist/type unit tests plus real "stats for nerds" decode-path evidence (human gate H11) |
+| ARM64 release matrix and winget packaging (not a VacuumTube feature; new in wave 4) | GitHub Actions `release.yml`/`ci.yml` `continue-on-error` `aarch64-pc-windows-msvc` jobs, plus `packaging/winget/*` manifest templates | wave 4 local slice implemented, **experimental** — see `docs/plans/W4_PLAYBACK_PLAN.md` | YAML/workflow static checks plus a real ARM64 build on the first tag and a winget submission (human gate H12) |
 | SponsorBlock/DeArrow/Return Dislikes | JS adapter after CSP/runtime review | deferred | feature-by-feature parity |
 | upstream ad-block controls | separate compatibility gate | deferred | setting behavior in real WebView |
 | Electron request/response interception | Rust/native WebView2 adapter | not in P0 | WebView2 API proof and security review |
@@ -144,16 +149,28 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   function `apply_setting(key, value, current) -> Result<Settings, String>` — the page cannot
   write an arbitrary key or type to the store, only the enumerated `language`,
   `dialFriendlyName` (through the existing sanitizer), `fullscreen`, `keepOnTop`, `pauseOnBlur`,
-  `controllerEnabled` and `setupCompleted`.
+  `controllerEnabled` and `setupCompleted`, plus, added in wave 4, `sleepTimerMinutes` (an int
+  restricted to `{0, 15, 30, 60, 90, 120}`, routed to `sleep::schedule`), `codecFilter` (the enum
+  `"off"`/`"h264"`, save + emit prefs), `hardwareDecoding` (bool, save only), `touchOverlay`
+  (bool, save + emit prefs) and `miniPlayer` (bool, routed to `toggle_mini` and never written to
+  the store — see below).
 - Neither the `setup`, `status` nor `settings` window is reachable from the remote YouTube
   origin, and none of them exposes filesystem, shell, process or arbitrary network commands.
 - Added in wave 3, the `lalin-cast-shell` event (page → Rust) rides the existing
   `core:event:allow-emit` remote capability — no new remote capability is added for it
-  (`capabilities/default.json` is unchanged in wave 3). Its payload is
-  `{ action: "toggle-fullscreen" | "open-settings" }`; Rust validates `action` against a fixed
-  allow-list and rate-limits accepted events to one per 500 ms, discarding anything else. It is
-  the only channel through which the remote YouTube page can ask the shell to toggle fullscreen
-  or open the settings window — it grants no direct window, filesystem or process access.
+  (`capabilities/default.json` is unchanged in wave 3, and remains unchanged in wave 4). Its
+  payload is `{ action: "toggle-fullscreen" | "open-settings" }`, extended in wave 4 to
+  `{ action: "toggle-fullscreen" | "open-settings" | "toggle-mini" }` — `toggle-mini` is the only
+  action wave 4 adds to the whitelist. Rust validates `action` against this fixed allow-list and
+  rate-limits accepted events to one per 500 ms, discarding anything else. It is the only channel
+  through which the remote YouTube page can ask the shell to toggle fullscreen, open the settings
+  window, or toggle mini-player mode — it grants no direct window, filesystem or process access.
+- Added in wave 4, hardware decoding is applied to the media window through a single fixed Rust
+  constant, `additional_browser_args` constant (WebView2's default arguments plus `--disable-accelerated-video-decode`), set only when the
+  `hardwareDecoding` setting is `false`; `settings_set` accepts only a boolean for this key, so
+  neither the page nor the settings store can ever supply a raw browser-argument string.
+  Mini-player geometry (`MiniPlayerState`) is likewise never written to the settings store — it is
+  process-local session state restored on `toggle_mini`, not a persisted key.
 - No cookies, account tokens, pairing codes or session data are committed or
   logged; the local network-category probe (PowerShell) and the surface event's URL/title
   are never persisted or logged either. The wave 3 command-line deep link is validated by
@@ -236,3 +253,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.8.0b | 2026-09-20 | beta | H0: narrowed the documented remote capability to the `dial_*`/event surface only, documented the label-gated `update` window for `cast_update_install`, and corrected the DIAL unit test count from 2 to 3 | uncommitted | LALIN |
 | 0.9.0b | 2026-09-20 | beta | Wave 2: documented the four-window boundary (`media`/`update`/`setup`/`status`), the `core:event:allow-emit` remote-capability addition and its rationale, and added the network/surface-status feature-matrix row (see `docs/plans/W2_LIVING_ROOM_PLAN.md`) | uncommitted | LALIN |
 | 0.10.0b | 2026-09-20 | beta | Wave 3: split the controller/touch feature-matrix row into ported controller, keybinds, native settings window and command-line deep-link rows; documented the `settings` window capability and the `lalin-cast-shell` event on the unchanged remote capability (see `docs/plans/W3_CONTROLS_PLAN.md`) | uncommitted | LALIN |
+| 0.11.0b | 2026-09-20 | beta | Wave 4: added feature-matrix rows for codec filter, touch overlay, sleep timer, mini-player, hardware decoding and the experimental ARM64/winget release matrix; documented the `toggle-mini` addition to the `lalin-cast-shell` whitelist, the single-constant `additional_browser_args` rule, and the wave 4 `settings_set` whitelist keys (see `docs/plans/W4_PLAYBACK_PLAN.md`) | uncommitted | LALIN |
