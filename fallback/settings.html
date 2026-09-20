@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Lalin Cast — Settings</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main class="card">
+      <div id="main-content">
+        <h1 id="page-title"></h1>
+        <p id="settings-error" class="error-text" hidden role="status" aria-live="polite"></p>
+
+        <section aria-labelledby="general-heading">
+          <h2 id="general-heading"></h2>
+
+          <fieldset class="field-group">
+            <legend id="language-legend"></legend>
+            <label class="radio-row">
+              <input type="radio" name="language" id="language-th" value="th" />
+              <span id="language-th-label"></span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" name="language" id="language-en" value="en" />
+              <span id="language-en-label"></span>
+            </label>
+          </fieldset>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="fullscreen-toggle" />
+            <span id="fullscreen-label"></span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="keep-on-top-toggle" />
+            <span id="keep-on-top-label"></span>
+          </label>
+        </section>
+
+        <section aria-labelledby="tv-heading">
+          <h2 id="tv-heading"></h2>
+
+          <label class="text-field" for="dial-name-input">
+            <span id="dial-name-label"></span>
+          </label>
+          <input type="text" id="dial-name-input" maxlength="64" autocomplete="off" spellcheck="false" />
+
+          <p id="dial-status" class="status-line" role="status" aria-live="polite"></p>
+
+          <button id="open-setup-btn" type="button" class="secondary"></button>
+        </section>
+
+        <section aria-labelledby="controls-heading">
+          <h2 id="controls-heading"></h2>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="controller-toggle" />
+            <span id="controller-label"></span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="pause-on-blur-toggle" />
+            <span id="pause-on-blur-label"></span>
+          </label>
+
+          <table id="controls-table" class="controls-table">
+            <caption id="controls-table-caption"></caption>
+            <thead>
+              <tr>
+                <th id="controls-col-action" scope="col"></th>
+                <th id="controls-col-keyboard" scope="col"></th>
+                <th id="controls-col-controller" scope="col"></th>
+              </tr>
+            </thead>
+            <tbody id="controls-table-body"></tbody>
+          </table>
+        </section>
+
+        <section aria-labelledby="updates-heading">
+          <h2 id="updates-heading"></h2>
+
+          <button id="check-updates-btn" type="button" class="secondary"></button>
+          <p id="check-updates-result" class="muted" hidden role="status" aria-live="polite"></p>
+
+          <p id="version-line" class="muted"></p>
+          <p id="unofficial-text" class="muted"></p>
+          <p id="legal-files-text" class="muted"></p>
+        </section>
+      </div>
+
+      <section id="state-no-tauri" hidden>
+        <p id="no-tauri-title" role="status" aria-live="polite"></p>
+        <p id="no-tauri-body" class="muted"></p>
+      </section>
+    </main>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

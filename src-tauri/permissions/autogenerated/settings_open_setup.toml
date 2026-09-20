@@ -1,0 +1,11 @@
+# Permission for jumping to the network/DIAL setup wizard from the settings window.
+
+[[permission]]
+identifier = "allow-settings-open-setup"
+description = "Enables the settings_open_setup command without any pre-configured scope."
+commands.allow = ["settings_open_setup"]
+
+[[permission]]
+identifier = "deny-settings-open-setup"
+description = "Denies the settings_open_setup command."
+commands.deny = ["settings_open_setup"]

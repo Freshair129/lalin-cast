@@ -1,0 +1,11 @@
+# Permission for running a manual update check from the settings window.
+
+[[permission]]
+identifier = "allow-settings-check-updates"
+description = "Enables the settings_check_updates command without any pre-configured scope."
+commands.allow = ["settings_check_updates"]
+
+[[permission]]
+identifier = "deny-settings-check-updates"
+description = "Denies the settings_check_updates command."
+commands.deny = ["settings_check_updates"]

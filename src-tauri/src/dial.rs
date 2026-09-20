@@ -34,14 +34,19 @@ const MANUFACTURER: &str = "Lalin";
 const MODEL_NAME: &str = "Lalin Cast";
 const DEFAULT_FRIENDLY_NAME: &str = "Lalin Cast";
 const FRIENDLY_NAME_MAX_CHARS: usize = 64;
-const FRIENDLY_NAME_STORE_KEY: &str = "dialFriendlyName";
+/// Also used by `settings.rs` to persist a validated `dialFriendlyName`
+/// under the same store key this module reads on every rebind.
+pub(crate) const FRIENDLY_NAME_STORE_KEY: &str = "dialFriendlyName";
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DialInfo {
-    pub host: String,
-    pub port: u16,
-    pub base: String,
+/// Not exposed to any window: earlier builds had a `dial_get_info` command
+/// returning this, but nothing in the shipped UI ever called it and the
+/// command carried no permission check, so wave 3 removed it. Kept as a
+/// plain internal struct — the supervisor and its tests still need it.
+#[derive(Clone)]
+struct DialInfo {
+    host: String,
+    port: u16,
+    base: String,
 }
 
 /// One state in the DIAL status machine. `starting` = a bind/rebind is in
@@ -133,11 +138,15 @@ struct PendingResponse {
 type ResponseStore = Arc<(Mutex<HashMap<String, PendingResponse>>, Condvar)>;
 
 pub struct DialState {
-    info: Arc<Mutex<Option<DialInfo>>>,
     device_id: Arc<Mutex<String>>,
     responses: ResponseStore,
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<DialStatus>>,
+    /// Set by [`request_reload`] and consumed by the supervisor loop (see
+    /// [`run_supervisor`]): tearing the current generation down and binding
+    /// a fresh one re-reads `dialFriendlyName` from the settings store, so
+    /// this is how a rename in Settings reaches the LAN without a restart.
+    reload: Arc<AtomicBool>,
 }
 
 /// Reads the current [`DialStatus`] out of a managed [`DialState`]. Used by
@@ -176,17 +185,16 @@ pub fn disabled_state(app: &AppHandle, reason: impl Into<String>) -> DialState {
     let status = disabled_status(reason.into());
     let _ = app.emit(DIAL_STATUS_EVENT, &status);
     DialState {
-        info: Arc::new(Mutex::new(None)),
         device_id: Arc::new(Mutex::new(String::new())),
         responses: Arc::new((Mutex::new(HashMap::new()), Condvar::new())),
         stop: Arc::new(AtomicBool::new(true)),
         status: Arc::new(Mutex::new(status)),
+        reload: Arc::new(AtomicBool::new(false)),
     }
 }
 
 pub fn start(app: &AppHandle) -> Result<DialState, String> {
     let device_id = Arc::new(Mutex::new(load_or_create_device_id(app)));
-    let info = Arc::new(Mutex::new(None));
     let responses = Arc::new((Mutex::new(HashMap::new()), Condvar::new()));
     let stop = Arc::new(AtomicBool::new(false));
     // Emitted here (not only once the supervisor's loop starts binding) so
@@ -195,14 +203,15 @@ pub fn start(app: &AppHandle) -> Result<DialState, String> {
     let initial_status = starting_status(None);
     let status = Arc::new(Mutex::new(initial_status.clone()));
     let _ = app.emit(DIAL_STATUS_EVENT, &initial_status);
+    let reload = Arc::new(AtomicBool::new(false));
 
     let supervisor = SupervisorState {
         app: app.clone(),
-        info: info.clone(),
         device_id: device_id.clone(),
         responses: responses.clone(),
         stop: stop.clone(),
         status: status.clone(),
+        reload: reload.clone(),
     };
     thread::Builder::new()
         .name("lalin-dial-supervisor".to_owned())
@@ -210,12 +219,23 @@ pub fn start(app: &AppHandle) -> Result<DialState, String> {
         .map_err(|error| format!("DIAL supervisor thread failed: {error}"))?;
 
     Ok(DialState {
-        info,
         device_id,
         responses,
         stop,
         status,
+        reload,
     })
+}
+
+/// Signals the DIAL supervisor to tear down the current listener generation
+/// and bind a fresh one on its next poll tick (within [`SUPERVISOR_POLL`]),
+/// so a `dialFriendlyName` change saved to the settings store is advertised
+/// on the LAN without an app restart. Called from `settings::settings_set`
+/// after the new name is persisted. A no-op if DIAL never started (no
+/// supervisor loop is running to observe the flag) — safe to call
+/// regardless of the current [`DialStateKind`].
+pub fn request_reload(state: &DialState) {
+    state.reload.store(true, Ordering::Relaxed);
 }
 
 impl Drop for DialState {
@@ -226,11 +246,11 @@ impl Drop for DialState {
 
 struct SupervisorState {
     app: AppHandle,
-    info: Arc<Mutex<Option<DialInfo>>>,
     device_id: Arc<Mutex<String>>,
     responses: ResponseStore,
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<DialStatus>>,
+    reload: Arc<AtomicBool>,
 }
 
 /// Updates the stored [`DialStatus`] and emits [`DIAL_STATUS_EVENT`], but
@@ -339,11 +359,6 @@ pub fn dial_respond(
 }
 
 #[tauri::command]
-pub fn dial_get_info(state: State<'_, DialState>) -> Option<DialInfo> {
-    state.info.lock().ok()?.clone()
-}
-
-#[tauri::command]
 pub fn dial_set_device_id(
     device_id: String,
     app: AppHandle,
@@ -381,10 +396,20 @@ fn run_supervisor(runtime: SupervisorState) {
                 .unwrap_or_default();
             let current_ip = local_ipv4().ok();
 
+            if runtime.reload.swap(false, Ordering::Relaxed) {
+                eprintln!("Lalin Cast: DIAL reload requested; rebinding listeners");
+                stop_generation(generation.take());
+                emit_status(
+                    &runtime.app,
+                    &runtime.status,
+                    starting_status(Some("settings changed; rebinding".to_owned())),
+                );
+                continue;
+            }
+
             if address_changed(&active_host, current_ip) {
                 eprintln!("Lalin Cast: DIAL LAN address changed; rebinding listeners");
                 stop_generation(generation.take());
-                clear_info(&runtime.info);
                 emit_status(
                     &runtime.app,
                     &runtime.status,
@@ -404,7 +429,6 @@ fn run_supervisor(runtime: SupervisorState) {
                         failure.message
                     );
                     stop_generation(generation.take());
-                    clear_info(&runtime.info);
                     emit_status(
                         &runtime.app,
                         &runtime.status,
@@ -420,7 +444,6 @@ fn run_supervisor(runtime: SupervisorState) {
         }
 
         let Some(local_ip) = local_ipv4().ok() else {
-            clear_info(&runtime.info);
             emit_status(
                 &runtime.app,
                 &runtime.status,
@@ -432,9 +455,15 @@ fn run_supervisor(runtime: SupervisorState) {
 
         emit_status(&runtime.app, &runtime.status, starting_status(None));
         generation_id = generation_id.wrapping_add(1);
+        // A bind reads the settings store from scratch (see
+        // `start_generation`'s `load_friendly_name` call), so any reload
+        // requested before this point is satisfied by it. Clearing the flag
+        // here rather than after the bind keeps a request that lands during
+        // the bind window pending for the next loop iteration instead of
+        // silently dropping it.
+        runtime.reload.store(false, Ordering::Relaxed);
         match start_generation(&runtime, failure_tx.clone(), local_ip, generation_id) {
             Ok(active) => {
-                set_info(&runtime.info, Some(active.info.clone()));
                 eprintln!(
                     "Lalin Cast: DIAL ready at {} (UDP {SSDP_PORT})",
                     active.info.base
@@ -443,7 +472,6 @@ fn run_supervisor(runtime: SupervisorState) {
                 generation = Some(active);
             }
             Err(error) => {
-                clear_info(&runtime.info);
                 eprintln!("Lalin Cast: DIAL bind failed; retrying: {error}");
                 emit_status(
                     &runtime.app,
@@ -456,7 +484,6 @@ fn run_supervisor(runtime: SupervisorState) {
     }
 
     stop_generation(generation);
-    clear_info(&runtime.info);
 }
 
 fn start_generation(
@@ -549,16 +576,6 @@ fn stop_generation(generation: Option<Generation>) {
     generation.stop.store(true, Ordering::Relaxed);
     let _ = generation.http.join();
     let _ = generation.ssdp.join();
-}
-
-fn set_info(info: &Arc<Mutex<Option<DialInfo>>>, value: Option<DialInfo>) {
-    if let Ok(mut current) = info.lock() {
-        *current = value;
-    }
-}
-
-fn clear_info(info: &Arc<Mutex<Option<DialInfo>>>) {
-    set_info(info, None);
 }
 
 fn address_changed(advertised_host: &str, current_ip: Option<Ipv4Addr>) -> bool {
@@ -760,8 +777,10 @@ fn device_description(state: &RuntimeState) -> String {
 /// description: strips CR/LF/`<`/`>`, trims, caps at
 /// [`FRIENDLY_NAME_MAX_CHARS`] characters, and falls back to
 /// [`DEFAULT_FRIENDLY_NAME`] when nothing usable is left. Never appends a
-/// hostname.
-fn sanitize_friendly_name(raw: &str) -> String {
+/// hostname. `pub(crate)` so `settings.rs`'s `apply_setting` can reuse this
+/// exact sanitizer for the `dialFriendlyName` settings key, per the
+/// contract ("friendly name ผ่าน sanitizer เดิม").
+pub(crate) fn sanitize_friendly_name(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
         .filter(|ch| !matches!(ch, '\r' | '\n' | '<' | '>'))
@@ -777,7 +796,9 @@ fn sanitize_friendly_name(raw: &str) -> String {
     }
 }
 
-fn load_friendly_name(app: &AppHandle) -> String {
+/// `pub(crate)` so `settings.rs` can read the current, already-sanitized
+/// friendly name into a `SettingsSnapshot` without duplicating this lookup.
+pub(crate) fn load_friendly_name(app: &AppHandle) -> String {
     app.store("media-settings.json")
         .ok()
         .and_then(|store| {
@@ -972,14 +993,15 @@ fn xml_escape(value: &str) -> String {
 mod tests {
     use super::{
         current_status, degraded_status, device_description, disabled_status, http_bind_addr,
-        is_dial_search, read_http_request, ready_status, sanitize_friendly_name, ssdp_response,
-        starting_status, status_changed, DialInfo, DialState, DialStateKind, HttpReadError, Route,
-        RuntimeState, DEFAULT_FRIENDLY_NAME, MAX_BODY_BYTES, MAX_HEADER_BYTES,
+        is_dial_search, read_http_request, ready_status, request_reload, sanitize_friendly_name,
+        ssdp_response, starting_status, status_changed, DialInfo, DialState, DialStateKind,
+        HttpReadError, Route, RuntimeState, DEFAULT_FRIENDLY_NAME, MAX_BODY_BYTES,
+        MAX_HEADER_BYTES,
     };
     use std::collections::HashMap;
     use std::io::Write;
     use std::net::{Ipv4Addr, TcpListener, TcpStream};
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
     use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
@@ -1261,17 +1283,41 @@ mod tests {
             base: "http://192.168.1.5:43210".to_owned(),
         };
         let dial_state = DialState {
-            info: Arc::new(Mutex::new(None)),
             device_id: Arc::new(Mutex::new(String::new())),
             responses: Arc::new((Mutex::new(HashMap::new()), Condvar::new())),
             stop: Arc::new(AtomicBool::new(true)),
             status: Arc::new(Mutex::new(ready_status(&info))),
+            reload: Arc::new(AtomicBool::new(false)),
         };
 
         let status = current_status(&dial_state);
         assert_eq!(status.state, DialStateKind::Ready);
         assert_eq!(status.host.as_deref(), Some("192.168.1.5"));
         assert_eq!(status.port, Some(43210));
+    }
+
+    #[test]
+    fn request_reload_sets_the_flag_the_supervisor_loop_consumes() {
+        // Built directly (not via `start()`) so this test never spawns the
+        // real supervisor thread; it only checks the pure state/flag
+        // contract `request_reload` relies on, matching how
+        // `run_supervisor`'s loop consumes it with `swap(false, ..)`.
+        let dial_state = DialState {
+            device_id: Arc::new(Mutex::new(String::new())),
+            responses: Arc::new((Mutex::new(HashMap::new()), Condvar::new())),
+            stop: Arc::new(AtomicBool::new(true)),
+            status: Arc::new(Mutex::new(starting_status(None))),
+            reload: Arc::new(AtomicBool::new(false)),
+        };
+
+        assert!(!dial_state.reload.load(Ordering::Relaxed));
+        request_reload(&dial_state);
+        assert!(dial_state.reload.load(Ordering::Relaxed));
+
+        // Mirrors the supervisor's own `swap(false, ..)` consumption: the
+        // flag reads true exactly once, then clears itself.
+        assert!(dial_state.reload.swap(false, Ordering::Relaxed));
+        assert!(!dial_state.reload.load(Ordering::Relaxed));
     }
 
     #[test]

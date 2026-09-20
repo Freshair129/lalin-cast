@@ -1,0 +1,13 @@
+{
+  "identifier": "settings-default",
+  "description": "สิทธิ์ของหน้าต่างตั้งค่า Lalin Cast (หน้า local settings.html เท่านั้น)",
+  "windows": ["settings"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "allow-settings-get",
+    "allow-settings-set",
+    "allow-settings-open-setup",
+    "allow-settings-check-updates"
+  ]
+}

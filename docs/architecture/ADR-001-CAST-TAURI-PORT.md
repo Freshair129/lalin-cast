@@ -1,7 +1,7 @@
 ---
-version: "0.9.0b"
+version: "0.10.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T22:30:00+07:00,LALIN"
+last_update: "2026-09-20T23:15:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -64,7 +64,11 @@ Play owner is replaced by this candidate.
 | Leanback User-Agent | Tauri WebView User-Agent | port now | compare request/navigation behavior with Electron |
 | fullscreen, focus, close, single instance | Tauri window API + single-instance plugin | port now | reopen/focus/close lifecycle |
 | settings persistence | Tauri store boundary | port now as best-effort shell preference seed | load/save without credentials; unavailable store must not block launch |
-| controller/touch DOM behavior | initialization script / later JS adapter | deferred | real controller and touch evidence |
+| controller (Gamepad API) | initialization script (`injected.js` `controller` section), ported from VacuumTube `util/controller.js`/`modules/controller-support.js` | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | keyCode map matches upstream verbatim (verifier diff against the pinned reference) plus real Xbox/DualSense controller evidence (human gate H8) |
+| keyboard extras / keybinds | initialization script (`injected.js` `keybinds`/`volume`/`pauseOnBlur` sections) — `Ctrl+O`, `F11`, `Shift+Enter`, right-click back, `+`/`-`/`M` volume with OSD, `C` captions, `Ctrl+Shift+C` copy-URL, pause-on-blur, ported from VacuumTube `keybinds.js`/`mouse.js`/`no-f11.js`/`volume-control`/`pause-on-blur.js` | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | `injected.test.js` pure-function unit tests plus real-device keyboard evidence (human gate H8) |
+| native settings window | Rust `settings.rs` (`settings` window, `settings_get`/`settings_set`/`settings_open_setup`/`settings_check_updates` commands, `apply_setting` whitelist) plus `fallback/settings.html/js/css` | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | whitelist/type-check unit tests plus real settings live-apply evidence (DIAL rename, language, fullscreen — human gate H9) |
+| command-line deep link | Rust `launch.rs` (`parse_cli`/`parse_launch_url`), the single-instance callback, the `lalin-cast-deeplink` event, and `injected.js`'s `deeplink` section (`window.h5vcc.runtime.initialDeepLink` / hash-route), the last ported from VacuumTube `preload/modules/h5vcc/index.js` (lines 50–56) | wave 3 local slice implemented — see `docs/plans/W3_CONTROLS_PLAN.md` | parser unit tests (host whitelist, scheme, id/list format) plus real Leanback `initialDeepLink`/hash-route evidence (human gate H7) |
+| touch DOM behavior | initialization script / later JS adapter | deferred to wave 4 | real touch evidence |
 | SponsorBlock/DeArrow/Return Dislikes | JS adapter after CSP/runtime review | deferred | feature-by-feature parity |
 | upstream ad-block controls | separate compatibility gate | deferred | setting behavior in real WebView |
 | Electron request/response interception | Rust/native WebView2 adapter | not in P0 | WebView2 API proof and security review |
@@ -92,9 +96,9 @@ as a promise that every future ad format is blocked.
 
 ## Security and ownership rules
 
-Lalin Cast has four windows, and each one's capability is scoped to only what that window's
-own commands need — `media` (the remote YouTube surface), `update`, `setup` and `status`
-(three local-only windows, each serving its own bundled HTML page and nothing else):
+Lalin Cast has five windows, and each one's capability is scoped to only what that window's
+own commands need — `media` (the remote YouTube surface), `update`, `setup`, `status` and
+`settings` (four local-only windows, each serving its own bundled HTML page and nothing else):
 
 - The remote YouTube WebView receives no broad Lalin filesystem, shell or process
   permission.
@@ -130,11 +134,31 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup` an
   offline or the remote page reports a blocked/redirected TV surface) capability grants only
   `core:default`, `core:window:allow-close`, `allow-status-retry` and `allow-status-quit`,
   with the same label-gating on every command.
-- Neither the `setup` nor the `status` window is reachable from the remote YouTube origin,
-  and neither exposes filesystem, shell, process or arbitrary network commands.
+- Added in wave 3, the `settings` window (label `settings`, local `settings.html` only, 560×640,
+  single instance, opened from the media menu, the tray, `Ctrl+O` or the controller's R3 button)
+  capability (`capabilities/settings.json`) grants only `core:default`,
+  `core:window:allow-close`, `allow-settings-get`, `allow-settings-set`,
+  `allow-settings-open-setup` and `allow-settings-check-updates`. Every one of its commands
+  rejects any caller whose `tauri::Window::label()` is not exactly `"settings"`.
+  `settings_set` whitelists both the setting key and its value type in Rust itself, as the pure
+  function `apply_setting(key, value, current) -> Result<Settings, String>` — the page cannot
+  write an arbitrary key or type to the store, only the enumerated `language`,
+  `dialFriendlyName` (through the existing sanitizer), `fullscreen`, `keepOnTop`, `pauseOnBlur`,
+  `controllerEnabled` and `setupCompleted`.
+- Neither the `setup`, `status` nor `settings` window is reachable from the remote YouTube
+  origin, and none of them exposes filesystem, shell, process or arbitrary network commands.
+- Added in wave 3, the `lalin-cast-shell` event (page → Rust) rides the existing
+  `core:event:allow-emit` remote capability — no new remote capability is added for it
+  (`capabilities/default.json` is unchanged in wave 3). Its payload is
+  `{ action: "toggle-fullscreen" | "open-settings" }`; Rust validates `action` against a fixed
+  allow-list and rate-limits accepted events to one per 500 ms, discarding anything else. It is
+  the only channel through which the remote YouTube page can ask the shell to toggle fullscreen
+  or open the settings window — it grants no direct window, filesystem or process access.
 - No cookies, account tokens, pairing codes or session data are committed or
   logged; the local network-category probe (PowerShell) and the surface event's URL/title
-  are never persisted or logged either.
+  are never persisted or logged either. The wave 3 command-line deep link is validated by
+  `parse_launch_url` before use and is likewise never logged or persisted (see
+  `docs/plans/W3_CONTROLS_PLAN.md` and `PRIVACY.md`).
 - Electron remains the fallback until Tauri endpoint, sign-in, playback,
   controller, fullscreen and lifecycle parity is evidenced.
 
@@ -211,3 +235,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup` an
 | 0.7.0b | 2026-09-20 | beta | Exported the runtime as Lalin Cast and added signed updater integration | uncommitted | LALIN |
 | 0.8.0b | 2026-09-20 | beta | H0: narrowed the documented remote capability to the `dial_*`/event surface only, documented the label-gated `update` window for `cast_update_install`, and corrected the DIAL unit test count from 2 to 3 | uncommitted | LALIN |
 | 0.9.0b | 2026-09-20 | beta | Wave 2: documented the four-window boundary (`media`/`update`/`setup`/`status`), the `core:event:allow-emit` remote-capability addition and its rationale, and added the network/surface-status feature-matrix row (see `docs/plans/W2_LIVING_ROOM_PLAN.md`) | uncommitted | LALIN |
+| 0.10.0b | 2026-09-20 | beta | Wave 3: split the controller/touch feature-matrix row into ported controller, keybinds, native settings window and command-line deep-link rows; documented the `settings` window capability and the `lalin-cast-shell` event on the unchanged remote capability (see `docs/plans/W3_CONTROLS_PLAN.md`) | uncommitted | LALIN |

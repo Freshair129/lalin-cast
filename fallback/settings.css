@@ -1,0 +1,277 @@
+/*
+ * Lalin Cast — native settings window styles.
+ * Local file only, no external resources. Dark theme to match the
+ * Leanback surface: background #171717, accent #3ea6ff.
+ */
+
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --surface: #1f1f1f;
+  --border: #2c2c2c;
+  --text: #f2f2f2;
+  --text-muted: #a3a3a3;
+  --accent: #3ea6ff;
+  --accent-text: #0b1620;
+  --danger: #ff6b6b;
+  --danger-bg: #2a1717;
+  --good: #4bd28f;
+  --warn: #f4c04d;
+  --info: #3ea6ff;
+  --unknown: #a3a3a3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Noto Sans Thai",
+    "Noto Sans",
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+body {
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+}
+
+main.card {
+  width: 100%;
+  max-width: 560px;
+  padding: 18px 18px 24px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+section:first-of-type {
+  margin-top: 14px;
+}
+
+p {
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+p.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+p[hidden] {
+  display: none;
+}
+
+.error-text {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.error-text[hidden] {
+  display: none;
+}
+
+.field-group {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.field-group legend {
+  padding: 0;
+  margin-right: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.radio-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.radio-row input[type="radio"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  margin: 8px 0;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.text-field {
+  display: block;
+  margin-top: 4px;
+}
+
+.text-field span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+input[type="text"] {
+  display: block;
+  width: 100%;
+  margin: 4px 0 8px;
+  padding: 7px 9px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+input[type="text"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.status-line {
+  font-weight: 600;
+  padding-left: 18px;
+  position: relative;
+  margin: 6px 0 10px;
+}
+
+.status-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--unknown);
+}
+
+.status-line[data-level="good"]::before {
+  background: var(--good);
+}
+
+.status-line[data-level="warn"]::before {
+  background: var(--warn);
+}
+
+.status-line[data-level="info"]::before {
+  background: var(--info);
+}
+
+.status-line[data-level="unknown"]::before {
+  background: var(--unknown);
+}
+
+.controls-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.controls-table caption {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.controls-table th,
+.controls-table td {
+  text-align: left;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.controls-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.controls-table td {
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  border-radius: 6px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+button.secondary:hover {
+  border-color: var(--accent);
+}
