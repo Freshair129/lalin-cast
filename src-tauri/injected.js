@@ -14,10 +14,12 @@
   //     codecFilter: "off" | "h264",
   //     touchOverlay: boolean,
   //     sleepAtEndOfVideo: boolean, // wave 6 — see docs/plans/W6_POLISH_PLAN.md
+  //     hideShorts: boolean,      // wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide tabs"
+  //     hideGuideTabs: boolean,   // wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide tabs"
   //   };
   //
   // Rust -> page events this file listens for:
-  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo }
+  //   "lalin-cast-prefs"    payload { lang, controllerEnabled, pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo, hideShorts, hideGuideTabs }
   //   "lalin-cast-deeplink" payload { url }
   //   "lalin-cast-sleep"    payload { minutes } (wave 4 — see docs/plans/W4_PLAYBACK_PLAN.md)
   //   "lalin-cast-remote"   payload { action: "toggle-play" } (wave 6 — see docs/plans/W6_POLISH_PLAN.md,
@@ -61,7 +63,12 @@
     codecFilter: "off",
     touchOverlay: true,
     // Wave 6 addition (docs/plans/W6_POLISH_PLAN.md, "Sleep at end of video"):
-    sleepAtEndOfVideo: false
+    sleepAtEndOfVideo: false,
+    // Wave 8 additions (docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide
+    // tabs") — both opt-in and off by default. See the "Hide" section below
+    // for what these actually drive (a CSS attribute toggle only).
+    hideShorts: false,
+    hideGuideTabs: false
   });
 
   // Reads window.__LALIN_PREFS__ with the documented defaults, tolerating a
@@ -76,18 +83,21 @@
       deepLink: typeof raw.deepLink === "string" && raw.deepLink.length > 0 ? raw.deepLink : DEFAULT_PREFS.deepLink,
       codecFilter: raw.codecFilter === "h264" ? "h264" : DEFAULT_PREFS.codecFilter,
       touchOverlay: raw.touchOverlay === false ? false : DEFAULT_PREFS.touchOverlay,
-      sleepAtEndOfVideo: raw.sleepAtEndOfVideo === true ? true : DEFAULT_PREFS.sleepAtEndOfVideo
+      sleepAtEndOfVideo: raw.sleepAtEndOfVideo === true ? true : DEFAULT_PREFS.sleepAtEndOfVideo,
+      hideShorts: raw.hideShorts === true ? true : DEFAULT_PREFS.hideShorts,
+      hideGuideTabs: raw.hideGuideTabs === true ? true : DEFAULT_PREFS.hideGuideTabs
     };
   };
 
   // Merges a `lalin-cast-prefs` payload ({ lang, controllerEnabled,
-  // pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo }, no
-  // `deepLink` field — that only ever arrives once, via __LALIN_PREFS__ or a
-  // `lalin-cast-deeplink` event) onto the previous prefs, ignoring
-  // unknown/malformed fields. Note that a later `codecFilter` change is only
-  // ever *stored* here — per contract it takes effect on the next page load,
-  // since installCodecFilter() (below) only ever runs once, synchronously,
-  // from boot().
+  // pauseOnBlur, codecFilter, touchOverlay, sleepAtEndOfVideo, hideShorts,
+  // hideGuideTabs }, no `deepLink` field — that only ever arrives once, via
+  // __LALIN_PREFS__ or a `lalin-cast-deeplink` event) onto the previous
+  // prefs, ignoring unknown/malformed fields. Note that a later
+  // `codecFilter` change is only ever *stored* here — per contract it takes
+  // effect on the next page load, since installCodecFilter() (below) only
+  // ever runs once, synchronously, from boot(). `hideShorts`/`hideGuideTabs`
+  // are the opposite: applied immediately (see the "Hide" section below).
   const applyPrefsUpdate = (prev, payload) => {
     const base = prev && typeof prev === "object" ? prev : DEFAULT_PREFS;
     const next = {
@@ -97,7 +107,9 @@
       deepLink: base.deepLink,
       codecFilter: base.codecFilter,
       touchOverlay: base.touchOverlay,
-      sleepAtEndOfVideo: base.sleepAtEndOfVideo
+      sleepAtEndOfVideo: base.sleepAtEndOfVideo,
+      hideShorts: base.hideShorts,
+      hideGuideTabs: base.hideGuideTabs
     };
     if (payload && typeof payload === "object") {
       if (payload.lang === "en" || payload.lang === "th") next.lang = payload.lang;
@@ -106,6 +118,8 @@
       if (payload.codecFilter === "h264" || payload.codecFilter === "off") next.codecFilter = payload.codecFilter;
       if (typeof payload.touchOverlay === "boolean") next.touchOverlay = payload.touchOverlay;
       if (typeof payload.sleepAtEndOfVideo === "boolean") next.sleepAtEndOfVideo = payload.sleepAtEndOfVideo;
+      if (typeof payload.hideShorts === "boolean") next.hideShorts = payload.hideShorts;
+      if (typeof payload.hideGuideTabs === "boolean") next.hideGuideTabs = payload.hideGuideTabs;
     }
     return next;
   };
@@ -1241,6 +1255,244 @@
   };
 
   const startVolumeSync = (win, volumeControl) => win.setInterval(() => volumeControl.sync(), VOLUME_SYNC_INTERVAL_MS);
+
+  // -------------------------------------------------------------------------
+  // Hide (Shorts shelf / guide tab) — Lalin Cast original, NOT a port.
+  //
+  // Provenance / why this is not ported: upstream VacuumTube has two
+  // modules that implement this same feature —
+  // reference/vacuumtube/src/preload/modules/hide-shorts.js and
+  // .../guide-tabs.js. Both register a response modifier via
+  // `xhrModifiers.addResponseModifier`, i.e. both intercept and rewrite the
+  // JSON body of `/youtubei/v1/browse` (hide-shorts.js: filters the "Shorts"
+  // shelf out of `sectionListRenderer.contents` before the page ever parses
+  // it) and `/youtubei/v1/guide` (guide-tabs.js: filters entries out of
+  // `guideSectionRenderer.items` keyed on each entry's icon type). That is
+  // exactly the same class of mechanism as the ad-filtering approach this
+  // wave's founder decision rules out for Lalin Cast (see
+  // docs/plans/W8_BOUNDARY_PLAN.md, "เส้นที่ห้ามข้ามใน wave นี้"): both read
+  // and rewrite YouTube's own network response before the page sees it.
+  // Lalin Cast does not do that here, or anywhere. This section shares no
+  // code and no approach with either upstream file — it never wraps or
+  // reads any browser network API, never reads or edits a YouTube network
+  // response, and never removes a node from YouTube's DOM. It only reads
+  // the DOM YouTube has *already rendered*, tags matching elements with our
+  // own classes, and hides them with our own <style> element scoped to our
+  // own `documentElement` data attributes — the same "our overlay, our
+  // stylesheet" shape as the volume/touch/help/speed OSDs above, not a
+  // network hook.
+  //
+  // Because the underlying feature is the same (a user-facing Shorts
+  // shelf/tab toggle) the two icon-type/tag-name strings below happen to
+  // overlap with values upstream's response filters also key on — that is
+  // coincidence of the shared subject matter (YouTube's own naming), not
+  // shared code: this file never reads those strings from a network
+  // response, only from already-rendered DOM attributes.
+  // -------------------------------------------------------------------------
+
+  const HIDE_STYLE_ID = "lalin-cast-hide-style";
+  const HIDE_SHORTS_CLASS = "lalin-cast-hidden-shorts";
+  const HIDE_GUIDE_TAB_CLASS = "lalin-cast-hidden-guide-tab";
+  const HIDE_SHORTS_DATASET_KEY = "lalinHideShorts";
+  const HIDE_GUIDE_TABS_DATASET_KEY = "lalinHideGuideTabs";
+
+  // Scoped to our own documentElement data attributes only — toggling is
+  // ever only setting or deleting `documentElement.dataset.lalinHideShorts`
+  // / `lalinHideGuideTabs` (see applyHidePrefsToDocument below), so this
+  // rule set never needs to change at runtime and applies instantly with no
+  // reload.
+  const HIDE_STYLE_CSS = `
+html[data-lalin-hide-shorts="true"] .${HIDE_SHORTS_CLASS} { display: none !important; }
+html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none !important; }
+`;
+
+  // Observed-behaviour DOM signals (Leanback/TV YouTube) used to *identify*
+  // candidate elements — this is NOT a documented contract from Google and
+  // can change without notice, which is exactly why matching only ever adds
+  // a class (never removes a node) and a scan that matches nothing is
+  // silent rather than throwing. Deliberately non-text: no rule here reads
+  // `textContent`/`aria-label`/any string that changes with UI language.
+  //   - SHORTS_SHELF_TAG / SHORTS_SHELF_OVERLAY_SELECTOR: YouTube's internal
+  //     codename for Shorts is "reel" (the web and mobile clients' Shorts
+  //     shelf tags are literally `ytd-reel-shelf-renderer` /
+  //     `ytm-reel-shelf-renderer`); the Leanback shelf renderer and a
+  //     Shorts-specific thumbnail overlay attribute follow the same
+  //     naming/attribute-reflection convention.
+  //   - GUIDE_ENTRY_TAG / ICON_TYPE_ATTR / SHORTS_ICON_TYPE: a Leanback
+  //     guide (side-nav) entry reflects its icon enum as a non-text
+  //     `icon-type` attribute; `YOUTUBE_SHORTS_FILL_24` is the same enum
+  //     name upstream's guide-tabs.js keys its (unused-by-us) `map` on.
+  //   - HOME_ICON_TYPE: the Home entry's icon enum, named directly in
+  //     guide-tabs.js's own commented-out map entry
+  //     (`'WHAT_TO_WATCH': 'home'`) — used only as a defensive exclusion, on
+  //     top of the fact that it can never equal SHORTS_ICON_TYPE.
+  const HIDE_MATCH_SIGNALS = Object.freeze({
+    SHORTS_SHELF_TAG: "YTLR-REEL-SHELF-RENDERER",
+    SHORTS_SHELF_OVERLAY_SELECTOR: '[overlay-style="SHORTS"]',
+    GUIDE_ENTRY_TAG: "YTLR-GUIDE-ENTRY-RENDERER",
+    ICON_TYPE_ATTR: "icon-type",
+    ICON_TYPE_SELECTOR: "[icon-type]",
+    SHORTS_ICON_TYPE: "YOUTUBE_SHORTS_FILL_24",
+    HOME_ICON_TYPE: "WHAT_TO_WATCH"
+  });
+
+  // CSS selectors used to gather scan candidates — kept next to the signals
+  // above but separate, since a selector may need to be broader than the
+  // exact positive-match tag (e.g. a generic shelf tag, filtered afterwards
+  // by the pure matcher) without widening what actually counts as a match.
+  const HIDE_SHELF_CANDIDATE_SELECTOR = "ytlr-reel-shelf-renderer, ytlr-shelf-renderer";
+  const HIDE_GUIDE_CANDIDATE_SELECTOR = "ytlr-guide-entry-renderer";
+
+  // Reads a candidate's icon-type: its own `icon-type` attribute, or — a
+  // guide entry's icon is sometimes a nested element — the first descendant
+  // carrying that attribute. Pure; never throws on a malformed element.
+  const readIconType = (el) => {
+    if (!el) return null;
+    try {
+      if (typeof el.getAttribute === "function") {
+        const own = el.getAttribute(HIDE_MATCH_SIGNALS.ICON_TYPE_ATTR);
+        if (typeof own === "string" && own.length > 0) return own;
+      }
+      if (typeof el.querySelector === "function") {
+        const nested = el.querySelector(HIDE_MATCH_SIGNALS.ICON_TYPE_SELECTOR);
+        if (nested && typeof nested.getAttribute === "function") {
+          const value = nested.getAttribute(HIDE_MATCH_SIGNALS.ICON_TYPE_ATTR);
+          if (typeof value === "string" && value.length > 0) return value;
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  // Pure: is `el` (an element-like object — only `tagName`/`getAttribute`/
+  // `querySelector` are read, so a plain stub works with no real DOM) the
+  // Shorts shelf on the Leanback home page? Never reads text content.
+  const isShortsShelf = (el) => {
+    if (!el || typeof el.tagName !== "string") return false;
+    const tag = el.tagName.toUpperCase();
+    if (tag === HIDE_MATCH_SIGNALS.SHORTS_SHELF_TAG) return true;
+    if (typeof el.querySelector !== "function") return false;
+    try {
+      return Boolean(el.querySelector(HIDE_MATCH_SIGNALS.SHORTS_SHELF_OVERLAY_SELECTOR));
+    } catch {
+      return false;
+    }
+  };
+
+  // Pure: is `el` a Shorts entry in the Leanback guide (side-nav)? Never
+  // reads text content. Explicitly refuses to match the Home entry even
+  // though its icon type could never equal SHORTS_ICON_TYPE in practice —
+  // this is the belt to isFocusProtected's suspenders in scanAndHide below,
+  // keeping the "never hide Home" rule visible and independently testable
+  // right at the matcher.
+  const isShortsGuideTab = (el) => {
+    const iconType = readIconType(el);
+    if (!iconType) return false;
+    if (iconType === HIDE_MATCH_SIGNALS.HOME_ICON_TYPE) return false;
+    return iconType === HIDE_MATCH_SIGNALS.SHORTS_ICON_TYPE;
+  };
+
+  // Injects the one shared <style> element, once, the same idempotent
+  // get-then-create pattern as ensureStyle() in the Volume section above.
+  const ensureHideStyle = (doc) => {
+    if (!doc || typeof doc.getElementById !== "function") return;
+    if (doc.getElementById(HIDE_STYLE_ID)) return;
+    const style = doc.createElement("style");
+    style.id = HIDE_STYLE_ID;
+    style.textContent = HIDE_STYLE_CSS;
+    const parent = doc.head || doc.documentElement;
+    if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+  };
+
+  // The only thing toggling the prefs ever does: set or delete our two
+  // documentElement data attributes. No re-scan needed — matching elements
+  // are tagged with our classes independently of whether hiding is
+  // currently on (see scanAndHide below), so flipping the attribute takes
+  // effect the instant the CSS rule above re-evaluates, no reload.
+  const applyHidePrefsToDocument = (doc, prefs) => {
+    const root = doc && doc.documentElement;
+    if (!root || !root.dataset) return;
+    if (prefs && prefs.hideShorts) root.dataset[HIDE_SHORTS_DATASET_KEY] = "true";
+    else delete root.dataset[HIDE_SHORTS_DATASET_KEY];
+    if (prefs && prefs.hideGuideTabs) root.dataset[HIDE_GUIDE_TABS_DATASET_KEY] = "true";
+    else delete root.dataset[HIDE_GUIDE_TABS_DATASET_KEY];
+  };
+
+  // One scan pass: gathers shelf/guide-entry candidates, tags the ones the
+  // pure matchers accept with our own class — classList.add only, never a
+  // node removal, never markup injection into an existing node, never
+  // touching a node YouTube owns beyond adding one class of our own to it.
+  // Skips anything that is
+  // `document.activeElement` or an ancestor of it, so focus never gets
+  // silently hidden out from under the user. Never throws on a malformed
+  // `doc` and never logs; a pass over a page with no matching elements at
+  // all is a plain no-op.
+  const scanAndHide = (doc) => {
+    if (!doc || typeof doc.querySelectorAll !== "function") return;
+    const active = doc.activeElement || null;
+    const isFocusProtected = (el) => {
+      let node = active;
+      while (node) {
+        if (node === el) return true;
+        node = node.parentElement || null;
+      }
+      return false;
+    };
+    const tagIfMatch = (el, matches, className) => {
+      if (!el || !matches(el) || isFocusProtected(el)) return;
+      if (el.classList && typeof el.classList.add === "function") el.classList.add(className);
+    };
+
+    const shelves = doc.querySelectorAll(HIDE_SHELF_CANDIDATE_SELECTOR) || [];
+    Array.prototype.forEach.call(shelves, (el) => tagIfMatch(el, isShortsShelf, HIDE_SHORTS_CLASS));
+
+    const guideEntries = doc.querySelectorAll(HIDE_GUIDE_CANDIDATE_SELECTOR) || [];
+    Array.prototype.forEach.call(guideEntries, (el) => tagIfMatch(el, isShortsGuideTab, HIDE_GUIDE_TAB_CLASS));
+  };
+
+  // Wires the always-on MutationObserver, coalesced through
+  // requestAnimationFrame so at most one scan runs per animation frame no
+  // matter how many DOM mutations land in between (the same "batch bursts
+  // of mutation records into one pass" shape as initMark()'s observer
+  // above, just explicitly coalesced rather than relying on a naturally
+  // cheap callback). Runs an initial pass immediately for content already
+  // on the page before boot() ever attaches this observer. A thrown
+  // exception from a scan is swallowed here, never logged — matches the
+  // "silent when nothing matches" contract even for the unexpected case of
+  // a malformed DOM.
+  const createHideObserver = (doc, win) => {
+    ensureHideStyle(doc);
+    let scheduled = false;
+    const runScan = () => {
+      scheduled = false;
+      try {
+        scanAndHide(doc);
+      } catch {
+        // Silent per contract — never throw, never log.
+      }
+    };
+    const requestScan = () => {
+      if (scheduled) return;
+      scheduled = true;
+      const raf = win && typeof win.requestAnimationFrame === "function" ? win.requestAnimationFrame : null;
+      if (raf) raf.call(win, runScan);
+      else runScan();
+    };
+
+    const ObserverCtor = (win && win.MutationObserver) ||
+      (typeof MutationObserver !== "undefined" ? MutationObserver : null);
+    if (ObserverCtor && doc && typeof doc.querySelectorAll === "function") {
+      const observer = new ObserverCtor(requestScan);
+      if (typeof observer.observe === "function") {
+        observer.observe(doc, { childList: true, subtree: true });
+      }
+    }
+
+    requestScan();
+    return { requestScan };
+  };
 
   // -------------------------------------------------------------------------
   // Touch overlay
@@ -2391,10 +2643,18 @@
     });
     window.addEventListener("touchstart", () => touchOverlay.handleTouchStart(), { passive: true });
 
+    // Wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide
+    // tabs". The observer runs regardless of the current pref values (it
+    // only ever tags matching elements with our classes); the prefs merely
+    // control whether the CSS rule that hides a tagged element is active.
+    createHideObserver(document, window);
+    applyHidePrefsToDocument(document, state.prefs);
+
     state.onPrefsChange = (next) => {
       if (next.controllerEnabled) gamepadController.start();
       else gamepadController.stop();
       touchOverlay.setEnabled(next.touchOverlay);
+      applyHidePrefsToDocument(document, next);
     };
 
     initPrefsAndDeepLink(document, window, state, sleepOsd);
@@ -2466,7 +2726,20 @@
       SLEEP_AT_END_WINDOW_MS,
       SLEEP_AT_END_OSD_TEXT,
       sleepAtEndDecision,
-      createSleepAtEndHandler
+      createSleepAtEndHandler,
+      // Wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide tabs".
+      HIDE_STYLE_ID,
+      HIDE_SHORTS_CLASS,
+      HIDE_GUIDE_TAB_CLASS,
+      HIDE_SHELF_CANDIDATE_SELECTOR,
+      HIDE_GUIDE_CANDIDATE_SELECTOR,
+      HIDE_MATCH_SIGNALS,
+      isShortsShelf,
+      isShortsGuideTab,
+      ensureHideStyle,
+      applyHidePrefsToDocument,
+      scanAndHide,
+      createHideObserver
     };
   }
 
