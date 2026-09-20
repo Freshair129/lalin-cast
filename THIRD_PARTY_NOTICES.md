@@ -390,7 +390,7 @@ crate name then version.
 | 288 | [rustc_version](https://github.com/djc/rustc-version-rs) | 0.4.1 | `MIT OR Apache-2.0` |
 | 289 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.3 | `Apache-2.0 OR MIT` |
 | 290 | [rustix](https://github.com/bytecodealliance/rustix) | 1.1.4 | `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT` |
-| 291 | [rustls](https://github.com/rustls/rustls) | 0.23.44 | `Apache-2.0 OR ISC OR MIT` |
+| 291 | [rustls](https://github.com/rustls/rustls) | 0.23.45 | `Apache-2.0 OR ISC OR MIT` |
 | 292 | [rustls-native-certs](https://github.com/rustls/rustls-native-certs) | 0.8.4 | `Apache-2.0 OR ISC OR MIT` |
 | 293 | [rustls-pki-types](https://github.com/rustls/pki-types) | 1.15.1 | `MIT OR Apache-2.0` |
 | 294 | [rustls-platform-verifier](https://github.com/rustls/rustls-platform-verifier) | 0.7.0 | `MIT OR Apache-2.0` |
