@@ -16,7 +16,7 @@ use tauri_plugin_store::StoreExt;
 use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
 use crate::launch::LALIN_SCHEME;
-use crate::{autostart, diagnostics, setup, sleep, tray, updater, window_mode};
+use crate::{autostart, diagnostics, log, setup, sleep, tray, updater, window_mode};
 
 pub const SETTINGS_LABEL: &str = "settings";
 const SETTINGS_WINDOW_WIDTH: f64 = 560.0;
@@ -389,7 +389,11 @@ pub fn open_settings_window(app: &AppHandle) {
             .build();
 
     if let Err(error) = result {
-        eprintln!("Lalin Cast: could not open the settings window: {error}");
+        log::error(
+            app,
+            "settings",
+            &format!("Lalin Cast: could not open the settings window: {error}"),
+        );
     }
 }
 

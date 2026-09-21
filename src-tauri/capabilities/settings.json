@@ -12,6 +12,7 @@
     "allow-settings-diagnostics",
     "allow-settings-apply-profile",
     "allow-settings-reset-defaults",
-    "allow-settings-launch-command"
+    "allow-settings-launch-command",
+    "allow-settings-open-log-folder"
   ]
 }

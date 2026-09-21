@@ -13,6 +13,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
+use crate::log;
 use crate::network::{self, NetworkProfile};
 
 pub const SETUP_LABEL: &str = "setup";
@@ -96,7 +97,11 @@ pub fn open_setup_window_explicit(app: &AppHandle, first_run: bool) {
         .build();
 
     if let Err(error) = result {
-        eprintln!("Lalin Cast: could not open the setup window: {error}");
+        log::error(
+            app,
+            "setup",
+            &format!("Lalin Cast: could not open the setup window: {error}"),
+        );
     }
 }
 
@@ -108,17 +113,25 @@ pub fn schedule_auto_open(app: &AppHandle) {
     if is_setup_completed(app) {
         return;
     }
-    let app = app.clone();
+    // Cloned under its own name (rather than the previous
+    // shadowing `let app = app.clone();`) so the original `app: &AppHandle`
+    // parameter is still available below for the `log::warn` call after the
+    // clone is moved into the thread closure.
+    let thread_app = app.clone();
     let spawned = thread::Builder::new()
         .name("lalin-cast-setup-auto-open".to_owned())
         .spawn(move || {
             thread::sleep(AUTO_OPEN_DELAY);
-            if !is_setup_completed(&app) {
-                open_setup_window(&app);
+            if !is_setup_completed(&thread_app) {
+                open_setup_window(&thread_app);
             }
         });
     if let Err(error) = spawned {
-        eprintln!("Lalin Cast: could not schedule the setup auto-open: {error}");
+        log::warn(
+            app,
+            "setup",
+            &format!("Lalin Cast: could not schedule the setup auto-open: {error}"),
+        );
     }
 }
 

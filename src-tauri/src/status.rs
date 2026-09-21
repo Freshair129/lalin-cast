@@ -21,6 +21,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Window};
 
 use crate::i18n::{self, Key};
+use crate::log;
 use crate::surface;
 
 pub const STATUS_LABEL: &str = "status";
@@ -113,7 +114,11 @@ pub fn open_status_window(
             }
         }
         Err(error) => {
-            eprintln!("Lalin Cast: could not open the status window: {error}");
+            log::error(
+                app,
+                "status",
+                &format!("Lalin Cast: could not open the status window: {error}"),
+            );
         }
     }
 }
@@ -124,19 +129,30 @@ pub fn open_status_window(
 /// outcome. Opens the `status` window in the `offline` state only if the
 /// probe fails.
 pub fn schedule_startup_probe(app: &AppHandle) {
-    let app = app.clone();
+    // Cloned under its own name so `app` survives the `move` closure below
+    // and is still available for the `log::warn` call after `spawn`
+    // returns.
+    let thread_app = app.clone();
     let spawned = thread::Builder::new()
         .name("lalin-cast-status-probe".to_owned())
         .spawn(move || {
             if let Err(error) = surface::probe_connectivity(PROBE_TIMEOUT) {
-                eprintln!("Lalin Cast: startup connectivity probe failed: {error}");
-                let lang = i18n::load(&app);
+                log::warn(
+                    &thread_app,
+                    "status",
+                    &format!("Lalin Cast: startup connectivity probe failed: {error}"),
+                );
+                let lang = i18n::load(&thread_app);
                 let message = i18n::t(lang, Key::StatusOfflineMessage).to_owned();
-                open_status_window(&app, STATE_OFFLINE, Some(message), None);
+                open_status_window(&thread_app, STATE_OFFLINE, Some(message), None);
             }
         });
     if let Err(error) = spawned {
-        eprintln!("Lalin Cast: could not schedule the startup connectivity probe: {error}");
+        log::warn(
+            app,
+            "status",
+            &format!("Lalin Cast: could not schedule the startup connectivity probe: {error}"),
+        );
     }
 }
 
@@ -260,12 +276,19 @@ fn spawn_auto_retry(app: &AppHandle) {
         return;
     };
     let generation = state.bump();
-    let app = app.clone();
+    // Cloned under its own name so `app` survives the `move` closure below
+    // and is still available for the `log::warn` call after `spawn`
+    // returns.
+    let thread_app = app.clone();
     let spawned = thread::Builder::new()
         .name("lalin-cast-status-auto-retry".to_owned())
-        .spawn(move || run_auto_retry(app, generation));
+        .spawn(move || run_auto_retry(thread_app, generation));
     if let Err(error) = spawned {
-        eprintln!("Lalin Cast: could not start offline auto-retry: {error}");
+        log::warn(
+            app,
+            "status",
+            &format!("Lalin Cast: could not start offline auto-retry: {error}"),
+        );
     }
 }
 

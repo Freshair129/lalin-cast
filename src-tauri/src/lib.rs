@@ -4,6 +4,7 @@ mod dial;
 mod i18n;
 mod launch;
 mod lifecycle;
+mod log;
 mod network;
 mod power;
 mod settings;
@@ -494,7 +495,11 @@ pub(crate) fn focus_media(app: &tauri::AppHandle) {
 
 fn seed_settings(app: &tauri::AppHandle) {
     let Ok(store) = app.store("media-settings.json") else {
-        eprintln!("Lalin Cast: settings store unavailable; using defaults for this run");
+        log::warn(
+            app,
+            "lib",
+            "Lalin Cast: settings store unavailable; using defaults for this run",
+        );
         return;
     };
 
@@ -562,7 +567,11 @@ fn seed_settings(app: &tauri::AppHandle) {
     }
 
     if let Err(error) = store.save() {
-        eprintln!("Lalin Cast: settings store could not be saved: {error}");
+        log::warn(
+            app,
+            "lib",
+            &format!("Lalin Cast: settings store could not be saved: {error}"),
+        );
     }
 }
 
@@ -768,7 +777,11 @@ fn build_media_window(
                         let _ = window.set_menu(menu);
                     }
                     Err(error) => {
-                        eprintln!("Lalin Cast: could not rebuild the menu: {error}");
+                        log::warn(
+                            &app_handle,
+                            "lib",
+                            &format!("Lalin Cast: could not rebuild the menu: {error}"),
+                        );
                     }
                 }
                 tray::rebuild_menu(&app_handle, next);
@@ -975,6 +988,13 @@ pub fn run() {
             // present regardless of which branch runs.
             app.manage(lifecycle::StoppedMarker::default());
             app.manage(lifecycle::LifecycleSummaryState::default());
+            // Wave 9: managed before anything below can possibly log (in
+            // particular, before the very first `lifecycle::write_*` call a
+            // few lines down), so every `log::info`/`warn`/`error` call
+            // site converted from `eprintln!` this wave finds `LogState`
+            // already present via `app.try_state::<log::LogState>()`
+            // regardless of call order.
+            app.manage(log::LogState::default());
 
             // First-launch `--lifecycle close`: write `stopped` and return
             // before any window/tray/DIAL is built, per the Wave 5
@@ -1024,7 +1044,11 @@ pub fn run() {
             // registry value stays whatever it already was.
             if read_bool_setting_or(app.handle(), "startWithWindows", false) {
                 if let Err(error) = autostart::set_enabled(true) {
-                    eprintln!("Lalin Cast: could not reconcile Windows startup: {error}");
+                    log::warn(
+                        app.handle(),
+                        "lib",
+                        &format!("Lalin Cast: could not reconcile Windows startup: {error}"),
+                    );
                 }
             }
             // Same idempotent reconcile as `startWithWindows` above, for the
@@ -1035,8 +1059,12 @@ pub fn run() {
             // here (this only mirrors it into the registry).
             if read_bool_setting_or(app.handle(), "deepLinkScheme", false) {
                 if let Err(error) = app.deep_link().register(launch::LALIN_SCHEME) {
-                    eprintln!(
-                        "Lalin Cast: could not reconcile the lalin-cast:// registration: {error}"
+                    log::warn(
+                        app.handle(),
+                        "lib",
+                        &format!(
+                            "Lalin Cast: could not reconcile the lalin-cast:// registration: {error}"
+                        ),
                     );
                 }
             }
@@ -1044,14 +1072,22 @@ pub fn run() {
             // is already registered when the very first
             // `lalin-cast-dial-status` event fires.
             if let Err(error) = tray::build(app.handle()) {
-                eprintln!("Lalin Cast: could not build the tray icon: {error}");
+                log::error(
+                    app.handle(),
+                    "lib",
+                    &format!("Lalin Cast: could not build the tray icon: {error}"),
+                );
             }
             match dial::start(app.handle()) {
                 Ok(state) => {
                     app.manage(state);
                 }
                 Err(error) => {
-                    eprintln!("Lalin Cast: DIAL is unavailable: {error}");
+                    log::error(
+                        app.handle(),
+                        "lib",
+                        &format!("Lalin Cast: DIAL is unavailable: {error}"),
+                    );
                     app.manage(dial::disabled_state(app.handle(), error));
                 }
             }
@@ -1064,10 +1100,16 @@ pub fn run() {
                     .request_id
                     .clone()
                     .unwrap_or_else(|| "startup".to_owned());
-                // A fixed message — never the raw error text, which could
-                // embed a filesystem path. `code` is what a driver keys off;
-                // the details still go to stderr as before.
-                eprintln!("Lalin Cast: could not build the media window: {error}");
+                // A fixed message goes to `lifecycle.json` — never the raw
+                // error text, which could embed a filesystem path. `code`
+                // is what a driver keys off; the details still go to the
+                // log file (through the sanitiser, which masks any
+                // embedded path/URL) as before.
+                log::error(
+                    app.handle(),
+                    "lib",
+                    &format!("Lalin Cast: could not build the media window: {error}"),
+                );
                 lifecycle::write_failed(
                     &handle,
                     request_id,
@@ -1094,7 +1136,8 @@ pub fn run() {
             settings::settings_apply_profile,
             settings::settings_reset_defaults,
             settings::settings_launch_command,
-            diagnostics::settings_diagnostics
+            diagnostics::settings_diagnostics,
+            log::settings_open_log_folder
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lalin Cast");

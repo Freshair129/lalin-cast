@@ -18,7 +18,7 @@ use tauri::{AppHandle, Listener, Manager, Runtime};
 
 use crate::dial::{self, DialStateKind, DialStatus};
 use crate::i18n::{self, Key, Lang};
-use crate::{focus_media, settings, setup, updater, window_mode};
+use crate::{focus_media, log, settings, setup, updater, window_mode};
 
 pub const TRAY_ID: &str = "main-tray";
 
@@ -210,7 +210,11 @@ pub fn rebuild_menu(app: &AppHandle, lang: Lang) {
             let _ = tray.set_menu(Some(menu));
         }
         Err(error) => {
-            eprintln!("Lalin Cast: could not rebuild the tray menu: {error}");
+            log::warn(
+                app,
+                "tray",
+                &format!("Lalin Cast: could not rebuild the tray menu: {error}"),
+            );
         }
     }
 }

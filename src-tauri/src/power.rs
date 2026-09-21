@@ -109,6 +109,12 @@ impl Default for PowerState {
                 call_set_thread_execution_state(ES_CONTINUOUS);
             });
         if let Err(error) = spawned {
+            // Exempt from the Wave 9 eprintln->log sweep: this runs inside
+            // `PowerState`'s `Default` impl, called as
+            // `app.manage(power::PowerState::default())` in `lib.rs`'s
+            // `setup` hook — the trait signature (`fn default() -> Self`)
+            // carries no `AppHandle` to log through, and there is no
+            // `AppHandle` reachable here to obtain one from.
             eprintln!("Lalin Cast: could not start the power worker thread: {error}");
         }
         Self {

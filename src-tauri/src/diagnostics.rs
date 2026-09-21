@@ -13,7 +13,7 @@ use tauri::{Manager, State, Window};
 use crate::dial::{self, DialStateKind, DialStatus};
 use crate::i18n;
 use crate::network::{self, NetworkCategory, NetworkProfile};
-use crate::{lifecycle, settings};
+use crate::{lifecycle, log, settings};
 
 /// `tauri`'s own crate version, as pinned in `Cargo.lock`. There is no
 /// build-time way to read a dependency's version without adding a crate
@@ -65,6 +65,12 @@ pub struct DiagnosticsInput<'a> {
     /// Pre-formatted by `lifecycle::current_summary` (e.g. `"ready (pid 1234)"`).
     pub lifecycle: &'a str,
     pub generated_at: u64,
+    /// Wave 9: pre-formatted by `log::LOG_FILE_NAME` + `log::current_size_kib`
+    /// as `"<file name> (<size> KiB)"` (e.g. `"lalin-cast.log (12 KiB)"`).
+    /// Deliberately just the file name, never the full path — a Windows
+    /// path embeds the user's account name, and this text gets pasted
+    /// straight into a bug report.
+    pub log_file: &'a str,
 }
 
 fn format_dial(status: &DialStatus) -> String {
@@ -138,6 +144,7 @@ pub fn format_diagnostics(input: &DiagnosticsInput) -> String {
         format!("dialFriendlyName: {}", input.dial_friendly_name),
         format!("lifecycle: {}", input.lifecycle),
         format!("generatedAt: {}", input.generated_at),
+        format!("logFile: {}", input.log_file),
     ];
     lines.join("\n")
 }
@@ -161,6 +168,14 @@ pub fn settings_diagnostics(
     let diagnostics_settings = settings::diagnostics_settings(app);
     let friendly_name = dial::load_friendly_name(app);
     let lifecycle_summary = lifecycle::current_summary(app);
+    // Wave 9: file name plus size only — never the full path, which would
+    // embed the Windows account name. See `log::current_size_kib`'s doc
+    // comment.
+    let log_file = format!(
+        "{} ({} KiB)",
+        log::LOG_FILE_NAME,
+        log::current_size_kib(app)
+    );
 
     let input = DiagnosticsInput {
         version: env!("CARGO_PKG_VERSION"),
@@ -175,6 +190,7 @@ pub fn settings_diagnostics(
         dial_friendly_name: &friendly_name,
         lifecycle: &lifecycle_summary,
         generated_at: lifecycle::now_unix(),
+        log_file: &log_file,
     };
     Ok(format_diagnostics(&input))
 }
@@ -260,6 +276,7 @@ mod tests {
             dial_friendly_name: "Lalin Cast",
             lifecycle: "ready (pid 1234)",
             generated_at: 1_758_380_400,
+            log_file: "lalin-cast.log (12 KiB)",
         };
         let output = format_diagnostics(&input);
         let lines: Vec<&str> = output.lines().collect();
@@ -279,6 +296,7 @@ mod tests {
         assert_eq!(lines[9], "dialFriendlyName: Lalin Cast");
         assert_eq!(lines[10], "lifecycle: ready (pid 1234)");
         assert_eq!(lines[11], "generatedAt: 1758380400");
+        assert_eq!(lines[12], "logFile: lalin-cast.log (12 KiB)");
     }
 
     #[test]
@@ -299,6 +317,7 @@ mod tests {
             dial_friendly_name: "Lalin Cast",
             lifecycle: "starting",
             generated_at: 0,
+            log_file: "lalin-cast.log (0 KiB)",
         };
         assert!(format_diagnostics(&input).contains("webview2: unknown"));
     }
@@ -321,6 +340,7 @@ mod tests {
             dial_friendly_name: "Lalin Cast",
             lifecycle: "starting",
             generated_at: 0,
+            log_file: "lalin-cast.log (0 KiB)",
         }
     }
 
@@ -386,6 +406,7 @@ mod tests {
             dial_friendly_name: "Living Room Lalin Cast",
             lifecycle: "ready (pid 4242)",
             generated_at: 1_758_380_400,
+            log_file: "lalin-cast.log (12 KiB)",
         };
         let output = format_diagnostics(&input).to_lowercase();
         assert!(!output.contains("dialdeviceid"));
