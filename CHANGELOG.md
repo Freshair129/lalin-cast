@@ -329,3 +329,49 @@ version number.
   path rule, and the path rule masks a path under home as a whole, closing wave 9's limitation that a
   home path whose account name contains a space could reveal that name; the account name itself is
   masked only as a whole word of at least 3 characters
+
+#### Wave 11 — Portable mode (`docs/plans/W11_PORTABLE_PLAN.md`)
+
+- โหมดพกพา: ไฟล์ marker ชื่อ `lalin-cast.portable` ข้าง `lalin-cast.exe` ทำให้ทุกอย่างที่แอปเขียนเอง
+  (settings store, log, `lifecycle.json`, โปรไฟล์ WebView2) ย้ายไปอยู่ในโฟลเดอร์ `lalin-cast-data`
+  ข้าง exe แทน `%APPDATA%`/`%LOCALAPPDATA%\ai.lalin.cast`; **โหมด installed ไม่เปลี่ยนพฤติกรรมแม้แต่
+  path เดียว** / portable mode: a `lalin-cast.portable` marker file beside `lalin-cast.exe` moves
+  every piece of data the app itself writes (the settings store, logs, `lifecycle.json`, the WebView2
+  profile) into a `lalin-cast-data` folder beside the exe instead of
+  `%APPDATA%`/`%LOCALAPPDATA%\ai.lalin.cast`; **installed mode's behavior does not change by even one
+  path**
+- โหมดพกพาไม่สร้าง ไม่ลบ และไม่แก้ Run key หรือการจดทะเบียน `lalin-cast://` เลย (แม้แต่ตอนปิดตัวเลือก
+  เพราะรายการที่มีอยู่อาจเป็นของตัวที่ติดตั้งไว้บนเครื่องเดียวกัน) และปฏิเสธการเปิดตัวเลือกทั้งสองนี้ในชั้น Rust
+  ไม่ใช่แค่ซ่อนปุ่มใน UI; การติดตั้งอัปเดตทับ (in-place updater) ถูกปิดเช่นกัน เพราะ NSIS installer
+  ติดตั้งลงโฟลเดอร์ติดตั้งของตัวเอง ไม่ใช่ทับโฟลเดอร์ข้าง exe แบบพกพา / portable mode never creates,
+  deletes or changes the Run key or the `lalin-cast://` registration (not even when a toggle is
+  turned off, since an existing entry may belong to an installed copy on the same machine) and refuses
+  to turn either toggle on at the Rust layer, not only by hiding the UI control; the in-place updater
+  is disabled too, since the NSIS installer installs into its own install folder, not over the
+  portable folder beside the exe
+- แถบข้อความในหน้า settings และ update เมื่อ `portable === true` อธิบายโหมดพกพาและ disable ตัวเลือกที่ปิด
+  ไว้ พร้อมเหตุผลสั้น ๆ (ไทยก่อนอังกฤษตาม) / a banner on the settings and update pages, shown when
+  `portable === true`, explains portable mode and disables the toggles that are turned off, with a
+  short reason (Thai first, English follows)
+- CI job `smoke` เพิ่มการรัน exe จริงในโหมดพกพา พิสูจน์ว่า `lifecycle.json` ไปอยู่ใต้ `lalin-cast-data`
+  ข้าง exe จริง และไฟล์ `lifecycle.json` เดิมใน `%LOCALAPPDATA%\ai.lalin.cast` ของขั้นตอน installed-mode
+  ก่อนหน้าไม่ถูกแตะเลย (ทั้ง `requestId` และ `LastWriteTimeUtc`) / the `smoke` CI job now runs the real
+  exe in portable mode, proving `lifecycle.json` really lands under `lalin-cast-data` beside the exe,
+  and that the earlier installed-mode step's `lifecycle.json` in
+  `%LOCALAPPDATA%\ai.lalin.cast` is left completely untouched (both its `requestId` and its
+  `LastWriteTimeUtc`)
+- `.github/workflows/release-dryrun.yml` ผลิต zip พกพาที่ไม่ได้เซ็นชื่อ (`lalin-cast.exe` + marker ว่าง
+  + `packaging/portable/README-PORTABLE.txt`) เป็น artifact `lalin-cast-dryrun-portable` เก็บ 7 วัน
+  พร้อมขนาดไฟล์ในสรุปงาน และเพิ่มขา ARM64 แบบ `continue-on-error` (`aarch64-pc-windows-msvc`) ที่รัน
+  การตรวจ `installer.nsi` แบบ fail-closed เดียวกันและไม่ทำให้ขา x64 หยุดทำงาน — ไม่อ้าง secret ใดเลย และ
+  ไม่แตะ `.github/workflows/release.yml` / `.github/workflows/release-dryrun.yml` now produces an
+  unsigned portable zip (`lalin-cast.exe` + an empty marker + `packaging/portable/README-PORTABLE.txt`)
+  as the `lalin-cast-dryrun-portable` artifact, retained 7 days with its size in the job summary, and
+  adds a `continue-on-error` ARM64 leg (`aarch64-pc-windows-msvc`) that runs the same fail-closed
+  `installer.nsi` check and never stops the x64 leg -- it references no secret at all and never
+  touches `.github/workflows/release.yml`
+- `packaging/portable/README-PORTABLE.txt` (ไทย+อังกฤษ): วิธีใช้, ต้องมี WebView2 runtime, โฟลเดอร์
+  `lalin-cast-data` มี session YouTube ที่ล็อกอินอยู่ให้ถือเหมือนรหัสผ่าน, วิธีอัปเดต, และเตือนว่าเปิด
+  พร้อมกับตัวติดตั้งไม่ได้ / `packaging/portable/README-PORTABLE.txt` (Thai + English): how to use it,
+  the WebView2 runtime requirement, treating the `lalin-cast-data` folder's signed-in YouTube session
+  like a password, how to update, and a warning against running it alongside an installed copy

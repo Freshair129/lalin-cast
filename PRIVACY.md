@@ -343,6 +343,38 @@ Lalin Cast ยังไม่ log ข้อมูลส่วนบุคคล 
 ติดต่ออื่น (เช่นอีเมล) ไว้ในเอกสารนี้หากต้องการ — รายการนี้อยู่ใน checklist ของ
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md) เช่นกัน
 
+## 14. โหมดพกพา (Portable mode)
+
+Wave 11 เพิ่มโหมดพกพา: วางไฟล์ marker ชื่อ `lalin-cast.portable` ข้าง `lalin-cast.exe` (ดู
+[`README.md`](README.md) หัวข้อ "Portable mode / โหมดพกพา") แอปตรวจจากโฟลเดอร์ของ `.exe` เท่านั้น
+ครั้งเดียวตอนเริ่มโปรแกรม เมื่อเข้าโหมดนี้ **ข้อมูลที่แอปเขียนเองทั้งหมด** — ทั้งไฟล์การตั้งค่า
+(ข้อ 2), log (ข้อ 11), ไฟล์วงจรชีวิตของตัวเปิดแอป `lifecycle.json` (ข้อ 7) และโปรไฟล์ WebView2 — ย้ายไป
+อยู่ใต้โฟลเดอร์ `lalin-cast-data` ข้าง `.exe` แทนตำแหน่งปกติ ตามตารางนี้:
+
+| ข้อมูล | โหมดติดตั้งปกติ | โหมดพกพา |
+|---|---|---|
+| ไฟล์การตั้งค่า (`media-settings.json`) | `%APPDATA%\ai.lalin.cast\media-settings.json` | `<โฟลเดอร์ exe>\lalin-cast-data\media-settings.json` |
+| ไฟล์ log | `%LOCALAPPDATA%\ai.lalin.cast\logs\` | `<โฟลเดอร์ exe>\lalin-cast-data\logs\` |
+| `lifecycle.json` | `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json` | `<โฟลเดอร์ exe>\lalin-cast-data\lifecycle.json` |
+| โปรไฟล์ WebView2 (cookie, session ที่ล็อกอิน YouTube) | `%LOCALAPPDATA%\ai.lalin.cast\` (WebView2 สร้างโฟลเดอร์โปรไฟล์ไว้ในนั้น) | `<โฟลเดอร์ exe>\lalin-cast-data\WebView2\` |
+
+โหมดติดตั้งปกติ**ไม่เปลี่ยนแม้แต่ path เดียว**จาก wave นี้ — ตารางแถวซ้ายคือพฤติกรรมเดิมก่อน wave 11
+ทุกประการ ผู้ใช้ที่ติดตั้งแบบปกติอยู่แล้วจะไม่เสียการตั้งค่าใด ๆ
+
+**คำเตือนสำคัญ:** โฟลเดอร์ `lalin-cast-data\WebView2` เก็บ session ที่ล็อกอินบัญชี YouTube และคุกกี้ของ
+`youtube.com` ไว้ — **ใครก็ตามที่ได้โฟลเดอร์ `lalin-cast-data` ไป (เช่น USB หาย หรือส่งต่อให้คนอื่น) จะใช้
+บัญชี YouTube ที่ล็อกอินค้างอยู่ได้ทันทีโดยไม่ต้องพิมพ์รหัสผ่าน** ก่อนส่งต่อหรือทำ USB หาย ให้ **ออกจาก
+ระบบ (sign out) จากบัญชี YouTube ในแอปก่อน หรือลบโฟลเดอร์ `lalin-cast-data` ทิ้งทั้งหมด** — การลบโฟลเดอร์นี้
+เท่ากับลบข้อมูลของแอปทั้งหมดในโหมดพกพาชุดนั้น (การตั้งค่า, log, session — เทียบเท่าข้อ 12 แต่เป็นโฟลเดอร์
+เดียวแทนที่จะเป็นสองโฟลเดอร์)
+
+ในโหมดพกพา แอปไม่สร้าง ไม่ลบ และไม่แก้ Run key หรือ `HKCU\Software\Classes\lalin-cast` เลย แม้ตอนปิดตัวเลือก
+(เพราะรายการที่มีอยู่อาจเป็นของตัวที่ติดตั้งไว้) และไม่ติดตั้งอัปเดตแบบติดตั้งทับ — ดู [`README.md`](README.md)
+สำหรับเหตุผลและวิธีอัปเดต **หมายเหตุ:** โหมดพกพา
+**ไม่ได้แปลว่าไม่ทิ้งร่องรอยบนเครื่องเลย** — ไฟล์ของ WebView2 Runtime เอง, Windows prefetch/jump list,
+และไฟล์ temp ของตัวตรวจสอบอัปเดต อยู่นอกการควบคุมของแอปทั้งหมด สิ่งที่รับประกันได้คือ**ข้อมูลที่แอปเขียนเอง**
+เท่านั้นตามตารางข้างต้น
+
 ---
 
 # Privacy Policy — Lalin Cast (English)
@@ -739,3 +771,40 @@ Issues on this repository (`github.com/Freshair129/lalin-cast`). Before a public
 project founder should consider adding another contact channel (such as an email address) to this
 document if desired — this is also tracked in the checklist in
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md).
+
+## 14. Portable mode
+
+Wave 11 added portable mode: place a marker file named `lalin-cast.portable` next to
+`lalin-cast.exe` (see [`README.md`](README.md), "Portable mode / โหมดพกพา"). The app checks only
+the `.exe`'s own folder, once at startup. When this mode is active, **every piece of data the app
+itself writes** — the settings file (section 2), the log file (section 11), the launcher lifecycle
+file `lifecycle.json` (section 7), and the WebView2 profile — moves under a `lalin-cast-data`
+folder next to the `.exe` instead of the usual locations, as shown below:
+
+| Data | Installed mode | Portable mode |
+|---|---|---|
+| Settings file (`media-settings.json`) | `%APPDATA%\ai.lalin.cast\media-settings.json` | `<exe folder>\lalin-cast-data\media-settings.json` |
+| Log file | `%LOCALAPPDATA%\ai.lalin.cast\logs\` | `<exe folder>\lalin-cast-data\logs\` |
+| `lifecycle.json` | `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json` | `<exe folder>\lalin-cast-data\lifecycle.json` |
+| WebView2 profile (cookies, signed-in YouTube session) | `%LOCALAPPDATA%\ai.lalin.cast\` (WebView2 creates its profile folder inside it) | `<exe folder>\lalin-cast-data\WebView2\` |
+
+Installed mode **does not change by even one path** because of this wave — the left column is
+exactly the pre-wave-11 behavior. Anyone already using an installed copy keeps every setting they
+had.
+
+**Important warning:** the `lalin-cast-data\WebView2` folder holds a signed-in YouTube session and
+`youtube.com`'s cookies. **Anyone who gets the `lalin-cast-data` folder — a lost USB drive, or
+handing it to someone else — can use that already-signed-in YouTube account immediately, without
+typing a password.** Before handing it on or losing track of the drive, **sign out of the YouTube
+account in the app first, or delete the whole `lalin-cast-data` folder.** Deleting that folder
+deletes all of that copy's app data — settings, logs, session — the same idea as section 12, just
+one folder instead of two.
+
+In portable mode the app never creates, deletes or changes the Run key or
+`HKCU\Software\Classes\lalin-cast`, not even when a toggle is turned off (an existing entry may
+belong to an installed copy), and does not install in-place updates — see
+[`README.md`](README.md) for why and how to update instead. **Note:**
+portable mode does **not** mean the app leaves no trace on the machine at all — the WebView2
+Runtime's own files, Windows prefetch/jump lists, and the update checker's temp files are all
+outside the app's control. What is guaranteed is only the data the app itself writes, per the table
+above.

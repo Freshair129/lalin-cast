@@ -22,6 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Windo
 
 use crate::i18n::{self, Key};
 use crate::log;
+use crate::portable;
 use crate::surface;
 
 pub const STATUS_LABEL: &str = "status";
@@ -91,13 +92,16 @@ pub fn open_status_window(
     };
     let title = i18n::t(lang, Key::StatusWindowTitle);
     let init_script = payload.init_script();
-    let result =
-        WebviewWindowBuilder::new(app, STATUS_LABEL, WebviewUrl::App("status.html".into()))
-            .title(title)
-            .inner_size(STATUS_WINDOW_WIDTH, STATUS_WINDOW_HEIGHT)
-            .resizable(false)
-            .initialization_script(&init_script)
-            .build();
+    let result = portable::apply_data_dir(WebviewWindowBuilder::new(
+        app,
+        STATUS_LABEL,
+        WebviewUrl::App("status.html".into()),
+    ))
+    .title(title)
+    .inner_size(STATUS_WINDOW_WIDTH, STATUS_WINDOW_HEIGHT)
+    .resizable(false)
+    .initialization_script(&init_script)
+    .build();
 
     match result {
         Ok(window) => {

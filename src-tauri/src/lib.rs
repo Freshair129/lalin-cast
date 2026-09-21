@@ -6,6 +6,7 @@ mod launch;
 mod lifecycle;
 mod log;
 mod network;
+mod portable;
 mod power;
 mod settings;
 mod setup;
@@ -494,7 +495,7 @@ pub(crate) fn focus_media(app: &tauri::AppHandle) {
 }
 
 fn seed_settings(app: &tauri::AppHandle) {
-    let Ok(store) = app.store("media-settings.json") else {
+    let Ok(store) = app.store(portable::settings_store_path()) else {
         log::warn(
             app,
             "lib",
@@ -578,7 +579,7 @@ fn seed_settings(app: &tauri::AppHandle) {
 /// Reads a boolean setting, falling back to `default` when the key is
 /// missing, the value is not a bool, or the store itself is unavailable.
 pub(crate) fn read_bool_setting_or(app: &tauri::AppHandle, key: &str, default: bool) -> bool {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| store.get(key).and_then(|value| value.as_bool()))
         .unwrap_or(default)
@@ -589,14 +590,14 @@ fn read_bool_setting(app: &tauri::AppHandle, key: &str) -> bool {
 }
 
 pub(crate) fn write_bool_setting(app: &tauri::AppHandle, key: &str, value: bool) {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.set(key, value);
         let _ = store.save();
     }
 }
 
 pub(crate) fn write_string_setting(app: &tauri::AppHandle, key: &str, value: &str) {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.set(key, value);
         let _ = store.save();
     }
@@ -609,7 +610,7 @@ pub(crate) fn write_string_setting(app: &tauri::AppHandle, key: &str, value: &st
 /// `dial::load_friendly_name`) since both carry extra fallback/sanitizing
 /// logic this generic helper does not need to duplicate.
 pub(crate) fn read_string_setting_or(app: &tauri::AppHandle, key: &str, default: &str) -> String {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| {
             store
@@ -623,7 +624,7 @@ pub(crate) fn read_string_setting_or(app: &tauri::AppHandle, key: &str, default:
 /// key is missing, the value is not a non-negative integer that fits a
 /// `u32`, or the store itself is unavailable. Used for `sleepTimerMinutes`.
 pub(crate) fn read_u32_setting_or(app: &tauri::AppHandle, key: &str, default: u32) -> u32 {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| store.get(key).and_then(|value| value.as_u64()))
         .and_then(|value| u32::try_from(value).ok())
@@ -631,7 +632,7 @@ pub(crate) fn read_u32_setting_or(app: &tauri::AppHandle, key: &str, default: u3
 }
 
 pub(crate) fn write_u32_setting(app: &tauri::AppHandle, key: &str, value: u32) {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.set(key, value);
         let _ = store.save();
     }
@@ -723,98 +724,102 @@ fn build_media_window(
     let hardware_decoding = read_bool_setting_or(app, "hardwareDecoding", true);
     app.manage(HardwareDecodingUsed(AtomicBool::new(hardware_decoding)));
 
-    let mut window_builder = WebviewWindowBuilder::new(app, MEDIA_LABEL, WebviewUrl::External(url))
-        .title(MEDIA_TITLE)
-        .inner_size(1200.0, 675.0)
-        .min_inner_size(MEDIA_MIN_WIDTH, MEDIA_MIN_HEIGHT)
-        .resizable(true)
-        // Fullscreen is deliberately NOT applied here — see the
-        // `set_fullscreen` call after `window_bounds` restore below, which
-        // must run first so leaving fullscreen later returns to the
-        // restored geometry rather than whatever this builder's default
-        // `inner_size` happened to be.
-        .always_on_top(keep_on_top)
-        .menu(menu)
-        .on_menu_event(|window, event| match event.id().as_ref() {
-            "toggle-fullscreen" => {
-                if let Ok(current) = window.is_fullscreen() {
-                    let next = !current;
-                    if next {
-                        window_mode::leave_mini_if_active(window.app_handle());
-                    }
-                    let _ = window.set_fullscreen(next);
-                    write_bool_setting(window.app_handle(), "fullscreen", next);
+    let mut window_builder = portable::apply_data_dir(WebviewWindowBuilder::new(
+        app,
+        MEDIA_LABEL,
+        WebviewUrl::External(url),
+    ))
+    .title(MEDIA_TITLE)
+    .inner_size(1200.0, 675.0)
+    .min_inner_size(MEDIA_MIN_WIDTH, MEDIA_MIN_HEIGHT)
+    .resizable(true)
+    // Fullscreen is deliberately NOT applied here — see the
+    // `set_fullscreen` call after `window_bounds` restore below, which
+    // must run first so leaving fullscreen later returns to the
+    // restored geometry rather than whatever this builder's default
+    // `inner_size` happened to be.
+    .always_on_top(keep_on_top)
+    .menu(menu)
+    .on_menu_event(|window, event| match event.id().as_ref() {
+        "toggle-fullscreen" => {
+            if let Ok(current) = window.is_fullscreen() {
+                let next = !current;
+                if next {
+                    window_mode::leave_mini_if_active(window.app_handle());
+                }
+                let _ = window.set_fullscreen(next);
+                write_bool_setting(window.app_handle(), "fullscreen", next);
+            }
+        }
+        "toggle-on-top" => {
+            if let Ok(current) = window.is_always_on_top() {
+                let next = !current;
+                let _ = window.set_always_on_top(next);
+                write_bool_setting(window.app_handle(), "keepOnTop", next);
+            }
+        }
+        "reload" => {
+            if let Some(webview) = window.app_handle().get_webview_window(MEDIA_LABEL) {
+                let _ = webview.reload();
+            }
+        }
+        "check-updates" => {
+            let app_handle = window.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                updater::run_check(&app_handle, true).await;
+            });
+        }
+        "network-setup" => setup::open_setup_window(window.app_handle()),
+        "settings" => settings::open_settings_window(window.app_handle()),
+        "mini-player" => window_mode::toggle_mini(window.app_handle()),
+        "play-pause" => emit_remote_toggle_play(window.app_handle()),
+        "toggle-language" => {
+            let app_handle = window.app_handle().clone();
+            let next = i18n::load(&app_handle).other();
+            i18n::save(&app_handle, next);
+            match build_menu(&app_handle, next) {
+                Ok(menu) => {
+                    let _ = window.set_menu(menu);
+                }
+                Err(error) => {
+                    log::warn(
+                        &app_handle,
+                        "lib",
+                        &format!("Lalin Cast: could not rebuild the menu: {error}"),
+                    );
                 }
             }
-            "toggle-on-top" => {
-                if let Ok(current) = window.is_always_on_top() {
-                    let next = !current;
-                    let _ = window.set_always_on_top(next);
-                    write_bool_setting(window.app_handle(), "keepOnTop", next);
+            tray::rebuild_menu(&app_handle, next);
+        }
+        "quit" => window.app_handle().exit(0),
+        _ => {}
+    })
+    .user_agent(USER_AGENT)
+    // Registered before INJECTED_SCRIPT (init scripts run in the order
+    // they were added — see tauri::webview::WebviewBuilder), so
+    // `window.__LALIN_PREFS__` already exists by the time injected.js's
+    // IIFE runs and reads it.
+    .initialization_script(&prefs_script)
+    .initialization_script(INJECTED_SCRIPT)
+    .on_document_title_changed(|window, title| {
+        // Stores `title` as the "document" source and resolves the
+        // combined media/document title through the same priority rule
+        // `apply_media_event` uses (media wins while set) — see
+        // `MediaTitleState`'s doc comment.
+        let app = window.app_handle();
+        let source = match app.try_state::<MediaTitleState>() {
+            Some(state) => match state.0.lock() {
+                Ok(mut guard) => {
+                    guard.document = Some(title);
+                    resolve_title_source(guard.media.as_deref(), guard.document.as_deref())
+                        .to_owned()
                 }
-            }
-            "reload" => {
-                if let Some(webview) = window.app_handle().get_webview_window(MEDIA_LABEL) {
-                    let _ = webview.reload();
-                }
-            }
-            "check-updates" => {
-                let app_handle = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    updater::run_check(&app_handle, true).await;
-                });
-            }
-            "network-setup" => setup::open_setup_window(window.app_handle()),
-            "settings" => settings::open_settings_window(window.app_handle()),
-            "mini-player" => window_mode::toggle_mini(window.app_handle()),
-            "play-pause" => emit_remote_toggle_play(window.app_handle()),
-            "toggle-language" => {
-                let app_handle = window.app_handle().clone();
-                let next = i18n::load(&app_handle).other();
-                i18n::save(&app_handle, next);
-                match build_menu(&app_handle, next) {
-                    Ok(menu) => {
-                        let _ = window.set_menu(menu);
-                    }
-                    Err(error) => {
-                        log::warn(
-                            &app_handle,
-                            "lib",
-                            &format!("Lalin Cast: could not rebuild the menu: {error}"),
-                        );
-                    }
-                }
-                tray::rebuild_menu(&app_handle, next);
-            }
-            "quit" => window.app_handle().exit(0),
-            _ => {}
-        })
-        .user_agent(USER_AGENT)
-        // Registered before INJECTED_SCRIPT (init scripts run in the order
-        // they were added — see tauri::webview::WebviewBuilder), so
-        // `window.__LALIN_PREFS__` already exists by the time injected.js's
-        // IIFE runs and reads it.
-        .initialization_script(&prefs_script)
-        .initialization_script(INJECTED_SCRIPT)
-        .on_document_title_changed(|window, title| {
-            // Stores `title` as the "document" source and resolves the
-            // combined media/document title through the same priority rule
-            // `apply_media_event` uses (media wins while set) — see
-            // `MediaTitleState`'s doc comment.
-            let app = window.app_handle();
-            let source = match app.try_state::<MediaTitleState>() {
-                Some(state) => match state.0.lock() {
-                    Ok(mut guard) => {
-                        guard.document = Some(title);
-                        resolve_title_source(guard.media.as_deref(), guard.document.as_deref())
-                            .to_owned()
-                    }
-                    Err(_) => title,
-                },
-                None => title,
-            };
-            let _ = window.set_title(&window_title(&source));
-        });
+                Err(_) => title,
+            },
+            None => title,
+        };
+        let _ = window.set_title(&window_title(&source));
+    });
 
     // `additional_browser_args` is Windows-only (unsupported on
     // macOS/Linux/Android/iOS per its own doc comment) and — see
@@ -995,6 +1000,13 @@ pub fn run() {
             // already present via `app.try_state::<log::LogState>()`
             // regardless of call order.
             app.manage(log::LogState::default());
+            // Wave 11: decided exactly once per process, before anything
+            // below can possibly read `portable::mode()`/`is_portable()` —
+            // the very first `lifecycle::write_starting` call a few lines
+            // down already depends on it. Must run after `log::LogState` is
+            // managed (above) so the "marker present but data root not
+            // writable" warning below has somewhere to go.
+            portable::init(&handle);
 
             // First-launch `--lifecycle close`: write `stopped` and return
             // before any window/tray/DIAL is built, per the Wave 5
@@ -1041,8 +1053,14 @@ pub fn run() {
             // Best-effort: re-add the Run key if the store says it should
             // be there (idempotent — always writes the current exe path).
             // Never blocks or fails startup; a failure here only means the
-            // registry value stays whatever it already was.
-            if read_bool_setting_or(app.handle(), "startWithWindows", false) {
+            // registry value stays whatever it already was. Wave 11: never
+            // runs in portable mode at all — no registry write of any kind,
+            // not even this idempotent "make sure it's on" case (see
+            // `portable::should_reconcile_registry`).
+            if portable::should_reconcile_registry(
+                portable::is_portable(),
+                read_bool_setting_or(app.handle(), "startWithWindows", false),
+            ) {
                 if let Err(error) = autostart::set_enabled(true) {
                     log::warn(
                         app.handle(),
@@ -1056,8 +1074,12 @@ pub fn run() {
             // store says it should be on (e.g. after an update moved the exe
             // to a new path), and do nothing when it is off. Best-effort and
             // never blocks startup; the persisted value is never touched
-            // here (this only mirrors it into the registry).
-            if read_bool_setting_or(app.handle(), "deepLinkScheme", false) {
+            // here (this only mirrors it into the registry). Wave 11: same
+            // portable-mode skip as `startWithWindows` above.
+            if portable::should_reconcile_registry(
+                portable::is_portable(),
+                read_bool_setting_or(app.handle(), "deepLinkScheme", false),
+            ) {
                 if let Err(error) = app.deep_link().register(launch::LALIN_SCHEME) {
                     log::warn(
                         app.handle(),

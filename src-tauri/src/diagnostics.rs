@@ -13,7 +13,7 @@ use tauri::{Manager, State, Window};
 use crate::dial::{self, DialStateKind, DialStatus};
 use crate::i18n;
 use crate::network::{self, NetworkCategory, NetworkProfile};
-use crate::{lifecycle, log, settings};
+use crate::{lifecycle, log, portable, settings};
 
 /// `tauri`'s own crate version, as pinned in `Cargo.lock`. There is no
 /// build-time way to read a dependency's version without adding a crate
@@ -71,6 +71,11 @@ pub struct DiagnosticsInput<'a> {
     /// path embeds the user's account name, and this text gets pasted
     /// straight into a bug report.
     pub log_file: &'a str,
+    /// Wave 11 contract 4: whether the app is running in portable mode.
+    /// Never the data root path — that would be exactly the kind of local
+    /// filesystem detail this text is pasted into a public bug report, and
+    /// the contract explicitly forbids it here.
+    pub portable: bool,
 }
 
 fn format_dial(status: &DialStatus) -> String {
@@ -145,6 +150,7 @@ pub fn format_diagnostics(input: &DiagnosticsInput) -> String {
         format!("lifecycle: {}", input.lifecycle),
         format!("generatedAt: {}", input.generated_at),
         format!("logFile: {}", input.log_file),
+        format!("portable: {}", input.portable),
     ];
     lines.join("\n")
 }
@@ -191,6 +197,7 @@ pub fn settings_diagnostics(
         lifecycle: &lifecycle_summary,
         generated_at: lifecycle::now_unix(),
         log_file: &log_file,
+        portable: portable::is_portable(),
     };
     Ok(format_diagnostics(&input))
 }
@@ -277,6 +284,7 @@ mod tests {
             lifecycle: "ready (pid 1234)",
             generated_at: 1_758_380_400,
             log_file: "lalin-cast.log (12 KiB)",
+            portable: false,
         };
         let output = format_diagnostics(&input);
         let lines: Vec<&str> = output.lines().collect();
@@ -297,6 +305,30 @@ mod tests {
         assert_eq!(lines[10], "lifecycle: ready (pid 1234)");
         assert_eq!(lines[11], "generatedAt: 1758380400");
         assert_eq!(lines[12], "logFile: lalin-cast.log (12 KiB)");
+        assert_eq!(lines[13], "portable: false");
+    }
+
+    #[test]
+    fn portable_line_reflects_the_input_flag_in_both_directions() {
+        let dial = ready_dial();
+        let network = private_network();
+        let settings = settings();
+        let base = base_input(&dial, &network, &settings);
+
+        let installed = DiagnosticsInput {
+            portable: false,
+            ..base
+        };
+        assert!(format_diagnostics(&installed).ends_with("portable: false"));
+
+        let base = base_input(&dial, &network, &settings);
+        let portable = DiagnosticsInput {
+            portable: true,
+            ..base
+        };
+        assert!(format_diagnostics(&portable).ends_with("portable: true"));
+        // Never the data root path — see this struct field's doc comment.
+        assert!(!format_diagnostics(&portable).contains("lalin-cast-data"));
     }
 
     #[test]
@@ -318,6 +350,7 @@ mod tests {
             lifecycle: "starting",
             generated_at: 0,
             log_file: "lalin-cast.log (0 KiB)",
+            portable: false,
         };
         assert!(format_diagnostics(&input).contains("webview2: unknown"));
     }
@@ -341,6 +374,7 @@ mod tests {
             lifecycle: "starting",
             generated_at: 0,
             log_file: "lalin-cast.log (0 KiB)",
+            portable: false,
         }
     }
 
@@ -407,6 +441,7 @@ mod tests {
             lifecycle: "ready (pid 4242)",
             generated_at: 1_758_380_400,
             log_file: "lalin-cast.log (12 KiB)",
+            portable: true,
         };
         let output = format_diagnostics(&input).to_lowercase();
         assert!(!output.contains("dialdeviceid"));

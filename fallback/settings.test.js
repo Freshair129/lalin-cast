@@ -149,6 +149,9 @@ function createStubDom() {
     "state-no-tauri",
     "no-tauri-title",
     "no-tauri-body",
+    "portable-banner",
+    "start-with-windows-portable-note",
+    "deep-link-portable-note",
   ];
   ids.forEach((id) => {
     elements[id] = makeElement(id);
@@ -165,6 +168,9 @@ function createStubDom() {
     "launch-command-output",
     "launch-command-result",
     "deep-link-status",
+    "portable-banner",
+    "start-with-windows-portable-note",
+    "deep-link-portable-note",
   ].forEach((id) => {
     elements[id].hidden = true;
   });
@@ -1881,6 +1887,79 @@ pending.push(
     await nextTick();
 
     assert.strictEqual(elements["reset-defaults-btn"].textContent, armedLabel, "refresh loop never relabels the armed button");
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 11: portable mode banner and disabled toggles (contract 5).
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("portable: true shows the banner, disables startWithWindows/deepLinkScheme and shows the reason notes", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = { __LALIN_SETTINGS__: baseSettingsData({ portable: true }), __TAURI__: tauri };
+    init(doc, win);
+
+    assert.strictEqual(elements["portable-banner"].hidden, false);
+    assert.ok(elements["portable-banner"].textContent.length > 0);
+    assert.strictEqual(elements["start-with-windows-toggle"].disabled, true);
+    assert.strictEqual(elements["deep-link-toggle"].disabled, true);
+    assert.strictEqual(elements["start-with-windows-portable-note"].hidden, false);
+    assert.ok(elements["start-with-windows-portable-note"].textContent.length > 0);
+    assert.strictEqual(elements["deep-link-portable-note"].hidden, false);
+    assert.ok(elements["deep-link-portable-note"].textContent.length > 0);
+  }),
+);
+
+pending.push(
+  test("portable: false leaves the page exactly as before (banner hidden, toggles enabled, reason notes hidden)", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = { __LALIN_SETTINGS__: baseSettingsData({ portable: false }), __TAURI__: tauri };
+    init(doc, win);
+
+    assert.strictEqual(elements["portable-banner"].hidden, true);
+    assert.strictEqual(elements["start-with-windows-toggle"].disabled, false);
+    assert.strictEqual(elements["deep-link-toggle"].disabled, false);
+    assert.strictEqual(elements["start-with-windows-portable-note"].hidden, true);
+    assert.strictEqual(elements["deep-link-portable-note"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a missing portable field (older snapshot shape) is treated as false", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const data = baseSettingsData();
+    delete data.portable;
+    const win = { __LALIN_SETTINGS__: data, __TAURI__: tauri };
+    init(doc, win);
+
+    assert.strictEqual(elements["portable-banner"].hidden, true);
+    assert.strictEqual(elements["start-with-windows-toggle"].disabled, false);
+    assert.strictEqual(elements["deep-link-toggle"].disabled, false);
+    assert.strictEqual(elements["start-with-windows-portable-note"].hidden, true);
+    assert.strictEqual(elements["deep-link-portable-note"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("portable state also applies on a settings_set response, and reverts on the next non-portable snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () => Promise.resolve(baseSettingsData({ portable: true })),
+    });
+    const win = { __LALIN_SETTINGS__: baseSettingsData({ portable: false }), __TAURI__: tauri };
+    init(doc, win);
+    assert.strictEqual(elements["portable-banner"].hidden, true);
+
+    elements["fullscreen-toggle"].checked = true;
+    elements["fullscreen-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["portable-banner"].hidden, false);
+    assert.strictEqual(elements["start-with-windows-toggle"].disabled, true);
   }),
 );
 

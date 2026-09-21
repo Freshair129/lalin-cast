@@ -14,6 +14,7 @@ use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
 use crate::log;
+use crate::portable;
 
 const MEDIA_LABEL: &str = "media";
 const DIAL_EVENT: &str = "lalin-cast-dial-request";
@@ -859,7 +860,7 @@ pub(crate) fn sanitize_friendly_name(raw: &str) -> String {
 /// `pub(crate)` so `settings.rs` can read the current, already-sanitized
 /// friendly name into a `SettingsSnapshot` without duplicating this lookup.
 pub(crate) fn load_friendly_name(app: &AppHandle) -> String {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| {
             store
@@ -1012,7 +1013,7 @@ fn bind_ssdp_socket(local_ip: Ipv4Addr) -> io::Result<UdpSocket> {
 }
 
 fn load_or_create_device_id(app: &AppHandle) -> String {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         if let Some(value) = store
             .get("dialDeviceId")
             .and_then(|value| value.as_str().map(str::to_owned))
@@ -1031,7 +1032,7 @@ fn load_or_create_device_id(app: &AppHandle) -> String {
 }
 
 fn persist_device_id(app: &AppHandle, device_id: &str) {
-    let Ok(store) = app.store("media-settings.json") else {
+    let Ok(store) = app.store(portable::settings_store_path()) else {
         return;
     };
     store.set("dialDeviceId", device_id);

@@ -15,6 +15,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::i18n::{self, Lang};
 use crate::log;
+use crate::portable;
 
 const UPDATE_LABEL: &str = "update";
 const UPDATE_WINDOW_WIDTH: f64 = 480.0;
@@ -89,6 +90,15 @@ struct UpdatePayload {
     pub_date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+    /// Wave 11 contract 4: whether the app is running in portable mode —
+    /// `fallback/update.js` uses this to hide/disable the install button
+    /// and point the user at re-downloading the zip instead (portable mode
+    /// never installs in place; see `cast_update_install`). Always present
+    /// (not `Option`/`skip_serializing_if`), unlike the fields above, so an
+    /// older page reading a payload with this field missing (before this
+    /// wave) is the only case that must default to `false`, never the
+    /// reverse.
+    portable: bool,
 }
 
 /// Pure field mapping extracted from [`to_update_info`] so it is
@@ -163,13 +173,16 @@ fn open_update_window(app: &AppHandle, lang: Lang, payload: UpdatePayload) {
 
     let title = i18n::t(lang, i18n::Key::UpdateWindowTitle);
     let init_script = format!("window.__LALIN_UPDATE__ = {json};");
-    let result =
-        WebviewWindowBuilder::new(app, UPDATE_LABEL, WebviewUrl::App("update.html".into()))
-            .title(title)
-            .inner_size(UPDATE_WINDOW_WIDTH, UPDATE_WINDOW_HEIGHT)
-            .resizable(false)
-            .initialization_script(&init_script)
-            .build();
+    let result = portable::apply_data_dir(WebviewWindowBuilder::new(
+        app,
+        UPDATE_LABEL,
+        WebviewUrl::App("update.html".into()),
+    ))
+    .title(title)
+    .inner_size(UPDATE_WINDOW_WIDTH, UPDATE_WINDOW_HEIGHT)
+    .resizable(false)
+    .initialization_script(&init_script)
+    .build();
 
     if let Err(error) = result {
         log::error(
@@ -224,6 +237,7 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
                     notes: info.notes,
                     pub_date: info.pub_date,
                     message: None,
+                    portable: portable::is_portable(),
                 },
             );
         }
@@ -238,6 +252,7 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
                     notes: None,
                     pub_date: None,
                     message: None,
+                    portable: portable::is_portable(),
                 },
             );
         }
@@ -253,6 +268,7 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
                     notes: None,
                     pub_date: None,
                     message: Some(error),
+                    portable: portable::is_portable(),
                 },
             );
         }
@@ -266,11 +282,25 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
     }
 }
 
+/// Contract 3: whether [`schedule_startup_check`] should do anything at
+/// all. Pure — a plain gate on the live portable flag, unit-testable
+/// without an `AppHandle`/without spawning a thread.
+fn startup_check_allowed(is_portable: bool) -> bool {
+    !is_portable
+}
+
 /// Schedules the silent startup update check 8 seconds after the media
 /// window is shown. Runs on a plain OS thread (not the async runtime) so
 /// the sleep never occupies a Tokio worker; the check itself then runs to
-/// completion on Tauri's async runtime via `block_on`.
+/// completion on Tauri's async runtime via `block_on`. Wave 11: does
+/// nothing at all in portable mode (no startup check — see
+/// [`startup_check_allowed`]); a manual check from the menu/settings still
+/// works, since portable mode is allowed to *report* an available update,
+/// only never to install it in place (see [`cast_update_install`]).
 pub fn schedule_startup_check(app: &AppHandle) {
+    if !startup_check_allowed(portable::is_portable()) {
+        return;
+    }
     // Cloned under its own name so `app` survives the `move` closure below
     // and is still available for the `log::warn` call after `spawn`
     // returns.
@@ -290,15 +320,30 @@ pub fn schedule_startup_check(app: &AppHandle) {
     }
 }
 
+/// Contract 3: whether [`cast_update_install`] is allowed to run at all.
+/// Pure — unit-testable without an `AppHandle`. The NSIS in-place installer
+/// would write into `Program Files`, not next to a portable exe on a USB
+/// stick, so it must never even check for a download in portable mode.
+fn install_allowed(is_portable: bool) -> Result<(), &'static str> {
+    if is_portable {
+        Err("not available in portable mode")
+    } else {
+        Ok(())
+    }
+}
+
 /// Installs the pending update and restarts the app. Only callable from the
 /// `update` window itself: `injected.js`/the media window never gets this
 /// permission (see `capabilities/update.json` vs `capabilities/default.json`),
-/// but this check is the actual security boundary.
+/// but this check is the actual security boundary. Wave 11: refuses before
+/// any check or download in portable mode (see [`install_allowed`]) — the
+/// NSIS updater must never run there.
 #[tauri::command]
 pub async fn cast_update_install(window: Window) -> Result<(), String> {
     if window.label() != UPDATE_LABEL {
         return Err("cast_update_install is only available from the update window".to_owned());
     }
+    install_allowed(portable::is_portable()).map_err(str::to_owned)?;
 
     let app = window.app_handle().clone();
     let Some(update) = app
@@ -320,7 +365,10 @@ pub async fn cast_update_install(window: Window) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_update_info, CheckGuard};
+    use super::{
+        install_allowed, map_update_info, startup_check_allowed, CheckGuard, UpdatePayload,
+        STATE_AVAILABLE,
+    };
 
     #[test]
     fn check_guard_blocks_reacquisition_until_released() {
@@ -363,5 +411,44 @@ mod tests {
     fn preserves_an_empty_string_body_rather_than_treating_it_as_none() {
         let info = map_update_info("2.0.1".to_owned(), Some(String::new()), None);
         assert_eq!(info.notes, Some(String::new()));
+    }
+
+    // -- Wave 11 contract 3 --
+
+    #[test]
+    fn startup_check_is_allowed_only_outside_portable_mode() {
+        assert!(startup_check_allowed(false));
+        assert!(!startup_check_allowed(true));
+    }
+
+    #[test]
+    fn install_is_refused_only_in_portable_mode() {
+        assert_eq!(install_allowed(false), Ok(()));
+        assert_eq!(install_allowed(true), Err("not available in portable mode"));
+    }
+
+    // -- Wave 11 contract 4: the payload the update window reads carries a
+    // top-level `portable` field.
+
+    #[test]
+    fn update_payload_serializes_a_top_level_portable_field() {
+        let payload = UpdatePayload {
+            lang: "en",
+            state: STATE_AVAILABLE,
+            version: Some("1.2.3".to_owned()),
+            notes: None,
+            pub_date: None,
+            message: None,
+            portable: true,
+        };
+        let json = serde_json::to_value(&payload).expect("payload should serialize");
+        assert_eq!(json["portable"], true);
+
+        let payload = UpdatePayload {
+            portable: false,
+            ..payload
+        };
+        let json = serde_json::to_value(&payload).expect("payload should serialize");
+        assert_eq!(json["portable"], false);
     }
 }

@@ -41,6 +41,7 @@ function createStubDom() {
     "available-version",
     "available-notes",
     "install-error",
+    "portable-install-notice",
     "install-btn",
     "later-btn",
     "state-uptodate",
@@ -300,6 +301,61 @@ pending.push(
     init(doc, win); // same win: must not re-wire listeners
     elements["install-btn"].dispatch("click");
     assert.deepStrictEqual(invokeCalls, ["cast_update_install"]);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 11: portable mode disables the install button (contract 5).
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("portable: true disables the install button and shows the portable instruction", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "available", version: "0.2.0", portable: true }, tauri);
+    init(doc, win);
+
+    assert.strictEqual(elements["install-btn"].disabled, true);
+    assert.strictEqual(elements["portable-install-notice"].hidden, false);
+    assert.ok(elements["portable-install-notice"].textContent.length > 0);
+  }),
+);
+
+pending.push(
+  test("portable: false leaves the install button and instruction exactly as before", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "available", version: "0.2.0", portable: false }, tauri);
+    init(doc, win);
+
+    assert.strictEqual(elements["install-btn"].disabled, false);
+    assert.strictEqual(elements["portable-install-notice"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a missing portable field (older payload shape) is treated as false", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "available", version: "0.2.0" }, tauri);
+    init(doc, win);
+
+    assert.strictEqual(elements["install-btn"].disabled, false);
+    assert.strictEqual(elements["portable-install-notice"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("clicking install while portable never invokes cast_update_install, even if disabled was bypassed", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "available", version: "0.2.0", portable: true }, tauri);
+    init(doc, win);
+
+    elements["install-btn"].disabled = false; // simulate a bypass; the handler must still refuse
+    elements["install-btn"].dispatch("click");
+
+    assert.deepStrictEqual(invokeCalls, []);
   }),
 );
 

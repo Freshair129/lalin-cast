@@ -39,7 +39,17 @@
  *     sleepRemainingSeconds: number | null,
  *     hardwareDecodingRestartRequired: boolean,
  *     deepLinkSchemeRegistered: boolean,
+ *     portable: boolean,
  *   };
+ *
+ * `portable` (wave 11, contract 4/5 in docs/plans/W11_PORTABLE_PLAN.md) is
+ * true when the app was launched with the `lalin-cast.portable` marker next
+ * to the exe: every piece of data the app writes lives in a `lalin-cast-data`
+ * folder beside the program instead of `%APPDATA%`/`%LOCALAPPDATA%`, and the
+ * Rust host refuses to write the registry (Run key, `lalin-cast://` scheme)
+ * in that mode. A missing `portable` field (e.g. an older test fixture) is
+ * treated the same as `false` — the page must look and behave exactly as it
+ * did before this field existed.
  *
  * Commands (the host rejects these unless window.label() === "settings"):
  *   settings_get()                                -> SettingsSnapshot (= { settings, dial, sleepRemainingSeconds, hardwareDecodingRestartRequired, deepLinkSchemeRegistered })
@@ -330,6 +340,19 @@ const YOUTUBE_PAGE_HEADING_TEXT = "หน้า YouTube / YouTube page";
 const HIDE_NOTE =
   "การซ่อนนี้ทำด้วย CSS ของ Lalin Cast เท่านั้น ไม่ได้แก้ไขข้อมูลหรือการทำงานของ YouTube และอาจหยุดทำงานเมื่อ YouTube เปลี่ยนหน้าเว็บ / " +
   "This hiding is done only with Lalin Cast's own CSS. It does not change YouTube's data or behaviour, and it may stop working when YouTube changes its pages.";
+// Same fixed-vocabulary rationale as the notes above, per contract 5 in
+// docs/plans/W11_PORTABLE_PLAN.md. Shown at the top of the page only while
+// `portable` is true; the wording matches the plan's Thai text verbatim,
+// English after.
+const PORTABLE_BANNER_TEXT =
+  "โหมดพกพา — ข้อมูลทั้งหมดเก็บในโฟลเดอร์ lalin-cast-data ข้างไฟล์โปรแกรม / " +
+  "Portable mode — all data is kept in the lalin-cast-data folder next to the program.";
+// Shown under both startWithWindows and deepLinkScheme when portable is
+// true, explaining why those two toggles are disabled (contract 3: neither
+// writes the registry in portable mode).
+const PORTABLE_DISABLED_REASON_TEXT =
+  "ปิดใช้งานในโหมดพกพา — ไม่มีการเขียนรีจิสทรี / " +
+  "Disabled in portable mode — no registry is written.";
 const DIAGNOSTICS_COPIED_TEXT = "คัดลอกแล้ว / Copied";
 const DIAGNOSTICS_MANUAL_COPY_TEXT = "เลือกข้อความแล้วคัดลอกเอง / Select the text and copy it";
 
@@ -512,6 +535,9 @@ function mergeSnapshot(data, snapshot) {
   if (Object.prototype.hasOwnProperty.call(s, "deepLinkSchemeRegistered")) {
     data.deepLinkSchemeRegistered = s.deepLinkSchemeRegistered;
   }
+  if (Object.prototype.hasOwnProperty.call(s, "portable")) {
+    data.portable = s.portable;
+  }
   return data;
 }
 
@@ -559,11 +585,15 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "language-en-label", strings.general.languageEn);
   setText(doc, "start-with-windows-label", strings.general.startWithWindowsLabel);
   setText(doc, "start-with-windows-note", START_WITH_WINDOWS_NOTE);
+  setText(doc, "start-with-windows-portable-note", PORTABLE_DISABLED_REASON_TEXT);
 
   setText(doc, "deep-link-label", strings.general.deepLinkLabel);
   setText(doc, "deep-link-note", DEEP_LINK_NOTE);
   setText(doc, "deep-link-status", DEEP_LINK_STATUS_TEXT);
   setAttr(doc, "deep-link-status", "data-level", "warn");
+  setText(doc, "deep-link-portable-note", PORTABLE_DISABLED_REASON_TEXT);
+
+  setText(doc, "portable-banner", PORTABLE_BANNER_TEXT);
 
   setText(doc, "ui-scale-label", strings.general.uiScaleLabel);
   setText(doc, "ui-scale-note", strings.general.uiScaleNote);
@@ -714,6 +744,8 @@ function renderDialNameInput(doc, value) {
 // this naturally reverts any control the user had just toggled), and again
 // on every tick of the 5-second background refresh loop.
 function renderDynamic(doc, strings, data) {
+  renderPortable(doc, data);
+
   const settings = (data && data.settings) || {};
   setChecked(doc, "language-th", settings.language === "th");
   setChecked(doc, "language-en", settings.language !== "th");
@@ -742,6 +774,22 @@ function renderDynamic(doc, strings, data) {
   setChecked(doc, "controller-toggle", !!settings.controllerEnabled);
   setChecked(doc, "pause-on-blur-toggle", !!settings.pauseOnBlur);
   setChecked(doc, "touch-overlay-toggle", !!settings.touchOverlay);
+}
+
+// Portable-mode chrome (contract 5): a top banner plus disabling the two
+// registry-writing toggles with a short reason under each. Reads
+// `data.portable` fresh every call (init, every settings_set response, every
+// background refresh tick) so it never lags the last known-good snapshot,
+// same as the rest of renderDynamic. A missing `portable` field is `false`.
+function renderPortable(doc, data) {
+  const portable = !!(data && data.portable);
+  setHidden(doc, "portable-banner", !portable);
+  setHidden(doc, "start-with-windows-portable-note", !portable);
+  setHidden(doc, "deep-link-portable-note", !portable);
+  const startWithWindowsToggle = byId(doc, "start-with-windows-toggle");
+  if (startWithWindowsToggle) startWithWindowsToggle.disabled = portable;
+  const deepLinkToggle = byId(doc, "deep-link-toggle");
+  if (deepLinkToggle) deepLinkToggle.disabled = portable;
 }
 
 function renderNoTauri(doc, strings) {

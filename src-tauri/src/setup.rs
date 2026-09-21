@@ -15,6 +15,7 @@ use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
 use crate::log;
 use crate::network::{self, NetworkProfile};
+use crate::portable;
 
 pub const SETUP_LABEL: &str = "setup";
 const SETUP_WINDOW_WIDTH: f64 = 560.0;
@@ -41,7 +42,7 @@ impl SetupPayload {
 }
 
 fn is_setup_completed(app: &AppHandle) -> bool {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| {
             store
@@ -52,7 +53,7 @@ fn is_setup_completed(app: &AppHandle) -> bool {
 }
 
 fn set_setup_completed(app: &AppHandle, value: bool) {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.set(SETUP_COMPLETED_KEY, value);
         let _ = store.save();
     }
@@ -89,12 +90,16 @@ pub fn open_setup_window_explicit(app: &AppHandle, first_run: bool) {
     };
     let title = i18n::t(lang, Key::SetupWindowTitle);
     let init_script = payload.init_script();
-    let result = WebviewWindowBuilder::new(app, SETUP_LABEL, WebviewUrl::App("setup.html".into()))
-        .title(title)
-        .inner_size(SETUP_WINDOW_WIDTH, SETUP_WINDOW_HEIGHT)
-        .resizable(false)
-        .initialization_script(&init_script)
-        .build();
+    let result = portable::apply_data_dir(WebviewWindowBuilder::new(
+        app,
+        SETUP_LABEL,
+        WebviewUrl::App("setup.html".into()),
+    ))
+    .title(title)
+    .inner_size(SETUP_WINDOW_WIDTH, SETUP_WINDOW_HEIGHT)
+    .resizable(false)
+    .initialization_script(&init_script)
+    .build();
 
     if let Err(error) = result {
         log::error(
