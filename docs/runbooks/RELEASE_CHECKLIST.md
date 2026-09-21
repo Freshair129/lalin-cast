@@ -1,7 +1,7 @@
 ---
-version: "0.1.3b"
+version: "0.1.4b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T03:10:00+07:00,LALIN"
+last_update: "2026-09-21T08:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -79,6 +79,16 @@ tag — if any item is not done, **do not tag**:
         กลับไปดับ/เครื่องหลับตามปกติเมื่อหยุดหรือ pause การเล่น — confirm the display stays awake while
         a video plays (with `keepDisplayAwake` on), and that the display/system sleeps normally again
         once playback is paused or stopped
+- [ ] **human gate H26 ปิดแล้ว** (`docs/plans/W9_SUPPORTABILITY_PLAN.md`) — ถ้าฟีเจอร์ wave 9 รวมอยู่ใน
+      รุ่นนี้ — **human gate H26 is closed** (`docs/plans/W9_SUPPORTABILITY_PLAN.md`) — if wave 9's
+      features are included in this release:
+  - [ ] H26 — ยืนยันบน release build จริงว่าไฟล์ log (`<app_local_data_dir>/logs/lalin-cast.log`)
+        เกิดขึ้นจริง, หมุนเวียนได้จริงเมื่อไฟล์เกิน 512 KiB (เหลือสูงสุดสองไฟล์เท่านั้น), และเปิดหลาย
+        บรรทัดตัวอย่างมาตรวจว่าไม่มีรหัสจับคู่ทีวี, cookie, token, URL หรือ path ของระบบไฟล์ปรากฏอยู่เลย
+        แม้แต่บรรทัดเดียว — confirm on a real release build that the log file
+        (`<app_local_data_dir>/logs/lalin-cast.log`) really appears, really rotates once it exceeds
+        512 KiB (keeping at most two files), and that a sample of its lines contains no TV pairing
+        code, cookie, token, URL, or filesystem path anywhere — not even one line
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -211,3 +221,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.1b | 2026-09-21 | candidate | Added the "CHANGELOG section for the version must exist before tagging" pre-tag item for wave 6 (U4), matching `release.yml`'s new CHANGELOG-derived release body | uncommitted | LALIN |
 | 0.1.2b | 2026-09-21 | candidate | Added the pre-tag human gates H22 (DIAL discovery after the stricter SSDP `MAN` check) and H23 (`lalin-cast://` opens the app and the opt-in toggle removes the association) for wave 7 (U3) | uncommitted | LALIN |
 | 0.1.3b | 2026-09-21 | candidate | Added the pre-tag human gates H24 (Shorts shelf/guide tab hide on a real Leanback session without stealing focus) and H25 (display stays awake during playback, sleeps normally when paused/stopped) for wave 8 (U4) | uncommitted | LALIN |
+| 0.1.4b | 2026-09-21 | candidate | Added the pre-tag human gate H26 (log file appears in a release build, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path) for wave 9 (U3) | uncommitted | LALIN |

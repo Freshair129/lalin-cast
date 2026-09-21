@@ -170,3 +170,22 @@ jobs:
           manifest-path: src-tauri/Cargo.toml
           command: check
           command-arguments: licenses advisories bans sources
+
+  notices:
+    name: Third-party notices vs. Cargo.lock
+    # Wave 9 U3 (docs/plans/W9_SUPPORTABILITY_PLAN.md): tauri-plugin-store
+    # 2.4.3 -> 2.4.5 (Dependabot, PR #6) landed on `main` without
+    # THIRD_PARTY_NOTICES.md being updated to match, and nothing in CI
+    # caught it — it had to be fixed after the fact in a follow-up PR (#12).
+    # `supply-chain` above checks license *policy* against Cargo.lock; it
+    # has no idea THIRD_PARTY_NOTICES.md exists. This job compares the two
+    # files' (name, version) pairs in both directions and is blocking (no
+    # `continue-on-error`) so that gap cannot reopen silently. It needs no
+    # Rust toolchain, so it stays as fast as `supply-chain`.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: node scripts/check-notices.mjs
+        run: node scripts/check-notices.mjs
