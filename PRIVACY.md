@@ -3,9 +3,9 @@
 _ภาษาไทยเป็นภาษาหลักของเอกสารนี้ คำแปลภาษาอังกฤษอยู่ด้านล่าง (English translation follows the
 Thai text)._
 
-เอกสารฉบับนี้เป็นสถานะปัจจุบันของแผนปรับปรุง H0 และ wave 2 (`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`) ยังไม่
-ผ่านการอนุมัติจากผู้ก่อตั้งโปรเจกต์ (human gate H1) — ห้าม merge เข้า `main` หรือเผยแพร่เป็นทางการ
-จนกว่าจะผ่านการอนุมัตินั้น
+เอกสารฉบับนี้เป็นสถานะปัจจุบันของแผนปรับปรุง H0 และ wave 2 (`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`) และ
+**ผ่านการอนุมัติจากผู้ก่อตั้งโปรเจกต์แล้วเมื่อ 2026-09-21** (human gate H1) การแก้ไขเนื้อหาในอนาคตที่เปลี่ยน
+สิ่งที่แอปเก็บ ส่ง หรือสัญญากับผู้ใช้ ต้องให้ผู้ก่อตั้งอนุมัติอีกครั้งก่อนเผยแพร่
 
 ## 1. สรุปสั้น ๆ
 
@@ -383,8 +383,9 @@ _This is an English translation of the Thai text above, which is the primary ver
 document._
 
 This document reflects the current state of the H0 readiness and wave 2 living-room plans
-(`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`). It has not yet been approved by the project founder
-(human gate H1) — do not merge to `main` or publish it as final until that approval happens.
+(`docs/plans/H0_RELEASE_READINESS_PLAN.md`, `docs/plans/W2_LIVING_ROOM_PLAN.md`). It **was approved by the project founder on
+2026-09-21** (human gate H1). Any future change to what the app stores, sends or promises to users
+needs the founder's approval again before it is published.
 
 ## 1. Summary
 
