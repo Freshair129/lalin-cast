@@ -12,14 +12,12 @@ PublisherUrl: https://github.com/Freshair129/lalin-cast
 PublisherSupportUrl: https://github.com/Freshair129/lalin-cast/issues
 PackageName: Lalin Cast
 PackageUrl: https://github.com/Freshair129/lalin-cast
-# Lalin Cast's own source license is UNDECIDED (see docs/LICENSE_DECISION.md
-# — status "ยังไม่ตัดสินใจ" / "Undecided" as of this template). "Proprietary"
-# below reflects the current all-rights-reserved-by-default state and is a
-# PLACEHOLDER, not a final decision. Update this field (and LicenseUrl) once
-# the project founder chooses MIT / Apache-2.0 / a real proprietary EULA —
-# do not submit this manifest to winget-pkgs before that.
-License: Proprietary
-LicenseUrl: https://github.com/Freshair129/lalin-cast/blob/main/docs/LICENSE_DECISION.md
+# Lalin Cast's own source license is Apache-2.0 (decided at H1, see
+# docs/LICENSE_DECISION.md). The PackageIdentifier is still a proposal
+# pending the naming decision — see README.md in this folder before
+# submitting this manifest to winget-pkgs.
+License: Apache-2.0
+LicenseUrl: https://github.com/Freshair129/lalin-cast/blob/main/LICENSE
 Copyright: Copyright (c) LALIN
 ShortDescription: Standalone Windows app for the YouTube Leanback (TV) interface with DIAL casting.
 Description: |-

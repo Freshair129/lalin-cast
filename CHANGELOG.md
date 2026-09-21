@@ -18,6 +18,13 @@ version number.
 
 ### Added
 
+#### H1 — License (`docs/LICENSE_DECISION.md`)
+
+- ซอร์สโค้ดของ Lalin Cast เผยแพร่ภายใต้ Apache License 2.0 (ไฟล์ `LICENSE` ที่ root และ
+  `license = "Apache-2.0"` ใน `src-tauri/Cargo.toml`) / Lalin Cast's own source code is licensed
+  under the Apache License 2.0 (root `LICENSE` file and `license = "Apache-2.0"` in
+  `src-tauri/Cargo.toml`)
+
 #### H0 — Release readiness (`docs/plans/H0_RELEASE_READINESS_PLAN.md`)
 
 - อัตลักษณ์ของ Lalin Cast เอง (User-Agent `LalinCast/<version>`, DIAL `manufacturer`/`modelName`) แทน

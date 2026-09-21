@@ -1,8 +1,8 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-20T22:00:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T22:00:00+07:00,LALIN"
-status: "candidate"
+last_update: "2026-09-21T19:30:00+07:00,LALIN"
+status: "decided"
 superseded_by: null
 attributes:
   domain: "legal"
@@ -14,11 +14,14 @@ attributes:
 
 ## สถานะ
 
-**ยังไม่ตัดสินใจ — รอผู้ก่อตั้งโปรเจกต์เลือก (human gate H1 ใน
-`docs/plans/H0_RELEASE_READINESS_PLAN.md`)** เอกสารนี้เตรียมข้อมูลเปรียบเทียบให้เลือกเท่านั้น ไม่ใช่
-การตัดสินใจ ปัจจุบัน repository ไม่มีไฟล์ `LICENSE` ที่ root และ `src-tauri/Cargo.toml` ไม่มีฟิลด์
-`license`/`license-file` — โค้ดต้นฉบับของ Lalin Cast เองจึงยังไม่มีสัญญาอนุญาตที่ประกาศไว้อย่างเป็น
-ทางการ (สงวนสิทธิ์ทั้งหมดโดยปริยายตามกฎหมายลิขสิทธิ์จนกว่าจะเลือก)
+**ตัดสินใจแล้ว: Apache-2.0** — ผู้ก่อตั้งโปรเจกต์เลือกเมื่อ 2026-09-21 ด้วยเหตุผลเรื่อง patent grant และ
+patent-retaliation ตามตารางด้านล่าง ข้อความสัญญาอนุญาตฉบับเต็มอยู่ที่ [`LICENSE`](../LICENSE) ที่ root และ
+`src-tauri/Cargo.toml` ประกาศ `license = "Apache-2.0"` แล้ว
+
+การเลือกนี้ปิด **ส่วนสัญญาอนุญาต** ของ human gate H1 เท่านั้น — อีกส่วนของ H1 (ผู้ก่อตั้งอนุมัติ `PRIVACY.md`
+และ `TERMS.md`) ยังต้องทำแยกตาม `docs/runbooks/RELEASE_CHECKLIST.md`
+
+ตารางเปรียบเทียบด้านล่างเก็บไว้เป็นบันทึกว่าเลือกจากอะไร
 
 สิ่งนี้แยกจากสัญญาอนุญาตของไลบรารี third-party ที่ใช้ (ดู
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)) และแยกจากสัญญาอนุญาต MIT ของสำเนา
@@ -69,19 +72,19 @@ VacuumTube reference ได้ตรงไปตรงมาที่สุด *
 
 ## Checklist เมื่อเลือกแล้ว (สำหรับผู้ก่อตั้ง/ผู้ดำเนินการ merge)
 
-- [ ] เพิ่มไฟล์ `LICENSE` ที่ root ของ repository ด้วยข้อความสัญญาอนุญาตเต็มที่เลือก
-- [ ] เพิ่มฟิลด์ `license = "..."` (หรือ `license-file = "LICENSE"` สำหรับ proprietary) ใน
+- [x] เพิ่มไฟล์ `LICENSE` ที่ root ของ repository ด้วยข้อความสัญญาอนุญาตเต็มที่เลือก
+- [x] เพิ่มฟิลด์ `license = "..."` (หรือ `license-file = "LICENSE"` สำหรับ proprietary) ใน
       `src-tauri/Cargo.toml` — ไฟล์นี้อยู่ใน ownership ของ S4/rust-core ไม่ใช่ S1 ส่งต่อเป็น
       openQuestions ถ้าต้องแก้ตอนนี้
-- [ ] อัปเดต `deny.toml` (`licenses.allow`) ถ้าเลือก proprietary หรือสัญญาอนุญาตที่ยังไม่อยู่ใน
-      allow-list — ไฟล์นี้อยู่ใน ownership ของ S3/ci-supply-chain
-- [ ] อัปเดตบรรทัด "License" ใน `LALIN_PROVENANCE.md` ให้ระบุสัญญาอนุญาตของ Lalin Cast เอง แยกจาก
+- [x] อัปเดต `deny.toml` (`licenses.allow`) ถ้าเลือก proprietary หรือสัญญาอนุญาตที่ยังไม่อยู่ใน
+      allow-list — ไฟล์นี้อยู่ใน ownership ของ S3/ci-supply-chain (ไม่ต้องเพิ่ม: Apache-2.0 อยู่ใน allow-list แล้ว)
+- [x] อัปเดตบรรทัด "License" ใน `LALIN_PROVENANCE.md` ให้ระบุสัญญาอนุญาตของ Lalin Cast เอง แยกจาก
       บรรทัด VacuumTube ที่มีอยู่แล้ว — ไฟล์นี้อยู่ใน ownership ของ S2/docs-hygiene
-- [ ] ถ้าเลือก proprietary: ร่าง Contributor License Agreement (CLA) หรือปิดการรับ external PR จน
-      กว่าจะมี CLA
-- [ ] พิจารณาว่าต้องการ badge สัญญาอนุญาตใน `README.md` หรือไม่ (เพิ่มได้ในการแก้ไข README ครั้ง
-      ถัดไปที่อยู่ใน ownership ของ S1)
-- [ ] แจ้งผลการตัดสินใจกลับเข้าเอกสารนี้ (แก้ "สถานะ" ด้านบนและ CHANGELOG ด้านล่าง) ก่อน merge
+- [x] ถ้าเลือก proprietary: ร่าง Contributor License Agreement (CLA) หรือปิดการรับ external PR จน
+      กว่าจะมี CLA (ไม่เกี่ยว: เลือก Apache-2.0)
+- [x] พิจารณาว่าต้องการ badge สัญญาอนุญาตใน `README.md` หรือไม่ (README ระบุสัญญาอนุญาตในหัวข้อ
+      Disclaimer แทน badge)
+- [x] แจ้งผลการตัดสินใจกลับเข้าเอกสารนี้ (แก้ "สถานะ" ด้านบนและ CHANGELOG ด้านล่าง) ก่อน merge
 
 ---
 
@@ -92,12 +95,16 @@ document._
 
 ### Status
 
-**Undecided — pending the project founder's choice (human gate H1 in
-`docs/plans/H0_RELEASE_READINESS_PLAN.md`).** This document only prepares a comparison; it does
-not make the decision. The repository currently has no root `LICENSE` file, and
-`src-tauri/Cargo.toml` has no `license`/`license-file` field — Lalin Cast's own original source
-code therefore has no formally declared license yet (all rights reserved by default under
-copyright law until one is chosen).
+**Decided: Apache-2.0** — chosen by the project founder on 2026-09-21 for its patent grant and
+patent-retaliation terms, per the comparison below. The full license text is in
+[`LICENSE`](../LICENSE) at the repository root, and `src-tauri/Cargo.toml` declares
+`license = "Apache-2.0"`.
+
+This closes only the **license part** of human gate H1. The other part of H1 (the founder
+approving `PRIVACY.md` and `TERMS.md`) is still tracked separately in
+`docs/runbooks/RELEASE_CHECKLIST.md`.
+
+The comparison below is kept as the record of what the choice was made from.
 
 This is separate from the licenses of the third-party libraries in use (see
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)) and separate from the MIT license of the
@@ -150,19 +157,20 @@ The final choice belongs to the project founder alone. This document is not lega
 
 ### Checklist once a choice is made (for the founder / merge operator)
 
-- [ ] Add a `LICENSE` file at the repository root with the full text of the chosen license
-- [ ] Add a `license = "..."` field (or `license-file = "LICENSE"` for proprietary) to
+- [x] Add a `LICENSE` file at the repository root with the full text of the chosen license
+- [x] Add a `license = "..."` field (or `license-file = "LICENSE"` for proprietary) to
       `src-tauri/Cargo.toml` — that file is owned by S4/rust-core, not S1; route this as an
       openQuestion if it needs to change now
-- [ ] Update `deny.toml` (`licenses.allow`) if proprietary or another license not already on the
-      allow-list is chosen — that file is owned by S3/ci-supply-chain
-- [ ] Update the "License" row in `LALIN_PROVENANCE.md` to name Lalin Cast's own license,
+- [x] Update `deny.toml` (`licenses.allow`) if proprietary or another license not already on the
+      allow-list is chosen — that file is owned by S3/ci-supply-chain (not needed: Apache-2.0 is
+      already allowed)
+- [x] Update the "License" row in `LALIN_PROVENANCE.md` to name Lalin Cast's own license,
       separate from the existing VacuumTube row — that file is owned by S2/docs-hygiene
-- [ ] If proprietary: draft a Contributor License Agreement (CLA), or close external PRs until one
-      exists
-- [ ] Decide whether to add a license badge to `README.md` (can be added in a future README
-      edit, owned by S1)
-- [ ] Record the decision back into this document (update "Status" above and the CHANGELOG below)
+- [x] If proprietary: draft a Contributor License Agreement (CLA), or close external PRs until one
+      exists (not applicable: Apache-2.0 was chosen)
+- [x] Decide whether to add a license badge to `README.md` (README names the license in its
+      Disclaimer section instead of a badge)
+- [x] Record the decision back into this document (update "Status" above and the CHANGELOG below)
       before merging
 
 ## CHANGELOG
@@ -170,3 +178,4 @@ The final choice belongs to the project founder alone. This document is not lega
 | Version | Date | Status | Summary | Commit Hash | Agent |
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Initial MIT / Apache-2.0 / proprietary comparison and founder checklist for the H0 legal-texts stream (S1) | uncommitted | LALIN |
+| 0.2.0b | 2026-09-21 | decided | Founder chose Apache-2.0; root LICENSE added, Cargo.toml license field set, checklist completed; closes the license half of H1 only | uncommitted | LALIN |

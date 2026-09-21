@@ -10,17 +10,17 @@ behavior reference and fallback.
 **ภาษาไทย:** Lalin Cast เป็นโปรเจกต์อิสระของบุคคลที่สาม ไม่ได้เกี่ยวข้อง ไม่ได้รับการรับรอง และ
 ไม่ได้เป็นส่วนหนึ่งของ YouTube หรือ Google ผู้ใช้ยังต้องผูกพันตามข้อกำหนดการให้บริการของ YouTube เอง
 อ่านรายละเอียดที่ [`PRIVACY.md`](PRIVACY.md), [`TERMS.md`](TERMS.md) และ
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — สัญญาอนุญาตของซอร์สโค้ด Lalin Cast เอง (แยกจาก
-ไลบรารี third-party) ยังไม่ได้เลือก รอผู้ก่อตั้งอนุมัติ ดูตัวเลือกที่
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — ซอร์สโค้ดของ Lalin Cast เอง (แยกจากไลบรารี
+third-party) เผยแพร่ภายใต้สัญญาอนุญาต **Apache License 2.0** ดู [`LICENSE`](LICENSE) และเหตุผลที่เลือกใน
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md)
 
 **English:** Lalin Cast is an independent, third-party project with no affiliation to, endorsement
 from, or sponsorship by YouTube or Google. Using it remains subject to YouTube's own Terms of
 Service. See [`PRIVACY.md`](PRIVACY.md), [`TERMS.md`](TERMS.md), and
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for details. Lalin Cast's own source-code
-license (separate from its third-party dependencies) has not been chosen yet and is pending
-founder approval; see the options in
-[`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md).
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for details. Lalin Cast's own source code
+(separate from its third-party dependencies) is licensed under the **Apache License 2.0**; see
+[`LICENSE`](LICENSE), and [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md) for why it was
+chosen.
 
 ## Positioning: no ad filtering
 
