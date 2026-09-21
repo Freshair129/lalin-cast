@@ -1,0 +1,150 @@
+name: Release dry run (unsigned)
+
+# Wave 10 U2 (docs/plans/W10_RELEASE_REHEARSAL_PLAN.md, contract 1): this repository has never had a
+# tag or a release, so `release.yml` has never actually run and the NSIS installer has never been
+# built in CI. This workflow rehearses the *build* half of `release.yml` — same pinned
+# `tauri-apps/tauri-action`, same checkout, same Rust toolchain, same `projectPath` — on every change
+# that could plausibly break the bundle, so a broken installer is caught on a pull request instead of
+# the day a `v*` tag is pushed for real.
+#
+# It must NOT create or upload a GitHub Release, must NOT need any secret (no
+# LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY), and must NEVER modify `.github/workflows/release.yml` itself
+# — rehearsing a script by editing the script would defeat the rehearsal. See the plan for the
+# evidence (README + source at the pinned tauri-action SHA) behind the choices below:
+#   1. tauri-action locates the Tauri CLI via `hasDependency('@tauri-apps/cli', projectPath)`, which
+#      reads `package.json` at `projectPath` (src/utils.ts, src/runner.ts). This repository's root has
+#      no `package.json`, so `hasDependency` returns a falsy value, `getRunner()` falls through to
+#      `npm install -g @tauri-apps/cli@v2` and returns `new Runner('tauri')` — the action installs the
+#      CLI globally via npm and then runs the bare `tauri` binary directly, not `npm run tauri` /
+#      `yarn tauri` / etc.
+#   2. Per the README ("If you only want to build the app without having the action upload any
+#      assets... simply omit `tagName`, `releaseName` and `releaseId`") and confirmed in src/index.ts:
+#      when none of `releaseId`/`tagName` end up set, the action logs "No releaseId or tagName
+#      provided, skipping all uploads..." and returns without creating or uploading a release. This
+#      workflow deliberately omits all three inputs.
+#   3. `args` (this action's passthrough to `tauri build`) is tokenized by `string-argv` and parsed
+#      with Node's `parseArgs`, which supports repeatable `-c`/`--config <value>` (src/inputs.ts). The
+#      parsed `--config` value is passed both into tauri-action's own `getInfo()` (for artifact naming)
+#      and straight through to the real `tauri build` invocation, so a `--config` override reaches the
+#      Tauri CLI exactly as it would locally.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src-tauri/tauri.conf.json"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/icons/**"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-dryrun.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Build unsigned installer (x64 dry run, no release)
+    # x86_64-pc-windows-msvc only — matches release.yml's stable (non-experimental) leg. release.yml's
+    # arm64 leg is `experimental: true` and out of scope for this rehearsal (see the plan, "Out of
+    # scope / wave 11").
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+
+      - name: rustup target add x86_64-pc-windows-msvc
+        shell: pwsh
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Build unsigned Tauri bundle (dry run — no release, no updater artifacts)
+        # Same tauri-action SHA, same projectPath as release.yml. No `tagName` / `releaseName` /
+        # `releaseId` input is set (see evidence #2 above), so the action builds only and never talks
+        # to the GitHub Releases API. The `--config` override sets `bundle.createUpdaterArtifacts` to
+        # `false` so the build needs no `TAURI_SIGNING_PRIVATE_KEY*` secret at all — this step and this
+        # job reference no secret anywhere.
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        with:
+          projectPath: .
+          args: '--target x86_64-pc-windows-msvc --config {"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Check rendered NSIS script for self-registered scheme
+        id: nsis-check
+        # Do not loosen this step or the *-setup.exe step below: tauri-action at the pinned SHA
+        # returns success even when a build produces no bundle and no release inputs are set, so
+        # these two fail-closed checks are the only thing that makes a broken bundle turn this job red.
+        # Fail-closed: if no rendered installer.nsi is found at all, that means the check verified
+        # nothing, so it must fail rather than silently pass (Wave 10 contract 1, step 1). If one is
+        # found, fail if it contains `Classes\lalin-cast` in any letter case — that registry path is
+        # what an installer-side scheme self-registration would use; Lalin Cast registers
+        # `lalin-cast://` only at runtime, opt-in, via HKCU (Wave 7, W7_DEEPLINK_PLAN.md), never from
+        # the installer, so this string must never appear here. PowerShell's `-match` is
+        # case-insensitive by default, matching the "ไม่สนตัวพิมพ์" requirement.
+        shell: pwsh
+        run: |
+          $nsiFiles = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "installer.nsi" -ErrorAction SilentlyContinue
+          if (-not $nsiFiles -or $nsiFiles.Count -eq 0) {
+            throw "No rendered installer.nsi found under src-tauri/target/**/nsis/** -- the bundle step did not produce an NSIS script, so the scheme check would verify nothing. Failing closed."
+          }
+
+          Write-Host "Found $($nsiFiles.Count) rendered installer.nsi file(s):"
+          $nsiFiles | ForEach-Object { Write-Host " - $($_.FullName)" }
+
+          $schemeHits = @()
+          foreach ($f in $nsiFiles) {
+            $content = Get-Content -Raw -Path $f.FullName
+            if ($content -match [regex]::Escape('Classes\lalin-cast')) {
+              $schemeHits += $f.FullName
+            }
+          }
+
+          if ($schemeHits.Count -gt 0) {
+            Write-Host "The following installer.nsi file(s) contain 'Classes\lalin-cast':"
+            $schemeHits | ForEach-Object { Write-Host " - $_" }
+            throw "installer.nsi references Classes\lalin-cast -- the installer must never self-register the lalin-cast:// URL scheme (see docs/plans/W7_DEEPLINK_PLAN.md). Failing."
+          }
+
+          Write-Host "OK: no installer.nsi references Classes\lalin-cast -- the installer does not self-register the scheme."
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "result=pass"
+
+      - name: Locate the unsigned setup executable
+        id: find-installer
+        shell: pwsh
+        run: |
+          $setupFiles = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*-setup.exe" -ErrorAction SilentlyContinue
+          if (-not $setupFiles -or $setupFiles.Count -eq 0) {
+            throw "No *-setup.exe found under src-tauri/target -- the bundle step did not produce an NSIS installer."
+          }
+
+          $setupFile = $setupFiles | Select-Object -First 1
+          $sizeBytes = $setupFile.Length
+          $sizeMiB = [Math]::Round($sizeBytes / 1MB, 2)
+
+          Write-Host "Installer: $($setupFile.FullName) ($sizeMiB MiB)"
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$($setupFile.FullName)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_bytes=$sizeBytes"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_mib=$sizeMiB"
+
+      - name: Upload unsigned installer artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lalin-cast-dryrun-installer
+          path: ${{ steps.find-installer.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write job summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Lalin Cast release dry run (unsigned)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Installer size: ``${{ steps.find-installer.outputs.size_mib }} MiB`` (``${{ steps.find-installer.outputs.size_bytes }}`` bytes)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``Classes\lalin-cast`` scheme-registration check: ``${{ steps.nsis-check.outputs.result }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **This installer is UNSIGNED** (Authenticode signing is human gate H4, not yet closed) -- do not distribute it as a real release artifact."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifact: ``lalin-cast-dryrun-installer`` (retained 7 days) -- use for human gate H28 (install on a clean machine, confirm it launches)."

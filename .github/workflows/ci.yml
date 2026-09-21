@@ -189,3 +189,21 @@ jobs:
 
       - name: node scripts/check-notices.mjs
         run: node scripts/check-notices.mjs
+
+      - name: Self-test -- check-notices.mjs must fail on a known mismatch
+        # Wave 10 U2 (docs/plans/W10_RELEASE_REHEARSAL_PLAN.md, contract 2): proves the step above
+        # is not a rubber stamp. scripts/fixtures/notices-mismatch/{Cargo.lock,THIRD_PARTY_NOTICES.md}
+        # are tiny fixture files that intentionally disagree by exactly one row (see the fixtures'
+        # own header comments). Running the real script against them must exit non-zero; if it ever
+        # exits 0 against a known-bad pair, this step fails the job.
+        shell: bash
+        run: |
+          set +e
+          node scripts/check-notices.mjs scripts/fixtures/notices-mismatch/Cargo.lock scripts/fixtures/notices-mismatch/THIRD_PARTY_NOTICES.md
+          fixture_exit_code=$?
+          set -e
+          if [ "$fixture_exit_code" -eq 0 ]; then
+            echo "check-notices.mjs exited 0 against a fixture pair that is known to disagree -- the checker is not catching real mismatches." >&2
+            exit 1
+          fi
+          echo "OK: check-notices.mjs exited $fixture_exit_code (non-zero) against the mismatched fixture, as expected."

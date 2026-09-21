@@ -1,0 +1,25 @@
+# Wave 10 U2 fixture (docs/plans/W10_RELEASE_REHEARSAL_PLAN.md, contract 2) -- NOT the real
+# src-tauri/Cargo.lock. This tiny, fake lockfile exists only so the `notices` CI job can prove
+# `scripts/check-notices.mjs` really does fail on a mismatch, instead of trusting that it would.
+# It disagrees with THIRD_PARTY_NOTICES.md in this same directory by exactly one row: `bar-crate`
+# is 2.3.4 here but 2.3.5 there. Do not edit one file without the other unless you mean to change
+# what the self-test exercises.
+version = 4
+
+[[package]]
+name = "foo-crate"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0000000000000000000000000000000000000000000000000000000000000"
+
+[[package]]
+name = "bar-crate"
+version = "2.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1111111111111111111111111111111111111111111111111111111111111"
+
+[[package]]
+name = "baz-crate"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2222222222222222222222222222222222222222222222222222222222222"

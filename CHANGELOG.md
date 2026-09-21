@@ -154,6 +154,36 @@ version number.
   compares `THIRD_PARTY_NOTICES.md` against `src-tauri/Cargo.lock` in both directions on every pull
   request
 
+#### Wave 10 — Release rehearsal (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`)
+
+- workflow ใหม่ `.github/workflows/release-dryrun.yml`: ซ้อม build ตัวติดตั้ง NSIS แบบไม่เซ็นชื่อผ่าน
+  `tauri-apps/tauri-action` ที่ SHA เดียวกับ `.github/workflows/release.yml` ทุกครั้งที่ไฟล์ที่มีผลต่อการ
+  bundle เปลี่ยน (`tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `icons/**`, `release.yml` เอง, และไฟล์
+  dry-run เอง) — ไม่สร้างหรืออัปโหลด GitHub Release ใด ๆ และไม่ใช้ secret เลย / a new
+  `.github/workflows/release-dryrun.yml` workflow that rehearses an unsigned NSIS installer build
+  through the exact same `tauri-apps/tauri-action` SHA as `.github/workflows/release.yml`, on every
+  change to a file that can affect the bundle (`tauri.conf.json`, `Cargo.toml`, `Cargo.lock`,
+  `icons/**`, `release.yml` itself, and the dry-run file itself) — it creates or uploads no GitHub
+  Release and uses no secret at all
+- ตรวจสคริปต์ NSIS ที่ render แล้วแบบ fail-closed (ล้มถ้าหาไม่เจอ) และล้มถ้าพบ `Classes\lalin-cast` — ปิด
+  ครึ่งหนึ่งของ H23 ด้วยการตรวจอัตโนมัติแทนการติดตั้งบนเครื่องจริงแล้วเปิด regedit / a fail-closed check
+  (fails if none is found) of the rendered NSIS script, which also fails if it contains
+  `Classes\lalin-cast` — closes half of H23 with an automated check instead of installing on a real
+  machine and opening regedit
+- fixture `scripts/fixtures/notices-mismatch/{Cargo.lock,THIRD_PARTY_NOTICES.md}` และ step ใหม่ในงาน
+  `notices` ของ `ci.yml` ที่พิสูจน์ว่า `scripts/check-notices.mjs` ล้มจริงเมื่อไฟล์ทั้งสองไม่ตรงกัน (ปิด
+  H27 ด้วยการพิสูจน์ซ้ำทุกครั้งบน CI แทนการรอ dependency bump ครั้งหน้า) / a
+  `scripts/fixtures/notices-mismatch/{Cargo.lock,THIRD_PARTY_NOTICES.md}` fixture and a new step in
+  `ci.yml`'s `notices` job that proves `scripts/check-notices.mjs` really fails when the two files
+  disagree (closes H27 by proving it on every CI run instead of waiting for the next dependency bump)
+- `sanitize_log_message` ปิดบังโฟลเดอร์ home ของผู้ใช้ก่อนกฎ path และให้กฎ path ปิดบัง path ใต้ home ทั้งก้อน
+  รวมโฟลเดอร์ย่อยและชื่อไฟล์ ปิดบังชื่อบัญชี Windows เมื่อปรากฏเป็นคำเดี่ยวที่ยาวอย่างน้อย 3 ตัวอักษร และปิดบัง
+  URL ทุก scheme — ขอบเขตที่เหลืออยู่ใน `PRIVACY.md` หัวข้อไฟล์ log / `sanitize_log_message` now masks the
+  user's home folder before the path rule, and the path rule masks a path under home as a whole,
+  sub-folders and file name included; masks the Windows account name where it appears as a whole word
+  of at least 3 characters; and masks every URL scheme — the limits that remain are set out in
+  `PRIVACY.md`'s log-file section
+
 ### Changed
 
 #### Wave 2 — Living-room readiness (`docs/plans/W2_LIVING_ROOM_PLAN.md`)
@@ -280,3 +310,22 @@ version number.
   job prevents `THIRD_PARTY_NOTICES.md` from silently drifting out of sync with `Cargo.lock` again
   (as happened when `tauri-plugin-store` 2.4.3 → 2.4.5 merged in PR #6 and had to be fixed after the
   fact in PR #12)
+
+#### Wave 10 — Release rehearsal (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`)
+
+- `.github/workflows/release-dryrun.yml` ไม่อ้าง secret ใดเลย (ไม่มี
+  `LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY` หรือ secret อื่น) เพราะปิด `bundle.createUpdaterArtifacts`
+  ด้วย `--config` override ของ `tauri-action` เอง / `.github/workflows/release-dryrun.yml` references
+  no secret at all (no `LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY` or any other secret) because it turns
+  off `bundle.createUpdaterArtifacts` via `tauri-action`'s own `--config` override
+- ตรวจสคริปต์ NSIS ที่ render แล้วแบบ fail-closed: ถ้าไม่พบ `installer.nsi` เลย job จะ fail ทันที
+  แทนที่จะผ่านแบบไม่ได้ตรวจอะไร / the rendered NSIS script check is fail-closed: if no
+  `installer.nsi` is found at all, the job fails immediately instead of passing having checked
+  nothing
+- `sanitize_log_message` ปิดบังโฟลเดอร์ home ของผู้ใช้ (ทั้งรูปแบบ `\` และ `/`, ไม่สนตัวพิมพ์ ASCII) ก่อนกฎ path
+  และกฎ path ปิดบัง path ใต้ home ทั้งก้อน จึงปิดข้อจำกัดของ wave 9 ที่ path ใต้ home ซึ่งชื่อบัญชีมีช่องว่าง
+  อาจเผยชื่อบัญชีได้ ชื่อบัญชีถูกปิดบังเมื่อเป็นคำเดี่ยวที่ยาวอย่างน้อย 3 ตัวอักษรเท่านั้น / `sanitize_log_message`
+  now masks the current user's home folder (both `\` and `/` forms, ASCII case-insensitive) before the
+  path rule, and the path rule masks a path under home as a whole, closing wave 9's limitation that a
+  home path whose account name contains a space could reveal that name; the account name itself is
+  masked only as a whole word of at least 3 characters
