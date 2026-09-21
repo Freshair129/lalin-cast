@@ -683,6 +683,16 @@ PR #9 และ #10 — H20) ที่ build เวอร์ชัน debug ข�
 [`scripts/lifecycle-driver.ps1`](scripts/lifecycle-driver.ps1) (ตัวอ่านไฟล์วงจรชีวิตอย่างเดียว ไม่มีการเขียนไฟล์ใด ๆ)
 ใช้ทดสอบ launcher lifecycle นี้ด้วยตัวเองบนเครื่องนักพัฒนา — ดูวิธีใช้ที่ `scripts/README.md`
 
+wave 10 เพิ่ม workflow แยกต่างหากอีกตัว
+[`.github/workflows/release-dryrun.yml`](.github/workflows/release-dryrun.yml) ที่ซ้อมขั้นตอน build
+ตัวติดตั้งด้วย `tauri-apps/tauri-action` **SHA เดียวกันและ `projectPath` เดียวกัน** กับที่
+`release.yml` ใช้จริง (แต่ไม่สร้างหรืออัปโหลด GitHub Release ใด ๆ และไม่ต้องใช้ secret สำหรับเซ็นชื่อ) จะ
+รันเองเมื่อไฟล์ที่มีผลต่อการ bundle เปลี่ยน (`tauri.conf.json`, `Cargo.toml`/`Cargo.lock`, ไอคอน, และตัว
+workflow เอง) หรือสั่งรันเองผ่าน `workflow_dispatch` ก็ได้ ผลลัพธ์คือไฟล์ติดตั้ง `*-setup.exe`
+**ที่ไม่ได้ลงนาม (unsigned)** อัปโหลดเป็น CI artifact ชื่อ `lalin-cast-dryrun-installer` เก็บไว้ 7 วัน
+สำหรับทดสอบติดตั้งบนเครื่องสะอาดก่อน tag จริง (ดู
+[`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`](docs/plans/W10_RELEASE_REHEARSAL_PLAN.md))
+
 **English:** Beyond the `cargo check`/`cargo fmt`/`cargo tauri build` commands above, CI (`ci.yml`)
 also runs a `smoke` job (on `windows-latest`, a blocking required check since wave 8, after two
 stable green runs in PR #9 and #10 — H20)
@@ -693,6 +703,17 @@ correctly — automated evidence toward human gate H13 on every push. The
 [`scripts/lifecycle-driver.ps1`](scripts/lifecycle-driver.ps1) script (a read-only lifecycle-file poller that
 never writes anything) exercises the same launcher lifecycle locally on a developer machine — see
 `scripts/README.md` for usage.
+
+Wave 10 added a separate workflow,
+[`.github/workflows/release-dryrun.yml`](.github/workflows/release-dryrun.yml), that rehearses the
+installer build using **the same `tauri-apps/tauri-action` pin (same SHA) and the same
+`projectPath`** that `release.yml` uses for a real release, but never creates or uploads a GitHub
+Release and needs no signing secret. It runs whenever a file that affects the bundle changes
+(`tauri.conf.json`, `Cargo.toml`/`Cargo.lock`, the icons, or the workflow file itself), or on
+demand via `workflow_dispatch`. The result is an **unsigned** `*-setup.exe` installer uploaded as a
+CI artifact named `lalin-cast-dryrun-installer`, kept for 7 days, meant for a clean-machine install
+test before a real tag (see
+[`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`](docs/plans/W10_RELEASE_REHEARSAL_PLAN.md)).
 
 ## Support
 

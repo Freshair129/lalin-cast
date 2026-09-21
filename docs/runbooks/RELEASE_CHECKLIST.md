@@ -1,7 +1,7 @@
 ---
-version: "0.1.4b"
+version: "0.1.5b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T08:30:00+07:00,LALIN"
+last_update: "2026-09-21T09:15:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -89,6 +89,29 @@ tag — if any item is not done, **do not tag**:
         (`<app_local_data_dir>/logs/lalin-cast.log`) really appears, really rotates once it exceeds
         512 KiB (keeping at most two files), and that a sample of its lines contains no TV pairing
         code, cookie, token, URL, or filesystem path anywhere — not even one line
+- [ ] **human gate H28 ปิดแล้ว** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — ถ้าฟีเจอร์ wave 10 รวม
+      อยู่ในรุ่นนี้ — **human gate H28 is closed** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — if
+      wave 10's features are included in this release:
+  - [ ] H28 — ดาวน์โหลด artifact `lalin-cast-dryrun-installer` จาก run ล่าสุดของ
+        `.github/workflows/release-dryrun.yml` บน commit ที่จะ tag (ถ้า commit นั้นไม่มี run เพราะไม่ได้แตะไฟล์
+        ที่เกี่ยวกับการ bundle ให้สั่งรันเองด้วย `workflow_dispatch`) แล้วติดตั้งบนเครื่องสะอาด ยืนยันว่า
+        เปิดแอปได้จริง (ตัวติดตั้งนี้**ไม่ได้เซ็นชื่อ** — ใช้ยืนยันแค่ว่า bundle ใช้งานได้ ไม่ใช่การตรวจ
+        ลายเซ็นตามข้อ 3 ด้านล่าง ซึ่งใช้ไฟล์จาก `release.yml` จริงเท่านั้น) — download the
+        `lalin-cast-dryrun-installer` artifact from the latest
+        `.github/workflows/release-dryrun.yml` run on the commit about to be tagged (start one with
+        `workflow_dispatch` if that commit touched no bundle file and so has no run), install it on a
+        clean machine, and confirm the app launches (this installer is **unsigned** — it only
+        confirms the bundle works, not the signature verification in step 3 below, which uses only
+        the real `release.yml` output)
+      > หมายเหตุ: H27 เดิม (wave 9 — "notices check ทำ PR แดงจริงเมื่อ lock เปลี่ยนโดยไม่ sync") ถูก
+      > แทนที่ด้วยการตรวจอัตโนมัติแล้วตั้งแต่ wave 10: fixture
+      > `scripts/fixtures/notices-mismatch/` และ self-test step ในงาน `notices` ของ `ci.yml` พิสูจน์
+      > สิ่งนี้ซ้ำทุกครั้งที่ CI รัน จึงไม่ต้องมีรายการตรวจด้วยมือแยกต่างหากในรายการนี้อีกต่อไป /
+      > **Note:** the former H27 (wave 9 — "the notices check really turns a PR red when the lock
+      > changes without sync") is superseded by an automated check as of wave 10: the
+      > `scripts/fixtures/notices-mismatch/` fixture and the self-test step in `ci.yml`'s `notices`
+      > job prove this on every CI run, so it no longer needs a separate manual item in this
+      > checklist
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -122,9 +145,12 @@ tag — if any item is not done, **do not tag**:
       green**: `cargo deny --manifest-path src-tauri/Cargo.toml check licenses advisories bans
       sources` passes completely, with no unresolved new advisory
 - [ ] CI เขียวครบทุก job บน commit ที่จะ tag (`fmt`, `clippy -D warnings`, `test`, `check`,
-      `node --check`, arm64 cross-compile check, `cargo-deny`) — CI is green across every job on the
-      commit about to be tagged (`fmt`, `clippy -D warnings`, `test`, `check`, `node --check`, the
-      arm64 cross-compile check, `cargo-deny`)
+      `node --check`, arm64 cross-compile check, `cargo-deny`, `notices` พร้อม self-test) — และถ้าไฟล์
+      ที่มีผลต่อการ bundle เปลี่ยน job `release-dryrun` (`.github/workflows/release-dryrun.yml`) ต้อง
+      เขียวด้วย — CI is green across every job on the commit about to be tagged (`fmt`,
+      `clippy -D warnings`, `test`, `check`, `node --check`, the arm64 cross-compile check,
+      `cargo-deny`, `notices` with its self-test) — and if a file that affects the bundle changed, the
+      `release-dryrun` job (`.github/workflows/release-dryrun.yml`) must also be green
 - [ ] commit ที่จะ tag อยู่บน `main` แล้ว (ไม่ tag จาก feature branch) — the commit being tagged is
       already on `main` (never tag from a feature branch)
 
@@ -222,3 +248,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.2b | 2026-09-21 | candidate | Added the pre-tag human gates H22 (DIAL discovery after the stricter SSDP `MAN` check) and H23 (`lalin-cast://` opens the app and the opt-in toggle removes the association) for wave 7 (U3) | uncommitted | LALIN |
 | 0.1.3b | 2026-09-21 | candidate | Added the pre-tag human gates H24 (Shorts shelf/guide tab hide on a real Leanback session without stealing focus) and H25 (display stays awake during playback, sleeps normally when paused/stopped) for wave 8 (U4) | uncommitted | LALIN |
 | 0.1.4b | 2026-09-21 | candidate | Added the pre-tag human gate H26 (log file appears in a release build, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path) for wave 9 (U3) | uncommitted | LALIN |
+| 0.1.5b | 2026-09-21 | candidate | Added the pre-tag human gate H28 (install the `lalin-cast-dryrun-installer` CI artifact on a clean machine and confirm it launches) for wave 10 (U2); noted that the former H27 is now enforced automatically by the `notices` job's fixture self-test instead of being a manual checklist item; added `notices` and `release-dryrun` to the CI-green pre-tag item | uncommitted | LALIN |

@@ -269,26 +269,49 @@ Lalin Cast เขียนไฟล์ log ไว้ในเครื่อง�
 (ดู [`README.md`](README.md) หัวข้อ "Support")
 
 ก่อนข้อความใด ๆ จะถูกเขียนลงไฟล์นี้ ทุกบรรทัดต้องผ่านฟังก์ชัน sanitiser ตัวเดียวกันเสมอ (ไม่มีทางลัดที่
-เขียนข้อความดิบลงไฟล์ได้) ซึ่งทำสามอย่างกับทุกข้อความก่อนเขียนเสมอ:
+เขียนข้อความดิบลงไฟล์ได้) ซึ่งทำตามลำดับนี้กับทุกข้อความก่อนเขียนเสมอ (ลำดับมีผลจริง เพราะแต่ละขั้นพึ่งผล
+ของขั้นก่อนหน้า):
 
-- แทนที่ URL ที่ขึ้นต้นด้วย `http://`, `https://` หรือ `lalin-cast://` (ไปจนถึงช่องว่างถัดไป) ด้วย
-  `<url>`
-- แทนที่ path แบบ Windows ที่ขึ้นต้นด้วย `<ตัวอักษร>:\` (เช่น `C:\`) หรือ `\\` (ไปจนถึงช่องว่างถัดไป)
-  ด้วย `<path>` — เพราะ path แบบนี้มักมีชื่อบัญชี Windows ของผู้ใช้ฝังอยู่ (เช่น `C:\Users\<ชื่อบัญชี>\...`)
-- แทนที่ตัวอักษรควบคุมทุกตัว (รวมทั้ง `\r` และ `\n`) ด้วยช่องว่าง แล้วตัดความยาวข้อความเหลือ 512 ตัวอักษร
+1. แทนที่ตัวอักษรควบคุมทุกตัว (รวมทั้ง `\r` และ `\n`) ด้วยช่องว่าง
+2. ถ้าอ่านโฟลเดอร์ home ของ Windows ได้ (`USERPROFILE`) และยาวพอ (อย่างน้อย 3 ตัวอักษร): แทนที่**ทุกครั้ง**
+   ที่พบโฟลเดอร์นี้ (ไม่สนตัวพิมพ์เฉพาะตัวอักษรภาษาอังกฤษ — ตัวอักษรที่ไม่ใช่ ASCII เช่นสระ/พยัญชนะที่มีเครื่องหมาย
+   หรือภาษาที่ไม่ใช่อังกฤษ ยังต้องตรงตัวพิมพ์เป๊ะจึงจะแทนได้ ทั้งรูปแบบ `\` และ `/`) ด้วย `<home>` โดยนับเฉพาะเมื่อตัวอักษรถัดจากโฟลเดอร์นั้นไม่ใช่ตัวอักษรหรือตัวเลข (จึงไม่ไปจับ `C:\Users\bobby`
+   เมื่อ home คือ `C:\Users\bob`) — ขั้นนี้ทำงาน**ก่อน**กฎ path ในขั้นที่ 5 เสมอ เพื่อให้ช่องว่างในชื่อบัญชี
+   (เช่น `C:\Users\First Last`) ไม่ทำให้ path ถูกตัดครึ่งกลางชื่อ
+3. ถ้าอ่านชื่อบัญชี Windows ได้ (`USERNAME`) และยาวพอ (อย่างน้อย 3 ตัวอักษร): แทนที่ทุกครั้งที่พบ**ทั้งสตริง**
+   `USERNAME` แบบทั้งคำเท่านั้น (ตรวจว่าตัวอักษรก่อนหน้าและตามหลังไม่ใช่ตัวอักษร/ตัวเลข ไม่สนตัวพิมพ์เฉพาะ
+   ตัวอักษรภาษาอังกฤษ) ด้วย `<user>` — ครอบกรณีที่ชื่อบัญชีหลุดเข้ามาในข้อความโดยไม่ได้อยู่ในรูป path ของ
+   โฟลเดอร์ home
+4. แทนที่ URL ที่มี scheme **ใดก็ได้** (ไม่ใช่แค่ `http`/`https`/`lalin-cast` สามแบบเหมือนก่อนหน้านี้)
+   ตามด้วย `://` (ไปจนถึงช่องว่างถัดไป) ด้วย `<url>`
+5. แทนที่ path แบบ Windows ที่ขึ้นต้นด้วย `<ตัวอักษร>:\` หรือ `<ตัวอักษร>:/` (เช่น `C:\` หรือ `C:/`) หรือ
+   `\\` หรือขึ้นต้นด้วย `<home>\` หรือ `<home>/` (คือ path ใต้โฟลเดอร์ home ที่ขั้นที่ 2 แทนส่วนต้นไปแล้ว) ไปจนถึง
+   ช่องว่างถัดไป ด้วย `<path>` — ดังนั้น path อย่าง `C:\Users\First Last\AppData\x.log` จะกลายเป็น `<path>`
+   ทั้งก้อน ทั้งชื่อบัญชี โฟลเดอร์ย่อย และชื่อไฟล์ ไม่ใช่แค่ส่วนต้นที่เป็นโฟลเดอร์ home
+6. ตัดความยาวข้อความเหลือ 512 ตัวอักษร (นับตัวอักษร ไม่ใช่ไบต์)
 
 เพราะ**ทุกการเขียนไฟล์ log ต้องผ่านฟังก์ชันนี้เพียงจุดเดียว** (ไม่ใช่การไว้ใจให้ทุกจุดในโค้ดที่เรียก log
-ระวังเอง) การแทนที่ทั้งสามข้อข้างต้นจึงเกิดขึ้นทุกครั้งโดยอัตโนมัติ กับทุกจุดที่เรียก log รวมถึงจุดที่จะเพิ่ม
-ในอนาคตด้วย แต่ก็มีขอบเขตที่ต้องรู้ไว้: การจับคู่แต่ละแบบทำไปได้แค่ **จนถึงช่องว่างถัดไป** เท่านั้น ดังนั้น
-URL ที่ใช้ scheme อื่นนอกจากสามแบบที่ระบุจะหลุดรอดไปทั้งเส้น และ path แบบ Windows ที่มีช่องว่างอยู่ในตัวเอง
-(เช่น `C:\Program Files\...` หรือ `C:\Users\ชื่อ นามสกุล\...`) จะถูกตัดครึ่งหลังของช่องว่างทิ้งไว้ในบรรทัด
-log ไฟล์นี้จึงไม่ได้การันตีว่าจะไม่มี URL หรือ path หลุดเข้ามาได้เลย รับประกันได้แค่ว่ารูปแบบที่ตรงกับกฎ
-ทั้งสามข้อจะถูกแทนที่แน่นอน ส่วนที่แยกออกไปคนละกลไกกัน: Lalin Cast ยังไม่ log ข้อมูลส่วนบุคคล (PII),
-รหัสจับคู่ทีวี (TV pairing code), คุกกี้ หรือ token/key ใด ๆ ลงไฟล์นี้อย่างถาวร — ค่าเหล่านี้ไม่เคยถูกส่งเข้า
-มาที่จุดเขียน log ตั้งแต่แรก จึงไม่มีรูปแบบให้ sanitiser จับได้เลย การไม่มีค่าเหล่านี้ในไฟล์ log เป็นเรื่องวินัย
-ของแต่ละจุดที่เรียก log ไม่ใช่สิ่งที่ฟังก์ชันนี้บังคับใช้ ข้อความ debug/log จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิค
-ของแอปเอง (เช่น สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง
-(ข้อ 6) ก็อยู่ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
+ระวังเอง) ขั้นตอนทั้งหกข้อข้างต้นจึงเกิดขึ้นทุกครั้งโดยอัตโนมัติ กับทุกจุดที่เรียก log รวมถึงจุดที่จะเพิ่ม
+ในอนาคตด้วย แต่ก็ยังมีขอบเขตที่ต้องรู้ไว้ตรง ๆ: ขั้นที่ 5 (กฎ path ที่เหลือ) จับคู่ได้แค่**จนถึงช่องว่างถัดไป**
+เท่านั้น ดังนั้น path ใดก็ตามที่มีช่องว่างอยู่หลังจุดเริ่มต้น ไม่ว่าจะอยู่นอกโฟลเดอร์ home (เช่น
+`D:\Media Library\...` หรือ `C:\Program Files\...`) หรืออยู่ใต้ home แต่ชื่อไฟล์มีช่องว่าง (เช่น
+`C:\Users\bob\Documents\Jane Doe.pdf` ซึ่งจะเหลือ `<path> Doe.pdf`) ยังคงมีส่วนหลังช่องว่างแรกทิ้งไว้ในบรรทัด log — **ส่วนหางนี้ (หลังช่องว่างแรก) ไม่มีการรับประกันใด ๆ อีกแล้ว** ขั้นที่ 2 และ 3 เพิ่มโอกาสที่ชื่อบัญชี
+จะถูกจับได้ก่อนถึงจุดนั้น แต่ไม่ได้ปิดช่องทั้งหมด เศษของชื่อบัญชีอาจหลงเหลืออยู่ในส่วนหางได้ในกรณีเหล่านี้:
+(ก) ชื่อบัญชีสั้นกว่า 3 ตัวอักษร — ขั้นที่ 3 จะไม่แทนเลย เช่น `USERNAME=Al` ในข้อความ
+`D:\Media Library\Al\x.mp4` จะเหลือ `Al` อยู่ในส่วนหาง; (ข) ชื่อบัญชีเป็นส่วนหนึ่งของคำหรือตัวเลขที่ยาวกว่า
+เช่น `USERNAME=bob` แต่ข้อความมีคำว่า `bob2020` — ขั้นที่ 3 จับเฉพาะคำเดี่ยวเท่านั้นและปล่อยผ่านคำที่ติดกับ
+ตัวอักษร/ตัวเลขอื่น; (ค) ตัวพิมพ์ใหญ่เล็กต่างกันในตัวอักษรที่ไม่ใช่ ASCII เช่น `USERNAME=élodie` แต่ข้อความมี
+`Élodie` — การเทียบแบบไม่สนตัวพิมพ์ครอบคลุมเฉพาะตัวอักษร ASCII เท่านั้น; หรือ (ง) `USERNAME` เป็นหลายคำ เช่น
+`First Last` แต่ข้อความมีเพียงคำเดียวอย่าง `First` — ขั้นที่ 3 แทนได้เฉพาะสตริง `USERNAME` เต็มรูปแบบเท่านั้น
+จึงไม่จับคำย่อยนี้ ด้วยเหตุนี้ไฟล์ log นี้จึงยังไม่ได้การันตีว่าจะไม่มี URL, path หรือเศษของชื่อบัญชีหลุด
+เข้ามาได้เลย รับประกันได้แค่ว่ารูปแบบที่ตรงกับเงื่อนไขของแต่ละขั้นทั้งหกข้อข้างต้นจะถูกแทนที่แน่นอน
+ส่วนที่แยกออกไปคนละกลไกกัน:
+Lalin Cast ยังไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV pairing code), คุกกี้ หรือ token/key ใด ๆ
+ลงไฟล์นี้อย่างถาวร — ค่าเหล่านี้ไม่เคยถูกส่งเข้ามาที่จุดเขียน log ตั้งแต่แรก จึงไม่มีรูปแบบให้ sanitiser
+จับได้เลย การไม่มีค่าเหล่านี้ในไฟล์ log เป็นเรื่องวินัยของแต่ละจุดที่เรียก log ไม่ใช่สิ่งที่ฟังก์ชันนี้
+บังคับใช้ ข้อความ debug/log จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น สถานะการ bind พอร์ต,
+สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง (ข้อ 6) ก็อยู่ภายใต้กฎเดียวกันนี้ —
+ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
 
 ไฟล์นี้หมุนเวียนเองเมื่อไฟล์ปัจจุบันมีขนาดเกินประมาณ 512 KiB — ไฟล์เก่าจะถูกเก็บไว้อีกหนึ่งไฟล์
 (`lalin-cast.log.1`) แล้วเริ่มไฟล์ใหม่ เก็บไว้สูงสุดสองไฟล์เท่านั้น เพดานรวมจึงประมาณ 1 MiB และไม่โตต่อไป
@@ -627,32 +650,60 @@ entirely up to the user whether to attach it to a bug report (see the "Support" 
 [`README.md`](README.md)).
 
 Before any text reaches this file, every line always passes through the same one sanitiser
-function first — there is no path that writes raw text to the file. That function does exactly
-three things to every message before it is written:
+function first — there is no path that writes raw text to the file. That function does the
+following, **in this order**, to every message before it is written (the order matters — each
+step relies on the one before it):
 
-- replaces any URL starting with `http://`, `https://`, or `lalin-cast://` (up to the next
-  whitespace) with `<url>`
-- replaces any Windows filesystem path starting with `<letter>:\` (e.g. `C:\`) or `\\` (up to the
-  next whitespace) with `<path>` — because a path like this often has the user's own Windows
-  account name embedded in it (e.g. `C:\Users\<account name>\...`)
-- replaces every control character (including `\r` and `\n`) with a space, then truncates the
-  message to 512 characters
+1. every control character (including `\r` and `\n`) is replaced with a space
+2. if the Windows home folder (`USERPROFILE`) can be read and is at least 3 characters long:
+   **every** occurrence of it (ASCII case-insensitive — non-ASCII letters, such as accented or
+   non-English characters, must still match exactly by case — in both `\` and `/` form) is
+   replaced with `<home>`, counted only when the character right after it is not a letter or
+   digit (so home `C:\Users\bob` does not match inside `C:\Users\bobby`) — this step always runs
+   **before** the path rule in step 5, so that a space inside the account name (as in
+   `C:\Users\First Last`) cannot cut the path in the middle of the name.
+3. if the Windows account name (`USERNAME`) can be read and is at least 3 characters long: every
+   occurrence of the **full `USERNAME` string** is replaced with `<user>`, matched **as a whole
+   word only** (the character immediately before and after must be neither a letter nor a digit;
+   ASCII case-insensitive only) — this covers the account name showing up somewhere that isn't a
+   home-folder path
+4. any URL with **any** scheme (not only the fixed `http`/`https`/`lalin-cast` three from before)
+   followed by `://` (up to the next whitespace) is replaced with `<url>`
+5. any Windows filesystem path starting with `<letter>:\` or `<letter>:/` (e.g. `C:\` or `C:/`) or
+   `\\`, or starting `<home>\` or `<home>/` (a path under the home folder whose prefix step 2
+   already replaced), up to the next whitespace, is replaced with `<path>` — so a path like
+   `C:\Users\First Last\AppData\x.log` becomes `<path>` as a whole: the account name, the
+   sub-folders and the file name, not only the home-folder prefix
+6. the message is truncated to 512 characters (counted in Unicode scalar values, not bytes)
 
 Because **every log write funnels through this one function** — not something each call site in
-the code has to remember to do on its own — the three replacements above happen every time,
-automatically, for every call site including any added later. They do have a known limit: each
-match runs only up to the next whitespace character, so a URL using a scheme other than the three
-listed leaks in full, and a Windows path that itself contains a space (for example
-`C:\Program Files\...` or `C:\Users\First Last\...`) has its tail past that space left in the
-line. This file is therefore not a guarantee that no URL or path can ever appear in it, only that
-the three matched forms are caught. Separately, and by a different mechanism, Lalin Cast still
-does not persistently log personal information (PII), a TV pairing code, a cookie, or any
-token/key to this file — those values are never handed to the logging call in the first place, so
-there is no pattern here for the sanitiser to catch; keeping them out is call-site discipline, not
-something this function enforces. Whatever debug/log output exists prints only the app's own
-technical state (such as port-bind status or connection status), never user-identifying content.
-The command-line deep link (section 6) falls under this same rule — it is never logged, whether or
-not it passes validation.
+the code has to remember to do on its own — all six steps above happen every time, automatically,
+for every call site including any added later. There is still a limit worth stating plainly: step
+5 (the remaining path rule) only matches up to the next whitespace character, so any path that
+contains a space after its start, whether outside the home folder (for example
+`D:\Media Library\...` or `C:\Program Files\...`) or under it with a file name containing a space
+(for example `C:\Users\bob\Documents\Jane Doe.pdf`, which becomes `<path> Doe.pdf`), still has its
+tail past that first space left in the line. **That
+tail is not a guaranteed-clean zone.** Steps 2 and 3 raise the odds that an account name is caught
+before that point, but they do not close every gap — a fragment of the account name can still
+survive in the tail in these cases: (a) the account name is under 3 characters, so step 3 never
+replaces it at all — for example `USERNAME=Al` leaves `Al` behind in
+`D:\Media Library\Al\x.mp4`; (b) the account name sits inside a longer word or number, such as
+`USERNAME=bob` against the text `bob2020` — step 3 only matches the name as a standalone word and
+passes over it when it's glued to other letters or digits; (c) the case differs in non-ASCII
+letters, such as `USERNAME=élodie` against the text `Élodie` — the case-insensitive match covers
+ASCII letters only; or (d) `USERNAME` is more than one word, such as `First Last`, but the text
+contains only one of those words, such as `First` — step 3 only replaces the full `USERNAME`
+string and does not match a sub-word of it. This file is therefore still not a guarantee that no
+URL, path, or account-name fragment can ever appear in it — only that text matching each step's
+own conditions, across all six steps above, is reliably caught. Separately, and by a different
+mechanism, Lalin Cast still does not persistently log
+personal information (PII), a TV pairing code, a cookie, or any token/key to this file — those
+values are never handed to the logging call in the first place, so there is no pattern here for
+the sanitiser to catch; keeping them out is call-site discipline, not something this function
+enforces. Whatever debug/log output exists prints only the app's own technical state (such as
+port-bind status or connection status), never user-identifying content. The command-line deep link
+(section 6) falls under this same rule — it is never logged, whether or not it passes validation.
 
 This file rotates on its own once the current file passes roughly 512 KiB: the older file is kept
 as one extra copy (`lalin-cast.log.1`) and a new file is started; at most two files are ever kept,
