@@ -54,6 +54,11 @@ vulnerability reporting** ของ repository นี้แทน (แท็บ 
 - WebView2 runtime ของ Microsoft
 - Windows หรือ hardware ของผู้ใช้เอง
 
+**ความเสี่ยงจากการครอบครองอุปกรณ์ (physical access):** ในโหมดพกพา (ดู [`README.md`](README.md) และ
+[`PRIVACY.md`](PRIVACY.md)) โฟลเดอร์ `lalin-cast-data\WebView2` เก็บ session ที่ล็อกอินบัญชี YouTube ไว้
+ในไฟล์ธรรมดา ไม่ได้เข้ารหัส — ใครก็ตามที่ได้โฟลเดอร์ทั้งชุดไป (เช่น USB หาย) จึงใช้บัญชีนั้นได้ทันที
+ซึ่งไม่ใช่ช่องโหว่ของโค้ด Lalin Cast แต่เป็นความเสี่ยงโดยธรรมชาติของข้อมูลที่พกพาได้
+
 ## ไม่มี bug bounty
 
 โปรเจกต์นี้ **ไม่มีโปรแกรม bug bounty และไม่มีรางวัลตอบแทนทางการเงิน** สำหรับการรายงานช่องโหว่ ขอบคุณ
@@ -119,6 +124,12 @@ real values).
   Cast know if you believe it affects real usage of this app)
 - The Microsoft WebView2 runtime
 - The user's own Windows installation or hardware
+
+**Physical-access risk:** in portable mode (see [`README.md`](README.md) and
+[`PRIVACY.md`](PRIVACY.md)), the `lalin-cast-data\WebView2` folder holds a signed-in YouTube session
+in plain, unencrypted files — anyone who gets the whole folder (for example a lost USB drive) can
+use that account immediately, which is not a Lalin Cast code vulnerability but an inherent risk of
+data that can be carried around.
 
 ## No bug bounty
 

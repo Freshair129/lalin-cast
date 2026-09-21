@@ -672,6 +672,82 @@ key must remain outside the repository and is supplied to GitHub Actions through
 `LALIN_CAST_TAURI_SIGNING_PRIVATE_KEY` and its optional password secret. The app
 never installs an update without user confirmation.
 
+## Portable mode / โหมดพกพา
+
+**ภาษาไทย:** เพิ่มไฟล์ชื่อ `lalin-cast.portable` (เนื้อหาไม่สำคัญ อาจเป็นไฟล์ว่าง) ไว้ในโฟลเดอร์เดียวกับ
+`lalin-cast.exe` เพื่อเข้าโหมดพกพา — Lalin Cast ตรวจไฟล์นี้จากโฟลเดอร์ของ `.exe` เองเท่านั้น (ไม่ใช่ working
+directory หรือ argument ใด ๆ) ตอนเริ่มโปรแกรมครั้งเดียว เมื่อพบ marker และเขียนโฟลเดอร์ข้าง exe ได้จริง
+**ข้อมูลที่แอปเขียนเองทั้งหมด** (ไฟล์การตั้งค่า `media-settings.json`, log, `lifecycle.json`,
+และโปรไฟล์ WebView2 ที่เก็บ session/คุกกี้ของหน้า YouTube) จะย้ายไปอยู่ในโฟลเดอร์
+**`lalin-cast-data`** ข้าง `.exe` ทั้งหมด แทนที่ `%APPDATA%\ai.lalin.cast\` และ
+`%LOCALAPPDATA%\ai.lalin.cast\` ตามปกติ — เหมาะกับเครื่อง HTPC/เครื่องที่ใช้ร่วมกันที่ไม่อยากติดตั้งอะไร,
+การพกไปบน USB, หรือเครื่องที่ไม่มีสิทธิ์ผู้ดูแลระบบแต่เขียนโฟลเดอร์ของตัวเองได้ ถ้าพบ marker แต่เขียน
+`lalin-cast-data` ไม่ได้ (เช่นตัว exe อยู่ใต้ `Program Files`) แอปจะไม่เข้าโหมดพกพาและใช้ตำแหน่งปกติแทน
+แทนที่จะเปิดไม่ขึ้นเลย
+
+**ปิดสามอย่างนี้ในโหมดพกพา และปฏิเสธในโค้ด Rust เอง ไม่ใช่แค่ซ่อนปุ่มในหน้าตั้งค่า:**
+
+- **เริ่มพร้อม Windows** (`startWithWindows`) — ไม่เขียน registry Run key ให้ เพราะ path ของ exe บน USB
+  จะค้างอยู่ใน registry ต่อไปแม้ถอด USB ออกแล้ว
+- **ลิงก์ `lalin-cast://`** (`deepLinkScheme`) — ไม่เขียน `HKCU\Software\Classes\lalin-cast` ให้ ด้วยเหตุผล
+  เดียวกัน
+- **การอัปเดตแบบติดตั้งทับ (in-place auto-update)** — ยังตรวจสอบและแจ้งได้ว่ามีเวอร์ชันใหม่ แต่ปุ่ม "ติดตั้ง"
+  ถูกปิดไว้ เพราะตัวติดตั้ง NSIS ติดตั้งลงโฟลเดอร์ติดตั้งของตัวเอง ไม่ใช่ทับโฟลเดอร์ข้าง exe — ดูวิธีอัปเดตด้านล่าง
+
+โหมดพกพายังต้องมี **WebView2 Runtime** ติดตั้งอยู่บนเครื่องเช่นเดียวกับโหมดติดตั้งปกติ (โหมดพกพาไม่ได้
+แปลว่าไม่ต้องพึ่งอะไรจากเครื่องเลย — ดูหมายเหตุเรื่องโหมดพกพาใน [`PRIVACY.md`](PRIVACY.md))
+
+Lalin Cast ใช้ single-instance identity **เดียวกัน** ไม่ว่าจะรันจากตัวติดตั้งหรือจากโฟลเดอร์พกพา ดังนั้น
+**ไม่สามารถรันสองชุดพร้อมกันได้** (ชุดที่ติดตั้งไว้ + ชุดพกพา) — เปิดตัวที่สองขึ้นมา ระบบจะแค่สลับไปโฟกัส
+หน้าต่างของตัวที่เปิดอยู่ก่อนแทนที่จะเปิดอินสแตนซ์ใหม่
+
+**วิธีอัปเดต:** ดาวน์โหลด zip เวอร์ชันใหม่ แตกไฟล์ลงโฟลเดอร์ใหม่ แล้ว **ย้ายโฟลเดอร์ `lalin-cast-data`**
+จากชุดเก่ามาไว้ข้าง `.exe` ตัวใหม่ (เพื่อไม่ให้เสียการตั้งค่า/session ที่ล็อกอินไว้) จากนั้นลบชุดเก่าทิ้งได้
+
+**คำเตือน:** โฟลเดอร์ `lalin-cast-data\WebView2` มี session ที่ล็อกอินบัญชี YouTube อยู่ ใครก็ตามที่ได้
+โฟลเดอร์นี้ไป (เช่น USB หาย) ใช้บัญชีนั้นต่อได้ทันที — ดูรายละเอียดและคำแนะนำใน [`PRIVACY.md`](PRIVACY.md)
+
+**English:** Add a file named `lalin-cast.portable` (its contents don't matter — an empty file
+works) in the same folder as `lalin-cast.exe` to enter portable mode. Lalin Cast checks for this
+marker only in the `.exe`'s own folder (never the working directory or an argument), once at
+startup. When the marker is present and the app can actually write a folder next to the exe,
+**every piece of data the app itself writes** — the `media-settings.json` settings file, the log
+file, `lifecycle.json`, and the WebView2 profile that holds the YouTube page's session/cookies —
+moves into a **`lalin-cast-data`** folder next to the `.exe`, instead of the usual
+`%APPDATA%\ai.lalin.cast\` and `%LOCALAPPDATA%\ai.lalin.cast\`. This suits HTPCs or shared machines
+you don't want to install anything on, carrying the app on a USB drive, or a machine where you have
+no administrator rights but can write your own folder. If the marker is present but
+`lalin-cast-data` can't be created (for example the exe sits under `Program Files`), the app falls
+back to the normal locations instead of failing to start.
+
+**These three are turned off in portable mode, refused in Rust code itself, not just hidden in the
+settings UI:**
+
+- **Start with Windows** (`startWithWindows`) — no Run-key registry write, because a USB-drive exe
+  path left in the registry would still be there after the USB drive is unplugged
+- **The `lalin-cast://` link scheme** (`deepLinkScheme`) — no `HKCU\Software\Classes\lalin-cast`
+  write, for the same reason
+- **In-place auto-update** — the app can still check for and report a newer version, but the
+  "install" button is disabled, because the NSIS installer installs into its own install folder, not
+  over the folder beside the exe — see how to update below
+
+Portable mode still needs the **WebView2 Runtime** installed on the machine, exactly like installed
+mode — portable does not mean the app depends on nothing from the machine at all (see the portable-mode
+note in [`PRIVACY.md`](PRIVACY.md)).
+
+Lalin Cast uses the **same** single-instance identity whether it's running from the installer or
+from a portable folder, so **an installed copy and a portable copy cannot run at the same time** —
+launching the second one just hands off to focus whichever instance is already running instead of
+opening a new one.
+
+**To update:** download the new zip, extract it into a new folder, then **move the
+`lalin-cast-data` folder** from the old copy next to the new `.exe` (so you keep your settings and
+signed-in session), and delete the old copy.
+
+**Warning:** the `lalin-cast-data\WebView2` folder holds a signed-in YouTube session. Anyone who
+gets that folder (for example a lost USB drive) can use that account immediately — see
+[`PRIVACY.md`](PRIVACY.md) for details and advice.
+
 ## Development
 
 **ภาษาไทย:** นอกจาก `cargo check`/`cargo fmt`/`cargo tauri build` ด้านบน CI (`ci.yml`) ยังมีงาน `smoke`
