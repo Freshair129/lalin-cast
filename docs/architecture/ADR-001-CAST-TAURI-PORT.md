@@ -1,7 +1,7 @@
 ---
-version: "0.14.0b"
+version: "0.15.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T01:40:00+07:00,LALIN"
+last_update: "2026-09-21T03:10:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -82,9 +82,9 @@ Play owner is replaced by this candidate.
 | Now-playing title (not a VacuumTube feature; new in wave 5, standard Media Session API) | `injected.js` `media` section (`navigator.mediaSession.metadata.title`, validated + rate-limited `lalin-cast-media` event) plus Rust `MediaTitleState` and the window-title/`tooltip_text` update | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | validation/rate-limit unit tests plus real Leanback playback evidence that the title tracks what's playing (human gate H16) |
 | Playback speed keys (not a VacuumTube feature; new in wave 5, SmartTube-parity differentiator) | `injected.js` `speed` section (`nextRate` pure fn, `Shift+,`/`Shift+.` keybinds, session-only `desiredRate`, an OSD) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | `nextRate`/adopt-external-`ratechange` unit tests plus real Leanback playback evidence (human gate H16) |
 | Help overlay (not a VacuumTube feature; new in wave 5) | `injected.js` `help` section (`helpRows(lang)` pure fn, `?`/`F1` keybinds, a `role="dialog"` overlay) | wave 5 local slice implemented — see `docs/plans/W5_DESKTOP_PLAN.md` | `helpRows` bilingual-parity unit tests plus real Leanback overlay/Escape-handling evidence (human gate H16) |
-| SponsorBlock/DeArrow/Return Dislikes | JS adapter after CSP/runtime review | deferred | feature-by-feature parity |
-| upstream ad-block controls | separate compatibility gate | deferred | setting behavior in real WebView |
-| Electron request/response interception | Rust/native WebView2 adapter | not in P0 | WebView2 API proof and security review |
+| SponsorBlock/DeArrow/Return Dislikes | none — decided against in wave 8 | **will not do, permanently** | see `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` decision 2 (their non-commercial licensing question is moot as a result) |
+| upstream ad-block controls | none — decided against in wave 8 | **will not do, permanently** | see `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` decision 1 |
+| Electron/network request-response interception (of any kind, for any purpose) | none | **not in this product, permanently — no adapter of any kind will be built** | see `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`'s client-side modification boundary |
 | DIAL discovery | supervised Rust SSDP + bounded HTTP Rust boundary | local slice implemented with retry/rebind | port/descriptor, listener recovery and same-Wi-Fi device evidence |
 | H5VCC DIAL bridge | narrow initialization script + `dial_respond` command | local slice implemented with continuous device-id sync | route callback and real controller/device evidence |
 | numeric TV-code pairing | not assumed | user-confirmed for current debug runtime | repeat/relink and packaged-app evidence |
@@ -98,6 +98,8 @@ Play owner is replaced by this candidate.
 | Controller Y button → help overlay (not a VacuumTube feature; new in wave 6, closes a gap left by wave 5's help overlay) | `injected.js` `controller` section wires the previously-unmapped gamepad index 3 (Y / Triangle) to the existing `toggle-help` action, gated on `controllerEnabled` | wave 6 local slice — see `docs/plans/W6_POLISH_PLAN.md` | `injected.test.js` unit test (fires only when `controllerEnabled`) plus real controller evidence (human gate H21) |
 | Stricter SSDP `MAN` validation (not a VacuumTube feature; new in wave 7, closes a gap wave 6 recorded as a characterization test) | Rust `dial.rs` pure fn `man_header_is_discover(value: &str) -> bool`, required by `is_dial_search` in addition to the existing `ST` check; accepts `MAN: ssdp:discover` with or without the UPnP-mandated surrounding quotes, case-insensitively, and rejects a missing/malformed header | wave 7 local slice — see `docs/plans/W7_DEEPLINK_PLAN.md` | `man_header_is_discover` unit tests (quoted/unquoted/case/missing/trailing-garbage) plus the wave 6 `accepts_m_search_even_with_an_incorrect_man_header` test rewritten to `rejects_…`, an intentional behavior change, plus real iPhone/Android YouTube-app discovery evidence (human gate H22) |
 | `lalin-cast://` URL scheme (not a VacuumTube feature; new in wave 7, roadmap H1) | Rust `launch.rs` `parse_launch_url` extended to accept `lalin-cast://watch?v=<id>`/`lalin-cast://playlist?list=<id>` (case-insensitive scheme/host, the existing `is_valid_video_id`/`is_valid_playlist_id` validators, unchanged for `https`) alongside the existing `https` forms; `canonical()` still always returns an `https://www.youtube.com/...` URL. Opt-in HKCU registration of the scheme itself is via the approved `tauri-plugin-deep-link` crate (`deepLinkScheme` setting, `DeepLinkExt::deep_link().register("lalin-cast")`/`unregister`) — see the security rules below | wave 7 local slice — see `docs/plans/W7_DEEPLINK_PLAN.md` | `parse_launch_url` unit tests (accept/reject matrix, `https` unchanged, `canonical()` still `https`) plus real Explorer/browser-launch and toggle-off evidence (human gate H23) |
+| Keep-display-awake (not a VacuumTube feature; new in wave 8, closes escalation ก item 6) | Rust `power.rs` (`execution_state_flags(enabled, playing) -> u32` pure fn, a single long-lived worker thread owning `SetThreadExecutionState`, released with `ES_CONTINUOUS` on setting-off/pause/exit) driven by `apply_media_event`, `settings_set` and `RunEvent::Exit`; the `keepDisplayAwake` setting (default `true`) | wave 8 local slice — see `docs/plans/W8_BOUNDARY_PLAN.md` and `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` | `execution_state_flags` unit tests (all four enabled/playing combinations) plus real display-stays-on-while-playing and sleeps-normally-when-stopped evidence (human gate H25) |
+| Hide Shorts shelf / guide tabs (VacuumTube has `hide-shorts.js`/`guide-tabs.js`; deliberately **not ported** as-is — new CSS/DOM-only design in wave 8, closes escalation ก item 3) | `injected.js` `hide` section: a `MutationObserver` on already-rendered DOM (`requestAnimationFrame`-coalesced), pure matchers `isShortsShelf(el)`/`isShortsGuideTab(el)` (non-text, attribute/tag-based), a class-only `lalin-cast-hidden-shorts`/`lalin-cast-hidden-guide-tab` tag plus one `<style id="lalin-cast-hide-style">` scoped by `data-lalin-hide-shorts`/`data-lalin-hide-guide-tabs` on `documentElement`; the `hideShorts`/`hideGuideTabs` settings (both default `false`) | wave 8 local slice — see `docs/plans/W8_BOUNDARY_PLAN.md` and `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` (records why upstream's response-rewriting approach is not used, and see `LALIN_PROVENANCE.md` for the review record) | `injected.test.js` matcher match/not-match, focused-element-never-hidden, Home-tab-never-hidden, and prefs-toggle unit tests, plus real Leanback selector and focus-safety evidence (human gate H24) |
 
 ## Endpoint and identity boundary
 
@@ -111,10 +113,16 @@ is an official YouTube TV application.
 ## Ad-filter boundary
 
 P0 does not add a custom YouTube-specific network bypass, DRM change, credential
-relay or playback rewrite. The Tauri port may later expose a general filter
-engine or retain a verified upstream setting only after a separate compatibility
-and security review. A filter result must be reported as observed behavior, not
-as a promise that every future ad format is blocked.
+relay or playback rewrite. **Updated in wave 8:** this is no longer a "not yet"
+boundary awaiting a future review — the founder decided against ad filtering,
+SponsorBlock/DeArrow/Return YouTube Dislike, and any network-interception
+mechanism **permanently**, for the reasons and rejected alternatives recorded in
+full in `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`, which
+also states the boundary that governs every future request of this kind. A
+result of the opt-in, CSS-only DOM changes this product does make (touch
+overlay, help overlay, and, added in wave 8, Shorts-shelf/guide-tab hiding)
+must always be reported as observed behavior, not a promise, since none of them
+are guaranteed by YouTube's markup.
 
 ## Security and ownership rules
 
@@ -280,6 +288,28 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   a failure there reverts this check before release.
 - Electron remains the fallback until Tauri endpoint, sign-in, playback,
   controller, fullscreen and lifecycle parity is evidenced.
+- Added in wave 8, **there is no network interception anywhere in this application** — no override
+  of `XMLHttpRequest`, `window.fetch`, `Response`, `.open`, `.send`, or any other network API, and no
+  reading or rewriting of a YouTube network response, in `injected.js` or anywhere else in the
+  codebase. This is the founder's decision on escalation ก, recorded in full (all seven decisions,
+  the reasoning, the rejected alternatives, and the boundary that governs every future request of
+  this kind) in `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`. The wave 8
+  Shorts-shelf/guide-tab hiding feature (`hideShorts`/`hideGuideTabs`, both opt-in, default `false`)
+  is the one new user-facing capability that decision approves, and it is implemented by reading
+  already-rendered DOM and applying Lalin Cast's own CSS only — see the feature-matrix row above and
+  `LALIN_PROVENANCE.md` for why upstream's `hide-shorts.js`/`guide-tabs.js` (which rewrite
+  `/youtubei/v1/browse`/`/youtubei/v1/guide` responses) were reviewed and deliberately not ported.
+- Added in wave 8, `keepDisplayAwake` (default `true`) calls Windows' `SetThreadExecutionState` only
+  while a video is actually playing (driven by the existing wave 5 `lalin-cast-media` event) through
+  a single long-lived worker thread in `src/power.rs`, released with `ES_CONTINUOUS` when the setting
+  is turned off, playback stops, or the app exits. This is the one narrow, founder-approved exception
+  to the standing no-`unsafe`/no-new-`windows-sys`-feature rules: exactly one `unsafe` block (the
+  `SetThreadExecutionState` call itself, with a `// SAFETY:` comment) and exactly one new feature
+  (`Win32_System_Power`) — see `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`
+  decision 6. Wave 8 adds exactly one `unsafe` block and exactly one `windows-sys` feature. The
+  codebase's only other `unsafe` blocks are the pre-existing `GetUserDefaultUILanguage` call in
+  `src/i18n.rs` and the `AttachConsole` call in `src/lib.rs`; its only other `windows-sys` features
+  are `Win32_Globalization` and `Win32_System_Console`.
 
 ## P0 acceptance criteria
 
@@ -359,3 +389,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.12.0b | 2026-09-20 | beta | Wave 5: added feature-matrix rows for the Studio launcher lifecycle (CLI + `lifecycle.json`), window-position memory, start with Windows, offline auto-retry, diagnostics snapshot, now-playing title, playback speed keys and the help overlay; documented the `settings`/`status` capability additions, the validated/rate-limited `lalin-cast-media` event on the unchanged remote capability, the fixed-argument `reg.exe` autostart runner, the URL-free `lifecycle.json` schema, and that `windowBounds` is Rust-only (see `docs/plans/W5_DESKTOP_PLAN.md` and `docs/architecture/CAST_LAUNCHER_IPC.md`) | uncommitted | LALIN |
 | 0.13.0b | 2026-09-21 | beta | Wave 6: added feature-matrix rows for UI scale, settings profiles, reset to defaults, the launch-command copy button, sleep at end of video, tray/menu play-pause and the controller Y-button help binding; documented the three new `settings` capability permissions, that profiles/reset route through the existing `apply_setting` whitelist only, that `uiScale` is set-checked, and the one-action `lalin-cast-remote` whitelist on the unchanged remote capability (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |
 | 0.14.0b | 2026-09-21 | beta | Wave 7: added feature-matrix rows for the stricter SSDP `MAN` validation and the `lalin-cast://` URL scheme; documented that `tauri-plugin-deep-link` is the sole approved crate exception used only for HKCU registry registration, that `tauri-plugin-single-instance`'s `deep-link` feature is deliberately not enabled so the URL keeps arriving through the existing `parse_cli` path, that no `deep-link:*` capability permission is granted anywhere, and that the `MAN` hardening is an intentional DIAL behavior change gated on human gate H22 (see `docs/plans/W7_DEEPLINK_PLAN.md`) | uncommitted | LALIN |
+| 0.15.0b | 2026-09-21 | beta | Wave 8: added feature-matrix rows for keep-display-awake and opt-in CSS-only Shorts-shelf/guide-tab hiding; resolved the three previously-`deferred`/`not in P0` ad-filtering/interception rows to a permanent "will not do", pointing at the founder's escalation ก decision; added the no-network-interception security rule and the one-`unsafe`-block/one-feature exception for `SetThreadExecutionState`, both citing the new `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` (see `docs/plans/W8_BOUNDARY_PLAN.md`) | uncommitted | LALIN |

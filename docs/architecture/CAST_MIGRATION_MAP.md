@@ -74,7 +74,9 @@ surface; no user queue/EQ data is rewritten.
 ### M3 — Media capability verification
 
 Verify the selected official YouTube endpoint, sign-in flow, any real pairing
-support, upstream ad-block controls, controller input and fullscreen in the
+support, upstream ad-block controls (historical only — ruled out by
+[`ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)),
+controller input and fullscreen in the
 Electron runtime. Record unsupported capabilities explicitly.
 
 **Rollback:** keep Media experimental and current Play active; do not claim TV

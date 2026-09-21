@@ -5,6 +5,7 @@ mod i18n;
 mod launch;
 mod lifecycle;
 mod network;
+mod power;
 mod settings;
 mod setup;
 mod sleep;
@@ -123,6 +124,12 @@ struct PrefsPayload {
     codec_filter: String,
     touch_overlay: bool,
     sleep_at_end_of_video: bool,
+    // Wave 8: CSS-only hide toggles, read by `injected.js`'s `hide` section
+    // and applied live via `PREFS_EVENT` below — see the wave 8 plan's
+    // contract 3. `keepDisplayAwake` deliberately never appears here: it is
+    // Rust-side only (see `power.rs`) and never travels to the page.
+    hide_shorts: bool,
+    hide_guide_tabs: bool,
     deep_link: Option<String>,
 }
 
@@ -144,6 +151,8 @@ struct PrefsEventPayload {
     codec_filter: String,
     touch_overlay: bool,
     sleep_at_end_of_video: bool,
+    hide_shorts: bool,
+    hide_guide_tabs: bool,
 }
 
 /// Emits the current `lang`/`controllerEnabled`/`pauseOnBlur`/`codecFilter`/
@@ -159,6 +168,8 @@ pub(crate) fn emit_prefs(app: &tauri::AppHandle) {
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
         sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
+        hide_shorts: read_bool_setting_or(app, "hideShorts", false),
+        hide_guide_tabs: read_bool_setting_or(app, "hideGuideTabs", false),
     };
     let _ = app.emit_to(MEDIA_LABEL, PREFS_EVENT, &payload);
 }
@@ -455,6 +466,17 @@ fn register_media_listener(app: &tauri::AppHandle) {
         let Some(parsed) = validate_media_event(event.payload()) else {
             return;
         };
+        // Wave 8 wiring point 1, applied ahead of the rate limiter: a
+        // `paused`/`idle` arriving within the limiter's window would
+        // otherwise be dropped and leave the display reserved until the
+        // next event. The call is idempotent and only touches an atomic
+        // plus a channel send, so running it on every validated event is
+        // cheaper than the title/tray work the limiter exists to throttle.
+        power::apply_playing(
+            &app_handle,
+            read_bool_setting_or(&app_handle, "keepDisplayAwake", true),
+            parsed.state == MediaPlaybackState::Playing,
+        );
         if !limiter.allow() {
             return;
         }
@@ -511,6 +533,19 @@ fn seed_settings(app: &tauri::AppHandle) {
     }
     if store.get("sleepAtEndOfVideo").is_none() {
         store.set("sleepAtEndOfVideo", false);
+    }
+    // Wave 8 store keys: keepDisplayAwake defaults on (matches the "should
+    // work out of the box" default every other toggle above uses);
+    // hideShorts/hideGuideTabs default off (opt-in, per the wave 8
+    // no-network-interception boundary — see docs/architecture/ADR-004).
+    if store.get("keepDisplayAwake").is_none() {
+        store.set("keepDisplayAwake", true);
+    }
+    if store.get("hideShorts").is_none() {
+        store.set("hideShorts", false);
+    }
+    if store.get("hideGuideTabs").is_none() {
+        store.set("hideGuideTabs", false);
     }
     // sleepTimerMinutes never survives a restart: a fresh process starts
     // with no live timer thread (see sleep.rs's SleepState, managed fresh
@@ -666,6 +701,8 @@ fn build_media_window(
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
         sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
+        hide_shorts: read_bool_setting_or(app, "hideShorts", false),
+        hide_guide_tabs: read_bool_setting_or(app, "hideGuideTabs", false),
         deep_link: launch.deep_link.as_ref().map(launch::DeepLink::canonical),
     }
     .init_script();
@@ -974,6 +1011,13 @@ pub fn run() {
             app.manage(status::AutoRetryState::default());
             app.manage(MediaTitleState::default());
             app.manage(tray::NowPlayingState::default());
+            // Wave 8: the single long-lived power worker thread (see
+            // `power.rs`'s module doc comment) — managed once, here, so
+            // `apply_media_event`/`settings::set_one`/`RunEvent::Exit` can
+            // all reach it via `app.try_state::<power::PowerState>()`
+            // regardless of call order. No reservation is requested yet at
+            // this point (nothing is playing on a fresh launch).
+            app.manage(power::PowerState::default());
             // Best-effort: re-add the Run key if the store says it should
             // be there (idempotent — always writes the current exe path).
             // Never blocks or fails startup; a failure here only means the
@@ -1061,6 +1105,11 @@ pub fn run() {
     // the final `stopped` state exactly once.
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
+            // Wave 8 wiring point 3: release any power reservation before
+            // this process actually exits, for every exit path this
+            // `RunEvent::Exit` handler already covers (window close, tray
+            // quit, menu quit, a second instance's forwarded `close`).
+            power::release(app_handle);
             let already_stopped = app_handle
                 .try_state::<lifecycle::StoppedMarker>()
                 .map(|marker| marker.is_stopped())

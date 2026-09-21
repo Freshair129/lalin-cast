@@ -129,7 +129,7 @@ they have no upstream source path to record:
 
 This is a documentation-only record of the port boundary. Runtime evidence for the user-facing
 pieces above is tracked as human gates H18–H21 in `docs/plans/W6_POLISH_PLAN.md` and is **NOT_RUN**
-until recorded there; the CI smoke job is additionally gated by H20 (`continue-on-error` removed only
+until recorded there; the CI smoke job was gated by H20 (`continue-on-error` removed only
 after two stable runs).
 
 ## Wave 7 deep link and DIAL hardening — new dependency (2026-09-21)
@@ -152,3 +152,52 @@ design, extending existing Rust modules (`launch.rs`, `dial.rs`) rather than por
 VacuumTube or another upstream project. This is a documentation-only record of the dependency and
 port boundary. Runtime evidence is tracked as human gates H22–H23 in
 `docs/plans/W7_DEEPLINK_PLAN.md` and is **NOT_RUN** until recorded there.
+
+## Wave 8 client-side boundary — `hide-shorts.js`/`guide-tabs.js` reviewed, deliberately not ported (2026-09-21)
+
+Wave 8 (`docs/plans/W8_BOUNDARY_PLAN.md`) adds opt-in hiding of the Shorts shelf on the home page and
+of the Shorts tab in the side navigation. Two upstream modules cover the same ground —
+`reference/vacuumtube/src/preload/modules/hide-shorts.js` and
+`reference/vacuumtube/src/preload/modules/guide-tabs.js` — and both were reviewed as part of this
+wave's design work. **Neither is ported.**
+
+**Why:** both upstream modules work by registering a response modifier
+(`xhrModifiers.addResponseModifier`) that intercepts and rewrites the JSON body of
+`/youtubei/v1/browse` (`hide-shorts.js`, filtering out any `shelfRenderer` whose header text is
+literally `"Shorts"`) and `/youtubei/v1/guide` (`guide-tabs.js`, filtering the guide's
+`guideSectionRenderer.items` by icon type). This is network-response interception — the same class of
+mechanism as ad filtering — and the founder's escalation ก decision
+(`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`) rules out any interception of
+YouTube's network traffic or data, for any purpose, permanently. Porting either file as-is, even to
+reach a target as innocuous as hiding a navigation tab, would put Lalin Cast on the wrong side of
+that boundary.
+
+Two details from the upstream source were still carried forward as design input rather than code:
+
+- `hide-shorts.js` matches the Shorts shelf by the literal string `"Shorts"` in the shelf header's
+  text run — this only works for English-language YouTube accounts. Lalin Cast's own matcher
+  (`isShortsShelf`/`isShortsGuideTab` in `injected.js`) deliberately avoids any text/locale-dependent
+  match, using only attributes and tag shapes that do not change with the account's language.
+  `guide-tabs.js`'s own `map` (from Leanback icon type, e.g. `YOUTUBE_SHORTS_FILL_24`, to a tab name)
+  is exactly this kind of non-text signal, and is the one piece of upstream data actually reused as a
+  reference for what a Shorts-tab icon type looks like.
+- `guide-tabs.js`'s own inline comment — `//disabling this breaks stuff because it tries to default
+  to the home tab` — is the documented reason Lalin Cast's `hideGuideTabs` option never hides the
+  Home tab, no matter what. This is the one piece of upstream *behavior* (not code) that is
+  deliberately preserved.
+
+Lalin Cast's own implementation instead reads only the already-rendered DOM (a `MutationObserver`,
+coalesced per animation frame), tags matching elements with its own class, and hides them with its
+own stylesheet scoped by a `data-lalin-hide-*` attribute — the same class of mechanism as the touch
+overlay (wave 4) and help overlay (wave 5) before it, both of which also read/build DOM on the
+already-rendered page rather than touching network traffic. This is original design work, not a
+port, and has no upstream source path to record in the tables above.
+
+`keepDisplayAwake` (`src/power.rs`, `SetThreadExecutionState`) is likewise Lalin Cast's own design,
+with no VacuumTube (Electron) counterpart in this port — Electron's power-save-blocker API and
+Windows' `SetThreadExecutionState` are unrelated mechanisms with no shared source to port from.
+
+This is a documentation-only record of the review and port boundary. Runtime evidence for the hiding
+feature (real Leanback selector match and focus-safety) and for keep-display-awake (display staying
+on while playing, sleeping normally once stopped) is tracked as human gates H24–H25 in
+`docs/plans/W8_BOUNDARY_PLAN.md` and is **NOT_RUN** until recorded there.

@@ -1,7 +1,7 @@
 ---
-version: "0.1.2b"
+version: "0.1.3b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T02:00:00+07:00,LALIN"
+last_update: "2026-09-21T03:10:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -67,6 +67,18 @@ tag — if any item is not done, **do not tag**:
         Lalin Cast app from Windows Explorer or a browser when the `deepLinkScheme` setting is on,
         **and** that turning the setting back off removes the registered association (opening the
         link no longer launches any app)
+- [ ] **human gates H24–H25 ปิดครบแล้ว** (`docs/plans/W8_BOUNDARY_PLAN.md`) — ถ้าฟีเจอร์ wave 8 รวมอยู่
+      ในรุ่นนี้ — **human gates H24–H25 are both closed** (`docs/plans/W8_BOUNDARY_PLAN.md`) — if
+      wave 8's features are included in this release:
+  - [ ] H24 — ยืนยันบน session Leanback จริงว่าชั้น Shorts (เมื่อเปิด `hideShorts`) และแท็บ Shorts ใน
+        แถบนำทาง (เมื่อเปิด `hideGuideTabs`) ซ่อนได้จริง และ focus ไม่เคยตกลงบน element ที่ถูกซ่อนอยู่
+        — confirm on a real Leanback session that the Shorts shelf (with `hideShorts` on) and the
+        guide Shorts tab (with `hideGuideTabs` on) really do hide, and that focus never lands on a
+        hidden element
+  - [ ] H25 — ยืนยันว่าจอไม่ดับ/เครื่องไม่หลับขณะกำลังเล่นวิดีโอ (`keepDisplayAwake` เปิดอยู่) และจอ
+        กลับไปดับ/เครื่องหลับตามปกติเมื่อหยุดหรือ pause การเล่น — confirm the display stays awake while
+        a video plays (with `keepDisplayAwake` on), and that the display/system sleeps normally again
+        once playback is paused or stopped
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -198,3 +210,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.0b | 2026-09-20 | candidate | Created the release checklist runbook (pre-tag human gates, tagging, post-tag verification, winget manifest step, post-release follow-up) for wave 5 (U4) | uncommitted | LALIN |
 | 0.1.1b | 2026-09-21 | candidate | Added the "CHANGELOG section for the version must exist before tagging" pre-tag item for wave 6 (U4), matching `release.yml`'s new CHANGELOG-derived release body | uncommitted | LALIN |
 | 0.1.2b | 2026-09-21 | candidate | Added the pre-tag human gates H22 (DIAL discovery after the stricter SSDP `MAN` check) and H23 (`lalin-cast://` opens the app and the opt-in toggle removes the association) for wave 7 (U3) | uncommitted | LALIN |
+| 0.1.3b | 2026-09-21 | candidate | Added the pre-tag human gates H24 (Shorts shelf/guide tab hide on a real Leanback session without stealing focus) and H25 (display stays awake during playback, sleeps normally when paused/stopped) for wave 8 (U4) | uncommitted | LALIN |

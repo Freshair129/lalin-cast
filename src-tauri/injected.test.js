@@ -52,6 +52,16 @@ function makeElement() {
     textContent: "",
     style: {},
     children: [],
+    // wave 8: plain object standing in for the real DOMStringMap, good
+    // enough for applyHidePrefsToDocument's set-or-delete usage below.
+    dataset: {},
+    // wave 8: tag/parent/querySelector for the hide-section matchers and
+    // scanAndHide's activeElement-ancestor walk. `tagName` defaults empty
+    // (a test sets it explicitly); `querySelector` defaults to "no nested
+    // match" and a test overrides it per case.
+    tagName: "",
+    parentElement: null,
+    querySelector() { return null; },
     classList: {
       add(c) { classSet.add(c); },
       remove(c) { classSet.delete(c); },
@@ -113,6 +123,8 @@ function createStubDoc(options) {
     const table = opts.querySelectorAllResults || {};
     return Object.prototype.hasOwnProperty.call(table, selector) ? table[selector] : [];
   };
+  // wave 8: scanAndHide's focus-protection walk reads doc.activeElement.
+  doc.activeElement = Object.prototype.hasOwnProperty.call(opts, "activeElement") ? opts.activeElement : null;
   return doc;
 }
 
@@ -564,6 +576,8 @@ pending.push(
       codecFilter: "off",
       touchOverlay: true,
       sleepAtEndOfVideo: false,
+      hideShorts: false,
+      hideGuideTabs: false,
     });
     assert.deepStrictEqual(m.readPrefs(null), m.readPrefs(undefined));
   }),
@@ -580,6 +594,8 @@ pending.push(
         codecFilter: "h264",
         touchOverlay: false,
         sleepAtEndOfVideo: true,
+        hideShorts: true,
+        hideGuideTabs: true,
       }),
       {
         lang: "en",
@@ -589,6 +605,8 @@ pending.push(
         codecFilter: "h264",
         touchOverlay: false,
         sleepAtEndOfVideo: true,
+        hideShorts: true,
+        hideGuideTabs: true,
       },
     );
   }),
@@ -611,6 +629,8 @@ pending.push(
       codecFilter: "off",
       touchOverlay: true,
       sleepAtEndOfVideo: false,
+      hideShorts: false,
+      hideGuideTabs: false,
     };
     const next = m.applyPrefsUpdate(prev, {
       lang: "en",
@@ -620,6 +640,8 @@ pending.push(
       codecFilter: "h264",
       touchOverlay: false,
       sleepAtEndOfVideo: true,
+      hideShorts: true,
+      hideGuideTabs: true,
     });
     assert.deepStrictEqual(next, {
       lang: "en",
@@ -629,6 +651,8 @@ pending.push(
       codecFilter: "h264",
       touchOverlay: false,
       sleepAtEndOfVideo: true,
+      hideShorts: true,
+      hideGuideTabs: true,
     });
 
     const unchanged = m.applyPrefsUpdate(prev, {
@@ -637,6 +661,8 @@ pending.push(
       codecFilter: "vp9-only",
       touchOverlay: "nope",
       sleepAtEndOfVideo: "nope",
+      hideShorts: "nope",
+      hideGuideTabs: "nope",
     });
     assert.deepStrictEqual(unchanged, prev);
   }),
@@ -2169,6 +2195,201 @@ pending.push(
     doc.dispatchEvent(new Event("emptied"));
 
     assert.strictEqual(win.__timeoutCalls.length, before);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 8 — Hide (Shorts shelf / guide tab). See docs/plans/W8_BOUNDARY_PLAN.md,
+// "ซ่อน Shorts / guide tabs". Pure matchers first (element-like stubs, no
+// DOM), then scanAndHide's focus/Home exclusions and silent-no-match, then
+// applyHidePrefsToDocument's dataset toggling.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("isShortsShelf: matches the Leanback Shorts shelf tag, and a shelf whose thumbnail overlay reports overlay-style=SHORTS", () => {
+    const byTag = makeElement();
+    byTag.tagName = "ytlr-reel-shelf-renderer";
+    assert.strictEqual(m.isShortsShelf(byTag), true);
+
+    const byOverlay = makeElement();
+    byOverlay.tagName = "ytlr-shelf-renderer";
+    byOverlay.querySelector = (selector) =>
+      (selector === m.HIDE_MATCH_SIGNALS.SHORTS_SHELF_OVERLAY_SELECTOR ? makeElement() : null);
+    assert.strictEqual(m.isShortsShelf(byOverlay), true);
+  }),
+);
+
+pending.push(
+  test("isShortsShelf: does not match an unrelated shelf with no Shorts overlay, or a malformed element", () => {
+    const other = makeElement();
+    other.tagName = "ytlr-shelf-renderer";
+    assert.strictEqual(m.isShortsShelf(other), false);
+    assert.strictEqual(m.isShortsShelf(null), false);
+    assert.strictEqual(m.isShortsShelf({}), false);
+  }),
+);
+
+pending.push(
+  test("isShortsGuideTab: matches a guide entry whose own or nested icon-type is YOUTUBE_SHORTS_FILL_24", () => {
+    const ownAttr = makeElement();
+    ownAttr.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.SHORTS_ICON_TYPE);
+    assert.strictEqual(m.isShortsGuideTab(ownAttr), true);
+
+    const nestedIcon = makeElement();
+    nestedIcon.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.SHORTS_ICON_TYPE);
+    const wrapper = makeElement();
+    wrapper.querySelector = (selector) => (selector === m.HIDE_MATCH_SIGNALS.ICON_TYPE_SELECTOR ? nestedIcon : null);
+    assert.strictEqual(m.isShortsGuideTab(wrapper), true);
+  }),
+);
+
+pending.push(
+  test("isShortsGuideTab: does not match a different icon type, an entry with no icon-type, or a malformed element", () => {
+    const otherIcon = makeElement();
+    otherIcon.setAttribute("icon-type", "SUBSCRIPTIONS");
+    assert.strictEqual(m.isShortsGuideTab(otherIcon), false);
+
+    const noIcon = makeElement();
+    assert.strictEqual(m.isShortsGuideTab(noIcon), false);
+    assert.strictEqual(m.isShortsGuideTab(null), false);
+    assert.strictEqual(m.isShortsGuideTab(undefined), false);
+  }),
+);
+
+pending.push(
+  test("isShortsGuideTab: never matches the Home entry (icon-type WHAT_TO_WATCH), even standing alone from scanAndHide's own guard", () => {
+    const home = makeElement();
+    home.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.HOME_ICON_TYPE);
+    assert.strictEqual(m.isShortsGuideTab(home), false);
+  }),
+);
+
+pending.push(
+  test("scanAndHide: tags a matching shelf and a matching guide entry with our own classes, and leaves non-matches untouched", () => {
+    const shortsShelf = makeElement();
+    shortsShelf.tagName = "ytlr-reel-shelf-renderer";
+    const otherShelf = makeElement();
+    otherShelf.tagName = "ytlr-shelf-renderer";
+
+    const shortsTab = makeElement();
+    shortsTab.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.SHORTS_ICON_TYPE);
+    const homeTab = makeElement();
+    homeTab.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.HOME_ICON_TYPE);
+
+    const doc = createStubDoc({
+      querySelectorAllResults: {
+        [m.HIDE_SHELF_CANDIDATE_SELECTOR]: [shortsShelf, otherShelf],
+        [m.HIDE_GUIDE_CANDIDATE_SELECTOR]: [shortsTab, homeTab],
+      },
+    });
+
+    m.scanAndHide(doc);
+
+    assert.strictEqual(shortsShelf.classList.contains(m.HIDE_SHORTS_CLASS), true);
+    assert.strictEqual(otherShelf.classList.contains(m.HIDE_SHORTS_CLASS), false);
+    assert.strictEqual(shortsTab.classList.contains(m.HIDE_GUIDE_TAB_CLASS), true);
+    assert.strictEqual(homeTab.classList.contains(m.HIDE_GUIDE_TAB_CLASS), false);
+  }),
+);
+
+pending.push(
+  test("scanAndHide: never tags an element that is an ancestor of document.activeElement", () => {
+    const focusedButton = makeElement();
+    const shortsShelf = makeElement();
+    shortsShelf.tagName = "ytlr-reel-shelf-renderer";
+    focusedButton.parentElement = shortsShelf; // focus lives inside the shelf
+
+    const doc = createStubDoc({
+      activeElement: focusedButton,
+      querySelectorAllResults: { [m.HIDE_SHELF_CANDIDATE_SELECTOR]: [shortsShelf] },
+    });
+
+    m.scanAndHide(doc);
+
+    assert.strictEqual(shortsShelf.classList.contains(m.HIDE_SHORTS_CLASS), false, "shelf is an ancestor of focus");
+  }),
+);
+
+pending.push(
+  test("scanAndHide: never tags an element that is itself document.activeElement", () => {
+    const shortsTab = makeElement();
+    shortsTab.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.SHORTS_ICON_TYPE);
+
+    const doc = createStubDoc({
+      activeElement: shortsTab,
+      querySelectorAllResults: { [m.HIDE_GUIDE_CANDIDATE_SELECTOR]: [shortsTab] },
+    });
+
+    m.scanAndHide(doc);
+
+    assert.strictEqual(shortsTab.classList.contains(m.HIDE_GUIDE_TAB_CLASS), false, "entry itself is focused");
+  }),
+);
+
+pending.push(
+  test("scanAndHide: never tags the Home guide tab even if it were somehow the only guide-entry candidate", () => {
+    const homeTab = makeElement();
+    homeTab.setAttribute("icon-type", m.HIDE_MATCH_SIGNALS.HOME_ICON_TYPE);
+    const doc = createStubDoc({
+      querySelectorAllResults: { [m.HIDE_GUIDE_CANDIDATE_SELECTOR]: [homeTab] },
+    });
+    m.scanAndHide(doc);
+    assert.strictEqual(homeTab.classList.contains(m.HIDE_GUIDE_TAB_CLASS), false);
+  }),
+);
+
+pending.push(
+  test("scanAndHide: a pass with no matching candidates is completely silent (no throw, nothing tagged)", () => {
+    const plainShelf = makeElement();
+    plainShelf.tagName = "ytlr-shelf-renderer";
+    const plainTab = makeElement();
+    plainTab.setAttribute("icon-type", "SUBSCRIPTIONS");
+    const doc = createStubDoc({
+      querySelectorAllResults: {
+        [m.HIDE_SHELF_CANDIDATE_SELECTOR]: [plainShelf],
+        [m.HIDE_GUIDE_CANDIDATE_SELECTOR]: [plainTab],
+      },
+    });
+
+    assert.doesNotThrow(() => m.scanAndHide(doc));
+    assert.strictEqual(plainShelf.classList.contains(m.HIDE_SHORTS_CLASS), false);
+    assert.strictEqual(plainTab.classList.contains(m.HIDE_GUIDE_TAB_CLASS), false);
+
+    // An empty document (no candidates registered at all) must also be a
+    // silent no-op rather than throwing on a missing selector table.
+    assert.doesNotThrow(() => m.scanAndHide(createStubDoc()));
+    assert.doesNotThrow(() => m.scanAndHide(null));
+  }),
+);
+
+pending.push(
+  test("applyHidePrefsToDocument: toggles documentElement.dataset.lalinHideShorts/lalinHideGuideTabs both ways", () => {
+    const doc = createStubDoc();
+    const root = doc.documentElement;
+
+    m.applyHidePrefsToDocument(doc, { hideShorts: true, hideGuideTabs: false });
+    assert.strictEqual(root.dataset.lalinHideShorts, "true");
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(root.dataset, "lalinHideGuideTabs"), false);
+
+    m.applyHidePrefsToDocument(doc, { hideShorts: false, hideGuideTabs: true });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(root.dataset, "lalinHideShorts"), false);
+    assert.strictEqual(root.dataset.lalinHideGuideTabs, "true");
+
+    m.applyHidePrefsToDocument(doc, { hideShorts: false, hideGuideTabs: false });
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(root.dataset, "lalinHideShorts"), false);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(root.dataset, "lalinHideGuideTabs"), false);
+  }),
+);
+
+pending.push(
+  test("ensureHideStyle: injects <style id=lalin-cast-hide-style> exactly once", () => {
+    const doc = createStubDoc();
+    m.ensureHideStyle(doc);
+    m.ensureHideStyle(doc);
+    const styleEls = doc.head.children.filter((c) => c.id === m.HIDE_STYLE_ID);
+    assert.strictEqual(styleEls.length, 1);
+    assert.ok(styleEls[0].textContent.includes(m.HIDE_SHORTS_CLASS));
+    assert.ok(styleEls[0].textContent.includes(m.HIDE_GUIDE_TAB_CLASS));
   }),
 );
 
