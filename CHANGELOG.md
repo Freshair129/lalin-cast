@@ -26,6 +26,10 @@ version number.
   `src-tauri/Cargo.toml`)
 - ผู้ก่อตั้งอนุมัติ `PRIVACY.md` และ `TERMS.md` แล้ว ปิด human gate H1 / the founder approved
   `PRIVACY.md` and `TERMS.md`, closing human gate H1
+- เผยแพร่โดยไม่เซ็น Authenticode โดยเจตนาจนกว่าจะซื้อใบรับรอง ปิด human gate H4 (ผู้ใช้ยืนยันไฟล์ด้วย
+  `SHA256SUMS`; updater ยังตรวจลายเซ็นอัปเดตเสมอ) / releases ship intentionally without
+  Authenticode signing until a certificate is purchased, closing human gate H4 (users verify files
+  with `SHA256SUMS`; the updater still always verifies update signatures)
 
 #### H0 — Release readiness (`docs/plans/H0_RELEASE_READINESS_PLAN.md`)
 

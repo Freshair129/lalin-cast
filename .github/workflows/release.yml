@@ -84,14 +84,15 @@ jobs:
       - name: (H4 placeholder, disabled) Sign Windows binaries with Authenticode
         if: false
         shell: pwsh
-        # Disabled until human gate H4 (docs/plans/H0_RELEASE_READINESS_PLAN.md)
-        # completes: a code-signing certificate must be purchased first. Once
-        # acquired, wire the real signing command here (or via
-        # `bundle.windows.signCommand` in src-tauri/tauri.conf.json, owned by
-        # S4) and remove `if: false`. Do not add signing secrets to this
-        # workflow until H4 is done.
+        # Human gate H4 was closed on 2026-09-21 by an intentional decision to
+        # ship without Authenticode signing until a code-signing certificate
+        # is purchased (see docs/runbooks/RELEASE_CHECKLIST.md). Kept disabled
+        # as the place to wire signing later: once a certificate exists, add
+        # the real signing command here (or via `bundle.windows.signCommand`
+        # in src-tauri/tauri.conf.json) and remove `if: false`. Do not add
+        # signing secrets to this workflow before then.
         run: |
-          Write-Host "Authenticode signing placeholder — enable after H4 (certificate purchase)."
+          Write-Host "Authenticode signing placeholder — releases are intentionally unsigned until a certificate is purchased (H4)."
 
       - name: Extract CHANGELOG section for release body
         # Wave 6 U4 (docs/plans/W6_POLISH_PLAN.md): pulls the "## [<version>]"
@@ -105,7 +106,7 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $version = $tag -replace '^v', ''
-          $fallback = "Signed Windows release for Lalin Cast (x64 stable; arm64 experimental)."
+          $fallback = "Windows release for Lalin Cast (x64 stable; arm64 experimental). Not Authenticode-signed; verify downloads with the SHA256SUMS files."
           $lines = Get-Content -Path CHANGELOG.md
           $headerPattern = '^## \[' + [regex]::Escape($version) + '\]'
           $startIndex = -1
