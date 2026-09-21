@@ -1,5 +1,5 @@
 ---
-version: "0.1.9b"
+version: "0.1.10b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
 last_update: "2026-09-21T20:00:00+07:00,LALIN"
 status: "candidate"
@@ -46,12 +46,21 @@ tag — if any item is not done, **do not tag**:
         passed
   - [ ] H3 — regression บน Leanback จริง และการจับคู่ iPhone ด้วย identity ปัจจุบันผ่านแล้ว — real
         Leanback regression and iPhone pairing with the current identity has passed
-  - [ ] H4 — ซื้อใบรับรอง code-signing แล้ว **หรือ** เผยแพร่รุ่นนี้แบบยังไม่เซ็น Authenticode โดยเจตนา
+  - [x] H4 — ซื้อใบรับรอง code-signing แล้ว **หรือ** เผยแพร่รุ่นนี้แบบยังไม่เซ็น Authenticode โดยเจตนา
         (บันทึกเหตุผลไว้) — ถ้าซื้อแล้ว ต้องเปิด step "Sign Windows binaries with Authenticode" ใน
         `.github/workflows/release.yml` (ลบ `if: false`) ก่อน tag — a code-signing certificate has
         been purchased **or** shipping this release without Authenticode signing is an intentional,
         recorded decision — if purchased, the "Sign Windows binaries with Authenticode" step in
         `.github/workflows/release.yml` must be enabled (remove `if: false`) before tagging
+        **ปิดแล้ว 2026-09-21:** ผู้ก่อตั้งตัดสินใจเผยแพร่ **โดยไม่เซ็น Authenticode โดยเจตนา** ตั้งแต่ v0.2.0
+        ไปจนกว่าจะซื้อใบรับรอง ผลที่ยอมรับ: SmartScreen/เบราว์เซอร์อาจเตือนว่าเป็น "publisher ที่ไม่รู้จัก"
+        ผู้ใช้ยืนยันไฟล์ได้ด้วย `SHA256SUMS` และ updater ในแอปยังตรวจลายเซ็นอัปเดตของตัวเองเสมอ ถ้าซื้อใบรับรอง
+        ภายหลัง ให้เปิด step ด้านบนก่อน tag รุ่นถัดไป / **Closed 2026-09-21:** the founder decided to ship
+        **intentionally without Authenticode signing** from v0.2.0 until a certificate is purchased.
+        Accepted consequence: SmartScreen or browsers may warn about an "unknown publisher"; users can
+        verify files with `SHA256SUMS`, and the in-app updater still always verifies its own update
+        signature. If a certificate is bought later, enable the step above before tagging the next
+        release
   - [ ] gate อื่นที่ wave นั้น ๆ เพิ่มเข้ามาภายหลัง (เช่น H13–H17 ของ wave 5) ก็ต้องปิดก่อน ถ้าฟีเจอร์
         ของ wave นั้นรวมอยู่ในรุ่นนี้ — ดูตาราง human gates ในแผนแต่ละ wave ที่ `docs/plans/` — any
         later gates a wave adds (e.g. H13–H17 from wave 5) must also be closed if that wave's
@@ -324,3 +333,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.7b | 2026-09-21 | candidate | Wave 12 (U3): noted that the version/CHANGELOG pre-tag items are now enforced by an automated guard (`Test-ReleaseVersion.ps1`) that fails `release.yml` before build if the tag doesn't match the app version or the CHANGELOG section is missing/empty; added post-tag items to check every asset exists for both architectures (installer, `.sig`, portable zip, `SHA256SUMS.txt`) and to verify checksums with `Get-FileHash`; added human gate H30 (first real draft release — download and verify every asset, run the portable zip, before publishing) | uncommitted | LALIN |
 | 0.1.8b | 2026-09-21 | candidate | Wave 12 (U3) repair: moved human gate H30 from section 1 (pre-tag) to section 3 (post-tag verification, right before "switch to published") since it can only close after a real tag exists; fixed the `Get-FileHash` installer example to use the real downloaded asset name `Lalin.Cast_<version>_<arch>-setup.exe` (GitHub turns the space in `productName` into a dot on upload), not the invented `Lalin-Cast_..._-setup.exe` | uncommitted | LALIN |
 | 0.1.9b | 2026-09-21 | candidate | Marked human gate H1 closed: Apache-2.0 chosen (PR #17) and the founder approved PRIVACY.md/TERMS.md; noted that a later change to either document's substance needs re-approval before tagging | uncommitted | LALIN |
+| 0.1.10b | 2026-09-21 | candidate | Marked human gate H4 closed: the founder decided to ship intentionally without Authenticode signing from v0.2.0 until a certificate is purchased, with the accepted SmartScreen consequence and the checksum/updater-signature mitigations recorded | uncommitted | LALIN |

@@ -195,8 +195,9 @@ runtime gates. Do not remove the VacuumTube reference until Tauri parity passes.
   ```
   แล้วเทียบค่าที่ได้กับบรรทัดของไฟล์นั้นใน `SHA256SUMS.txt` (ตัวพิมพ์เล็ก-ใหญ่ไม่สำคัญ) — ถ้าไม่ตรง ห้าม
   ใช้ไฟล์นั้น
-- **เรื่องการเซ็นชื่อ (Authenticode)** — binary ของ Lalin Cast **ยังไม่ได้เซ็นชื่อแบบ Authenticode**
-  จนกว่า human gate H4 จะปิด (ซื้อใบรับรอง code-signing) — Windows SmartScreen หรือเบราว์เซอร์อาจเตือนว่า
+- **เรื่องการเซ็นชื่อ (Authenticode)** — binary ของ Lalin Cast **ไม่ได้เซ็นชื่อแบบ Authenticode โดยเจตนา**
+  (ผู้ก่อตั้งตัดสินใจเมื่อ 2026-09-21 ให้เผยแพร่แบบนี้จนกว่าจะซื้อใบรับรอง code-signing; updater ในแอปยัง
+  ตรวจลายเซ็นของไฟล์อัปเดตเสมอ) — Windows SmartScreen หรือเบราว์เซอร์อาจเตือนว่า
   ไฟล์มาจาก "publisher ที่ไม่รู้จัก" นี่เป็นเรื่องปกติสำหรับไฟล์ที่ยังไม่เซ็นชื่อ ไม่ใช่สัญญาณว่าไฟล์ถูก
   ดัดแปลง — ตรวจ checksum ตามขั้นตอนด้านบนแทนเพื่อยืนยันความถูกต้อง
 
@@ -224,8 +225,10 @@ the asset layout that will appear on GitHub Releases once the first tag ships:
   ```
   then compare the resulting hash (case-insensitive) against that file's line in
   `SHA256SUMS.txt` — do not use the file if it does not match
-- **About signing (Authenticode)** — Lalin Cast's binaries are **not Authenticode-signed** until
-  human gate H4 closes (purchasing a code-signing certificate). Windows SmartScreen or your browser
+- **About signing (Authenticode)** — Lalin Cast's binaries are **intentionally not
+  Authenticode-signed** (the founder decided on 2026-09-21 to ship this way until a code-signing
+  certificate is purchased; the in-app updater still always verifies the signature of an update
+  file). Windows SmartScreen or your browser
   may warn that the file is from an "unknown publisher"; this is expected for an unsigned file and is
   not by itself a sign of tampering — verify the checksum per the steps above instead to confirm
   integrity
