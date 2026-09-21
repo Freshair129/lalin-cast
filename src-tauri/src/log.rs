@@ -39,6 +39,7 @@ use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager, Window};
 
 use crate::lifecycle;
+use crate::portable;
 use crate::settings::SETTINGS_LABEL;
 
 /// Folder under `app_local_data_dir` the log file (and its one rotated
@@ -90,13 +91,21 @@ impl Level {
 #[derive(Default)]
 pub struct LogState(Mutex<()>);
 
-/// `None` only when `app_local_data_dir` itself can't be resolved (no
-/// panic, no `Err` — callers already treat a missing dir as "stay silent").
+/// Wave 11 contract 2: `<data_root>/logs` in portable mode — installed
+/// mode's resolution (`app_local_data_dir()`, below) is completely
+/// untouched, since [`portable::data_dir_override`] returns `None` there.
+/// `None` only when neither a portable data root nor `app_local_data_dir`
+/// can be resolved (no panic, no `Err` — callers already treat a missing
+/// dir as "stay silent").
 fn log_dir(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_local_data_dir()
-        .ok()
-        .map(|dir| dir.join(LOG_DIR_NAME))
+    match portable::data_dir_override() {
+        Some(root) => Some(root.join(LOG_DIR_NAME)),
+        None => app
+            .path()
+            .app_local_data_dir()
+            .ok()
+            .map(|dir| dir.join(LOG_DIR_NAME)),
+    }
 }
 
 /// Formats one line exactly as contract 1 specifies:

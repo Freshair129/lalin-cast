@@ -5,6 +5,8 @@
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
+use crate::portable;
+
 #[cfg(windows)]
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 
@@ -80,7 +82,7 @@ pub fn detect_default() -> Lang {
 /// Loads the saved language preference, falling back to OS detection when
 /// unset or invalid.
 pub fn load(app: &AppHandle) -> Lang {
-    app.store("media-settings.json")
+    app.store(portable::settings_store_path())
         .ok()
         .and_then(|store| store.get(STORE_KEY))
         .and_then(|value| value.as_str().and_then(Lang::from_store_value))
@@ -90,7 +92,7 @@ pub fn load(app: &AppHandle) -> Lang {
 /// Persists the language preference (best-effort; matches the rest of the
 /// settings store's failure handling).
 pub fn save(app: &AppHandle, lang: Lang) {
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.set(STORE_KEY, lang.store_value());
         let _ = store.save();
     }

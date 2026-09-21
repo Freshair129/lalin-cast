@@ -26,6 +26,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::launch::LifecycleCommand;
 use crate::log;
+use crate::portable;
 
 const LIFECYCLE_FILE_NAME: &str = "lifecycle.json";
 const LIFECYCLE_TMP_FILE_NAME: &str = "lifecycle.json.tmp";
@@ -218,7 +219,14 @@ fn write(app: &AppHandle, state: &LifecycleState) {
             marker.mark();
         }
     }
-    match app.path().app_local_data_dir() {
+    // Wave 11 contract 2: `<data_root>/lifecycle.json` in portable mode —
+    // installed mode's resolution (`app_local_data_dir()`, the `None` arm
+    // below) is completely untouched.
+    let dir_result = match portable::data_dir_override() {
+        Some(root) => Ok(root),
+        None => app.path().app_local_data_dir(),
+    };
+    match dir_result {
         Ok(dir) => {
             if let Err(error) = write_state_atomic(&dir, state) {
                 log::warn(

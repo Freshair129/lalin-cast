@@ -16,7 +16,7 @@ use tauri_plugin_store::StoreExt;
 use crate::dial::{self, DialStatus};
 use crate::i18n::{self, Key};
 use crate::launch::LALIN_SCHEME;
-use crate::{autostart, diagnostics, log, setup, sleep, tray, updater, window_mode};
+use crate::{autostart, diagnostics, log, portable, setup, sleep, tray, updater, window_mode};
 
 pub const SETTINGS_LABEL: &str = "settings";
 const SETTINGS_WINDOW_WIDTH: f64 = 560.0;
@@ -125,6 +125,11 @@ pub struct SettingsSnapshot {
     /// the plugin call (e.g. the registry key cannot be read) maps to
     /// `false`, never surfaced as an `Err` from the snapshot itself.
     deep_link_scheme_registered: bool,
+    /// Wave 11 contract 4: whether the app is running in portable mode.
+    /// Top-level, not a `Settings` field — it is never a store key and
+    /// `apply_setting` never learns to accept it (there is no
+    /// `KEY_PORTABLE`/whitelist arm for it, and there never should be).
+    portable: bool,
 }
 
 /// Builds a full [`SettingsSnapshot`] for `app`. Takes the DIAL status and
@@ -146,6 +151,7 @@ fn build_snapshot(
         sleep_remaining_seconds,
         hardware_decoding_restart_required: crate::hardware_decoding_restart_required(app),
         deep_link_scheme_registered: app.deep_link().is_registered(LALIN_SCHEME).unwrap_or(false),
+        portable: portable::is_portable(),
     }
 }
 
@@ -312,9 +318,15 @@ pub fn apply_setting(key: &str, value: &Value, current: &Settings) -> Result<Set
                 .ok_or_else(|| "miniPlayer must be a boolean".to_owned())?;
         }
         KEY_START_WITH_WINDOWS => {
-            next.start_with_windows = value
+            let enabled = value
                 .as_bool()
                 .ok_or_else(|| "startWithWindows must be a boolean".to_owned())?;
+            // Wave 11 contract 3: portable mode never writes the registry —
+            // turning this on is refused here, in Rust, not only hidden in
+            // the UI. Turning it off is always allowed.
+            portable::reject_registry_write_in_portable_mode(portable::is_portable(), enabled)
+                .map_err(str::to_owned)?;
+            next.start_with_windows = enabled;
         }
         KEY_UI_SCALE => {
             let scale = value
@@ -332,9 +344,14 @@ pub fn apply_setting(key: &str, value: &Value, current: &Settings) -> Result<Set
                 .ok_or_else(|| "sleepAtEndOfVideo must be a boolean".to_owned())?;
         }
         KEY_DEEP_LINK_SCHEME => {
-            next.deep_link_scheme = value
+            let enabled = value
                 .as_bool()
                 .ok_or_else(|| "deepLinkScheme must be a boolean".to_owned())?;
+            // Wave 11 contract 3: same rule as `startWithWindows` above —
+            // the `lalin-cast://` registration is a registry write too.
+            portable::reject_registry_write_in_portable_mode(portable::is_portable(), enabled)
+                .map_err(str::to_owned)?;
+            next.deep_link_scheme = enabled;
         }
         KEY_KEEP_DISPLAY_AWAKE => {
             next.keep_display_awake = value
@@ -380,13 +397,16 @@ pub fn open_settings_window(app: &AppHandle) {
     };
     let title = i18n::t(lang, Key::SettingsWindowTitle);
     let init_script = payload.init_script();
-    let result =
-        WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
-            .title(title)
-            .inner_size(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT)
-            .resizable(false)
-            .initialization_script(&init_script)
-            .build();
+    let result = portable::apply_data_dir(WebviewWindowBuilder::new(
+        app,
+        SETTINGS_LABEL,
+        WebviewUrl::App("settings.html".into()),
+    ))
+    .title(title)
+    .inner_size(SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT)
+    .resizable(false)
+    .initialization_script(&init_script)
+    .build();
 
     if let Err(error) = result {
         log::error(
@@ -528,6 +548,13 @@ fn set_one(
         // "Already not registered" (a confirmed `Ok(false)` from
         // `is_registered`) counts as a successful unregister without
         // actually calling it, per the contract.
+        // Wave 11 final gate: in portable mode turning this off only
+        // updates the portable store. It never unregisters, because the
+        // registration that exists may belong to an installed copy on the
+        // same machine, and portable mode never changes the registry.
+        KEY_DEEP_LINK_SCHEME if portable::is_portable() => {
+            crate::write_bool_setting(app, KEY_DEEP_LINK_SCHEME, next.deep_link_scheme);
+        }
         KEY_DEEP_LINK_SCHEME => {
             let result = if next.deep_link_scheme {
                 app.deep_link().register(LALIN_SCHEME)
@@ -572,6 +599,12 @@ fn set_one(
         // `Err` from this command (so the page shows an inline error) and
         // must never leave the store claiming a state that was not
         // actually reached in the registry.
+        // Wave 11 final gate: same rule as `deepLinkScheme` above: the Run
+        // value that exists may be an installed copy's, so portable mode
+        // never deletes it.
+        KEY_START_WITH_WINDOWS if portable::is_portable() => {
+            crate::write_bool_setting(app, KEY_START_WITH_WINDOWS, next.start_with_windows);
+        }
         KEY_START_WITH_WINDOWS => {
             autostart::set_enabled(next.start_with_windows)
                 .map_err(|error| format!("could not update Windows startup: {error}"))?;
@@ -723,7 +756,7 @@ pub fn settings_reset_defaults(
     for (key, value) in reset_plan() {
         set_one(app, key, value, &dial_state)?;
     }
-    if let Ok(store) = app.store("media-settings.json") {
+    if let Ok(store) = app.store(portable::settings_store_path()) {
         store.delete(crate::window_bounds::STORE_KEY);
         let _ = store.save();
     }
@@ -814,13 +847,14 @@ pub(crate) fn diagnostics_settings(app: &AppHandle) -> diagnostics::DiagnosticsS
 mod tests {
     use super::{
         apply_setting, format_launch_command, profile_settings, reset_plan, Settings,
-        ALLOWED_UI_SCALES, DEFAULT_CODEC_FILTER, DEFAULT_CONTROLLER_ENABLED,
+        SettingsSnapshot, ALLOWED_UI_SCALES, DEFAULT_CODEC_FILTER, DEFAULT_CONTROLLER_ENABLED,
         DEFAULT_DEEP_LINK_SCHEME, DEFAULT_FULLSCREEN, DEFAULT_HARDWARE_DECODING,
         DEFAULT_HIDE_GUIDE_TABS, DEFAULT_HIDE_SHORTS, DEFAULT_KEEP_DISPLAY_AWAKE,
         DEFAULT_KEEP_ON_TOP, DEFAULT_PAUSE_ON_BLUR, DEFAULT_SETUP_COMPLETED,
         DEFAULT_SLEEP_AT_END_OF_VIDEO, DEFAULT_SLEEP_TIMER_MINUTES, DEFAULT_START_WITH_WINDOWS,
         DEFAULT_TOUCH_OVERLAY, DEFAULT_UI_SCALE,
     };
+    use crate::dial::{DialStateKind, DialStatus};
     use serde_json::json;
 
     fn base() -> Settings {
@@ -1212,5 +1246,65 @@ mod tests {
         assert!(!DEFAULT_HIDE_SHORTS);
         assert!(!DEFAULT_HIDE_GUIDE_TABS);
         assert!(ALLOWED_UI_SCALES.contains(&DEFAULT_UI_SCALE));
+    }
+
+    // -- Wave 11 contract 3: portable mode refuses to turn startWithWindows
+    // or deepLinkScheme on, in apply_setting itself (not only in the UI).
+    // `portable::is_portable()` defaults to `false` (installed) in this
+    // crate's tests — `portable::init` is only ever called from
+    // `lib.rs::run`'s setup hook — so both keys accept `true` here exactly
+    // as before; the portable-mode rejection itself is unit-tested directly
+    // against `portable::reject_registry_write_in_portable_mode` in
+    // `portable.rs`, which is what this arm actually calls.
+
+    #[test]
+    fn start_with_windows_and_deep_link_scheme_still_accept_true_outside_portable_mode() {
+        let current = base();
+        let next =
+            apply_setting("startWithWindows", &json!(true), &current).expect("installed: allowed");
+        assert!(next.start_with_windows);
+
+        let next =
+            apply_setting("deepLinkScheme", &json!(true), &current).expect("installed: allowed");
+        assert!(next.deep_link_scheme);
+    }
+
+    // -- Wave 11 contract 4: `portable` is a top-level `SettingsSnapshot`
+    // field, serialized as `"portable"`, never a `Settings`/store field.
+
+    #[test]
+    fn settings_snapshot_serializes_a_top_level_portable_field() {
+        let snapshot = SettingsSnapshot {
+            settings: base(),
+            dial: DialStatus {
+                state: DialStateKind::Ready,
+                host: Some("192.168.1.10".to_owned()),
+                port: Some(8008),
+                message: None,
+            },
+            sleep_remaining_seconds: None,
+            hardware_decoding_restart_required: false,
+            deep_link_scheme_registered: false,
+            portable: true,
+        };
+        let json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+        assert_eq!(json["portable"], true);
+        // Never nested under `settings` — it is not a store key.
+        assert!(json["settings"].get("portable").is_none());
+
+        let snapshot = SettingsSnapshot {
+            portable: false,
+            ..snapshot
+        };
+        let json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+        assert_eq!(json["portable"], false);
+    }
+
+    #[test]
+    fn apply_setting_never_recognizes_a_portable_key() {
+        // `portable` is never a `Settings` field/store key — it must be
+        // rejected by the same unknown-key path as any other unrecognized
+        // key, exactly like `windowBounds` above.
+        assert!(apply_setting("portable", &json!(true), &base()).is_err());
     }
 }

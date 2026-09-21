@@ -22,6 +22,7 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_plugin_store::StoreExt;
 
 use crate::log;
+use crate::portable;
 use crate::window_mode;
 use crate::MEDIA_LABEL;
 
@@ -92,13 +93,13 @@ pub fn restore_target(saved: Bounds, monitors: &[MonitorRect]) -> Option<Bounds>
 }
 
 fn read_saved_bounds(app: &AppHandle) -> Option<Bounds> {
-    let store = app.store("media-settings.json").ok()?;
+    let store = app.store(portable::settings_store_path()).ok()?;
     let value = store.get(STORE_KEY)?;
     serde_json::from_value(value).ok()
 }
 
 fn write_saved_bounds(app: &AppHandle, bounds: Bounds) {
-    let Ok(store) = app.store("media-settings.json") else {
+    let Ok(store) = app.store(portable::settings_store_path()) else {
         return;
     };
     if let Ok(value) = serde_json::to_value(bounds) {
