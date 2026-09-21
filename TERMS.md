@@ -58,8 +58,8 @@ Lalin Cast จัดให้ "ตามสภาพที่เป็นอย�
 ## 7. บุคคลที่สามและ third-party notices
 
 Lalin Cast ใช้ไลบรารีโอเพนซอร์สหลายตัว และเก็บสำเนา VacuumTube ไว้เป็นข้อมูลอ้างอิง รายละเอียด
-สัญญาอนุญาตของแต่ละส่วนอยู่ที่ [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) สัญญาอนุญาตของ
-ซอร์สโค้ด Lalin Cast เองยังอยู่ระหว่างการตัดสินใจของผู้ก่อตั้ง ดู
+สัญญาอนุญาตของแต่ละส่วนอยู่ที่ [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) ซอร์สโค้ดของ
+Lalin Cast เองเผยแพร่ภายใต้ Apache License 2.0 ดู [`LICENSE`](LICENSE) และ
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md)
 
 ## 8. การเปลี่ยนแปลงเอกสารนี้
@@ -132,8 +132,8 @@ terms of the libraries it depends on (see
 ## 7. Third parties and third-party notices
 
 Lalin Cast uses a number of open-source libraries and retains a copy of VacuumTube as a reference.
-Their license details are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The license for
-Lalin Cast's own source code is still pending a decision by the project founder; see
+Their license details are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Lalin Cast's own
+source code is licensed under the Apache License 2.0; see [`LICENSE`](LICENSE) and
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md).
 
 ## 8. Changes to this document

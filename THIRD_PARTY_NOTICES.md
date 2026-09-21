@@ -14,12 +14,12 @@ lists every third-party component and its license, as required by those licenses
 `src-tauri/Cargo.lock`) พร้อมสัญญาอนุญาตของแต่ละตัว, ข้อความสัญญาอนุญาต MIT ฉบับเต็มของ
 VacuumTube ที่เก็บไว้เป็นข้อมูลอ้างอิงใน `reference/vacuumtube/`, หมายเหตุเกี่ยวกับ Tauri /
 WebView2 runtime, ประกาศลิขสิทธิ์ที่เกี่ยวข้องกับโปรโตคอล DIAL ซึ่งพัฒนาร่วมโดย Netflix, Inc. และ
-YouTube, และคำชี้แจงเรื่องเครื่องหมายการค้า สัญญาอนุญาตของตัวแอป Lalin Cast เอง (ยังไม่เลือก) ดูได้
-ที่ [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md)
+YouTube, และคำชี้แจงเรื่องเครื่องหมายการค้า ตัวแอป Lalin Cast เองใช้สัญญาอนุญาต Apache License 2.0 ดู
+[`LICENSE`](LICENSE) และ [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md)
 
 This file is generated from `src-tauri/Cargo.lock` and does not cover the license Lalin Cast
-chooses for its own original source code — that decision is tracked separately in
-[`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md) and is not yet made.
+chose for its own original source code — that is the Apache License 2.0, in [`LICENSE`](LICENSE),
+with the decision recorded in [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md).
 
 ## Contents
 

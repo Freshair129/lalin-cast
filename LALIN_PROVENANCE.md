@@ -6,7 +6,7 @@
 | Feature reference | VacuumTube |
 | Upstream | https://github.com/shy1132/VacuumTube |
 | Baseline | v1.8.2 / 4dd3ee4 |
-| License | MIT for the retained upstream reference; retain `reference/vacuumtube/LICENSE` in distributions that copy upstream code |
+| License | Lalin Cast's own code: Apache-2.0 (root `LICENSE`, see `docs/LICENSE_DECISION.md`). Retained upstream reference: MIT; retain `reference/vacuumtube/LICENSE` in distributions that copy upstream code |
 | Port scope | Rust + Tauri v2 native shell and WebView boundary |
 | Leanback surface | `https://www.youtube.com/tv` |
 | User-Agent | `Mozilla/5.0 (PS4; Leanback Shell) Cobalt/25.lts.40.1035033; compatible; LalinCast/<version>` — `<version>` is `env!("CARGO_PKG_VERSION")` at build time (H0 identity token; no longer VacuumTube-derived) |

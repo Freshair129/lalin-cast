@@ -49,14 +49,10 @@ allow = [
 
 [licenses.private]
 # Do not fail the check over the lalin-cast workspace crate's own license
-# expression — it is an unpublished application binary, not a published
-# library. This only takes effect once src-tauri/Cargo.toml sets
-# `publish = false` on the [package] table; until then `cargo deny check
-# licenses` will still flag the lalin-cast crate itself as unlicensed.
-# NOTE (openQuestion for orchestrator/S4): src-tauri/Cargo.toml currently has
-# no `license`/`license-file` field and no `publish = false`, so this check
-# will fail on the root crate until S4 adds one of those. S3 cannot edit
-# src-tauri/Cargo.toml (out of ownership).
+# expression — it is an unpublished application binary (`publish = false`),
+# not a published library. Since H1 the crate also declares
+# `license = "Apache-2.0"` in src-tauri/Cargo.toml (see docs/LICENSE_DECISION.md),
+# which is on the allow-list above anyway.
 ignore = true
 
 [bans]

@@ -3,6 +3,7 @@ name = "lalin-cast"
 version = "0.1.0"
 description = "Lalin Cast — Rust + Tauri v2 Leanback player"
 authors = ["LALIN"]
+license = "Apache-2.0"
 edition = "2021"
 publish = false
 

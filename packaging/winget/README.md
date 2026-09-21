@@ -3,10 +3,10 @@
 **สถานะ: template เท่านั้น ยังไม่ได้ส่ง PR ไป `microsoft/winget-pkgs`**
 
 `PackageIdentifier: Lalin.LalinCast` ในไฟล์ทั้งสามเป็น **ข้อเสนอ** เท่านั้น ไม่ใช่การตัดสินใจ — รอการ
-ตัดสินใจเรื่องชื่อโปรเจกต์ (human gate H1/H15 ตาม `docs/plans/W4_PLAYBACK_PLAN.md`) ฟิลด์ `License` ใน
-`Lalin.LalinCast.locale.en-US.yaml` ก็เป็น placeholder เช่นกัน (`Proprietary`) เพราะสัญญาอนุญาตของ
-Lalin Cast เองยังไม่ตัดสินใจ ดู [`docs/LICENSE_DECISION.md`](../../docs/LICENSE_DECISION.md) **ห้ามส่ง
-PR ไป winget-pkgs จนกว่าทั้งสองเรื่องนี้จะตัดสินใจแล้ว**
+ตัดสินใจเรื่องชื่อโปรเจกต์ (human gate H1/H15 ตาม `docs/plans/W4_PLAYBACK_PLAN.md`) ส่วนฟิลด์ `License` ใน
+`Lalin.LalinCast.locale.en-US.yaml` เป็น `Apache-2.0` แล้วตามการตัดสินใจใน
+[`docs/LICENSE_DECISION.md`](../../docs/LICENSE_DECISION.md) **ห้ามส่ง PR ไป winget-pkgs จนกว่าเรื่องชื่อ
+จะตัดสินใจแล้ว**
 
 ## ไฟล์ในโฟลเดอร์นี้
 
@@ -73,9 +73,8 @@ PR ไป winget-pkgs จนกว่าทั้งสองเรื่อง�
 `PackageIdentifier: Lalin.LalinCast` in all three files is a **proposal**, not a final decision — it
 is pending the project naming decision (human gate H1/H15 per
 `docs/plans/W4_PLAYBACK_PLAN.md`). The `License` field in `Lalin.LalinCast.locale.en-US.yaml` is
-also a placeholder (`Proprietary`) because Lalin Cast's own source license has not been chosen yet;
-see [`docs/LICENSE_DECISION.md`](../../docs/LICENSE_DECISION.md). **Do not submit a PR to
-winget-pkgs until both of these are decided.**
+now `Apache-2.0`, per the decision in [`docs/LICENSE_DECISION.md`](../../docs/LICENSE_DECISION.md).
+**Do not submit a PR to winget-pkgs until the naming decision is made.**
 
 ### Files in this folder
 
