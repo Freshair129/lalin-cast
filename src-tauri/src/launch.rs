@@ -19,6 +19,18 @@ use tauri::Url;
 const VIDEO_HOSTS: &[&str] = &["www.youtube.com", "youtube.com", "m.youtube.com"];
 /// `https://youtu.be/<id>` short-link host.
 const SHORT_HOST: &str = "youtu.be";
+/// The `lalin-cast://` custom scheme registered (opt-in) via
+/// `tauri-plugin-deep-link`. Scheme and host are compared case-insensitively
+/// per the contract; only `watch`/`playlist` hosts are recognized and the
+/// ids are validated by the same [`is_valid_video_id`]/[`is_valid_playlist_id`]
+/// checks as the https forms — nothing about this scheme relaxes validation.
+/// `pub(crate)` so `settings.rs` (the `deepLinkScheme` register/unregister
+/// side effect) and `lib.rs` (the startup reconcile) can register/unregister
+/// the exact same scheme string this parser accepts, without duplicating the
+/// literal.
+pub(crate) const LALIN_SCHEME: &str = "lalin-cast";
+const LALIN_WATCH_HOST: &str = "watch";
+const LALIN_PLAYLIST_HOST: &str = "playlist";
 /// `https://www.youtube.com/playlist?list=<list>` is only accepted on the
 /// canonical `www` host, unlike the video form (matches the contract table).
 const PLAYLIST_HOST: &str = "www.youtube.com";
@@ -137,16 +149,28 @@ fn is_valid_playlist_id(value: &str) -> bool {
 }
 
 /// Parses and validates one raw launch URL into a canonical [`DeepLink`].
-/// Accepts only `https://www.youtube.com/watch?v=<id>`,
+///
+/// Two families are accepted, and both end up as the same canonical
+/// `https://www.youtube.com/...` string (see [`DeepLink::canonical`]): the
+/// `lalin-cast://` scheme handled by [`parse_lalin_scheme_url`], and the
+/// https YouTube URLs described below. A raw `lalin-cast://` string is
+/// never handed on to the webview or logged.
+///
+/// On the https side, accepts only `https://www.youtube.com/watch?v=<id>`,
 /// `https://youtube.com/watch?v=<id>`, `https://m.youtube.com/watch?v=<id>`,
 /// `https://youtu.be/<id>`, and `https://www.youtube.com/playlist?list=<list>`
 /// (`id` = `[A-Za-z0-9_-]{11}`, `list` = `[A-Za-z0-9_-]{1,64}`). Rejects any
-/// other scheme (`http://`, `javascript:`, ...), any host outside the exact
+/// other scheme (`http://`, `javascript:`, ...) than the two named above, any host outside the exact
 /// whitelist (no suffix matching), and any id/list that fails the character
 /// class or length check. Every other query parameter on an otherwise-valid
 /// URL is silently dropped — the canonical form never carries it.
 pub fn parse_launch_url(raw: &str) -> Option<DeepLink> {
     let url = Url::parse(raw).ok()?;
+
+    if url.scheme().eq_ignore_ascii_case(LALIN_SCHEME) {
+        return parse_lalin_scheme_url(&url);
+    }
+
     if url.scheme() != "https" {
         return None;
     }
@@ -166,6 +190,46 @@ pub fn parse_launch_url(raw: &str) -> Option<DeepLink> {
     }
 
     if host == PLAYLIST_HOST && url.path() == "/playlist" {
+        let list = url
+            .query_pairs()
+            .find(|(key, _)| key == "list")
+            .map(|(_, value)| value.into_owned())?;
+        return is_valid_playlist_id(&list).then_some(DeepLink::Playlist(list));
+    }
+
+    None
+}
+
+/// Parses `lalin-cast://watch?v=<id>` / `lalin-cast://playlist?list=<id>`
+/// (scheme already confirmed by the caller). Host is compared
+/// case-insensitively; any other host (`settings`, ...), a missing query
+/// parameter, or any extra path segment beyond the bare authority is
+/// rejected. `lalin-cast:watch?v=…` — the scheme-without-`//` form — has no
+/// authority at all, so [`Url::host_str`] returns `None` here and this
+/// rejects it the same way. The canonical https form is what ever reaches
+/// the webview or a log — see [`DeepLink::canonical`].
+fn parse_lalin_scheme_url(url: &Url) -> Option<DeepLink> {
+    let host = url.host_str()?;
+    if !matches!(url.path(), "" | "/") {
+        return None;
+    }
+    // An authority decoration (`lalin-cast://user:pw@watch:99?v=...`) is
+    // never a form this contract accepts. Nothing from the authority could
+    // survive `canonical()` anyway, but accepting shapes the documented
+    // table does not list would make the accept set larger than the docs.
+    if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
+        return None;
+    }
+
+    if host.eq_ignore_ascii_case(LALIN_WATCH_HOST) {
+        let id = url
+            .query_pairs()
+            .find(|(key, _)| key == "v")
+            .map(|(_, value)| value.into_owned())?;
+        return is_valid_video_id(&id).then_some(DeepLink::Video(id));
+    }
+
+    if host.eq_ignore_ascii_case(LALIN_PLAYLIST_HOST) {
         let list = url
             .query_pairs()
             .find(|(key, _)| key == "list")
@@ -360,6 +424,81 @@ mod tests {
             parse_launch_url("https://www.youtube.com/results?search_query=x"),
             None
         );
+    }
+
+    // -- lalin-cast:// scheme (Wave 7) --
+
+    #[test]
+    fn accepts_the_lalin_scheme_watch_and_playlist_forms() {
+        assert_eq!(
+            parse_launch_url("lalin-cast://watch?v=dQw4w9WgXcQ"),
+            Some(DeepLink::Video("dQw4w9WgXcQ".to_owned()))
+        );
+        assert_eq!(
+            parse_launch_url("lalin-cast://playlist?list=PL12345"),
+            Some(DeepLink::Playlist("PL12345".to_owned()))
+        );
+    }
+
+    #[test]
+    fn lalin_scheme_and_host_are_compared_case_insensitively() {
+        assert_eq!(
+            parse_launch_url("LALIN-CAST://watch?v=dQw4w9WgXcQ"),
+            Some(DeepLink::Video("dQw4w9WgXcQ".to_owned()))
+        );
+        assert_eq!(
+            parse_launch_url("lalin-cast://WATCH?v=dQw4w9WgXcQ"),
+            Some(DeepLink::Video("dQw4w9WgXcQ".to_owned()))
+        );
+        assert_eq!(
+            parse_launch_url("lalin-cast://Playlist?list=PL12345"),
+            Some(DeepLink::Playlist("PL12345".to_owned()))
+        );
+    }
+
+    #[test]
+    fn lalin_scheme_ids_are_validated_the_same_as_the_https_form() {
+        assert_eq!(parse_launch_url("lalin-cast://watch?v=short"), None);
+        assert_eq!(parse_launch_url("lalin-cast://watch?v=dQw4w9Wg$cQ"), None);
+        assert_eq!(parse_launch_url("lalin-cast://playlist?list="), None);
+    }
+
+    #[test]
+    fn lalin_scheme_canonical_form_is_still_https() {
+        let video = parse_launch_url("lalin-cast://watch?v=dQw4w9WgXcQ")
+            .expect("should parse the lalin-cast watch form");
+        assert_eq!(
+            video.canonical(),
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        );
+
+        let playlist = parse_launch_url("lalin-cast://playlist?list=PL12345")
+            .expect("should parse the lalin-cast playlist form");
+        assert_eq!(
+            playlist.canonical(),
+            "https://www.youtube.com/playlist?list=PL12345"
+        );
+    }
+
+    #[test]
+    fn rejects_unrecognized_lalin_scheme_hosts_and_forms() {
+        // Any host other than watch/playlist, e.g. settings.
+        assert_eq!(parse_launch_url("lalin-cast://settings"), None);
+        // Missing query parameter.
+        assert_eq!(parse_launch_url("lalin-cast://watch"), None);
+        assert_eq!(parse_launch_url("lalin-cast://playlist"), None);
+        // Extra path segment beyond the bare authority.
+        assert_eq!(
+            parse_launch_url("lalin-cast://watch/extra?v=dQw4w9WgXcQ"),
+            None
+        );
+        assert_eq!(
+            parse_launch_url("lalin-cast://playlist/extra?list=PL12345"),
+            None
+        );
+        // The scheme-without-"//" form has no authority at all.
+        assert_eq!(parse_launch_url("lalin-cast:watch?v=dQw4w9WgXcQ"), None);
+        assert_eq!(parse_launch_url("lalin-cast:playlist?list=PL12345"), None);
     }
 
     #[test]

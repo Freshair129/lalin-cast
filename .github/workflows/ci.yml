@@ -48,13 +48,11 @@ jobs:
     # Wave 6 U4 (docs/plans/W6_POLISH_PLAN.md): builds the debug binary and
     # exercises the real `--version` / `--lifecycle close` CLI contract
     # end-to-end on a Windows runner, on top of `checks` passing first.
-    # continue-on-error stays true until human gate H20
-    # (docs/plans/W6_POLISH_PLAN.md) confirms this job is stable across two
-    # consecutive runs — only then does a human remove
-    # `continue-on-error: true` to make it blocking.
+    # Human gate H20 (docs/plans/W6_POLISH_PLAN.md) is closed: this job ran
+    # green on two consecutive pull requests (#9 and #10), so
+    # `continue-on-error` has been removed and this job is now blocking.
     needs: checks
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -40,9 +40,13 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `hardwareDecoding` | เปิด/ปิดการถอดรหัสวิดีโอด้วยฮาร์ดแวร์ (GPU) ของหน้าต่างสื่อ ค่าเริ่มต้นเปิด มีผลหลังเปิดแอปใหม่เท่านั้น — ดูข้อ 8 | ไม่ |
 | `touchOverlay` | เปิด/ปิดปุ่มควบคุมบนหน้าจอที่ปรากฏหลังตรวจพบการแตะหน้าจอ (`touchstart`) ครั้งแรก ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
 | `startWithWindows` | เปิด/ปิดการเริ่ม Lalin Cast พร้อม Windows (registry Run key ของบัญชีนี้) ค่าเริ่มต้นปิด ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
+| `deepLinkScheme` | เปิด/ปิดการจดทะเบียนให้ลิงก์ `lalin-cast://` เปิดด้วย Lalin Cast (เขียน/ลบค่าใน `HKCU\Software\Classes\lalin-cast` ของบัญชีนี้) ค่าเริ่มต้นปิด เป็น opt-in ตั้งได้จากหน้าต่างการตั้งค่าเท่านั้น — ดูข้อ 7 | ไม่ |
 | `windowBounds` | ตำแหน่ง (x, y) และขนาด (width, height) ของหน้าต่างสื่อ (media) ล่าสุด เป็นพิกเซล เขียนโดย Rust เท่านั้น ไม่ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า — ดูข้อ 7 | ไม่ |
 | `uiScale` | มาตราส่วนการแสดงผล (zoom) ของหน้าต่างสื่อ ผ่าน API `set_zoom` ของ WebView2 เอง ค่าที่รับ ∈ {100, 125, 150, 175, 200} เปอร์เซ็นต์ มีผลทันทีที่ตั้งค่าและอีกครั้งหลังเปิดแอปใหม่ — ดูข้อ 7 | ไม่ |
 | `sleepAtEndOfVideo` | เปิด/ปิดการหยุดเล่นอัตโนมัติเมื่อวิดีโอปัจจุบันจบ (กัน autoplay-next ของ YouTube หนึ่งครั้ง) ค่าเริ่มต้นปิด ไม่รีเซ็ตกลับเป็นปิดเอง — ดูข้อ 7 | ไม่ |
+| `keepDisplayAwake` | กันจอดับ/เครื่องหลับเฉพาะขณะกำลังเล่นวิดีโอจริง โดยเรียก API ของ Windows เองเท่านั้น ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
+| `hideShorts` | ซ่อนชั้น Shorts บนหน้าแรกด้วย CSS ของ Lalin Cast เอง ค่าเริ่มต้นปิด (opt-in) — ดูข้อ 10 | ไม่ |
+| `hideGuideTabs` | ซ่อนแท็บ Shorts ในแถบนำทางด้านข้างด้วย CSS ของ Lalin Cast เอง ค่าเริ่มต้นปิด (opt-in) — ดูข้อ 10 | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -145,6 +149,20 @@ argument คงที่ (ไม่มี PowerShell, ไม่มี unsafe cod
 argument อื่นติดไปด้วย ปิดตัวเลือกนี้เพื่อลบค่าออกจาก registry การเขียน/ลบ registry นี้จำกัดอยู่แค่ค่าเดียว
 ในบัญชีผู้ใช้ปัจจุบันเท่านั้น ไม่แตะ registry ระดับเครื่อง (HKLM) หรือของผู้ใช้อื่น
 
+**ลิงก์ผ่าน URL scheme (`lalin-cast://`):** เมื่อผู้ใช้เปิดตัวเลือก "ให้ลิงก์ `lalin-cast://` เปิดด้วย
+Lalin Cast" จากหน้าต่างการตั้งค่าเท่านั้น (ค่าเริ่มต้นปิด, คีย์ `deepLinkScheme`, ไม่มีการเปิดใช้เองโดย
+อัตโนมัติ) แอปจะจดทะเบียน scheme `lalin-cast` เข้ารายการ `HKCU\Software\Classes\lalin-cast` ของบัญชี
+Windows ปัจจุบันเท่านั้น ผ่าน crate `tauri-plugin-deep-link` ที่ทำหน้าที่จดทะเบียน/ยกเลิก/ตรวจสอบ registry
+เพียงอย่างเดียว ไม่มีความสามารถอื่นเพิ่มเติม ไม่ต้องใช้สิทธิ์ผู้ดูแลระบบ และไม่แตะ registry ระดับเครื่อง
+(HKLM) หรือของบัญชีอื่น ปิดตัวเลือกนี้เพื่อยกเลิกการจดทะเบียน (ลบค่าออกจาก registry เดียวกัน) แอปจะบันทึก
+ค่านี้ลงไฟล์การตั้งค่าก็ต่อเมื่อ registry ไปถึงสถานะที่ขอจริงเท่านั้น (ถ้าปิดตัวเลือกขณะที่ยังไม่เคยจดทะเบียนไว้ ถือว่าสำเร็จ
+โดยไม่ต้องเรียกยกเลิก) เมื่อลิงก์ `lalin-cast://` มาถึงแอป (จาก
+Explorer, เบราว์เซอร์ หรือแอปอื่น) Windows จะส่งมาเป็นพารามิเตอร์บรรทัดคำสั่งของโปรเซสใหม่ ผ่านเส้นทางการ
+ตรวจสอบและแปลงเป็น URL ของ YouTube เดียวกันกับลิงก์บรรทัดคำสั่งทุกประการ (ดูข้อ 6) และอยู่ภายใต้กฎเดียวกัน
+ทุกข้อ: ค่าที่ไม่ผ่านการตรวจสอบจะถูกทิ้งไปเฉย ๆ และค่าที่ผ่านแล้ว **ไม่ถูกบันทึกลงไฟล์ log หรือไฟล์การตั้งค่า
+ถาวรใด ๆ** สตริง `lalin-cast://` ดิบเองก็ไม่ถูกส่งเข้าหน้าเว็บ (WebView) หรือถูก log เช่นกัน — เห็นเฉพาะ URL
+ของ YouTube ที่แปลงแล้วเท่านั้น
+
 **ลองใหม่อัตโนมัติเมื่อออฟไลน์:** เมื่อหน้าต่างสถานะแสดงเพราะออฟไลน์ตอนเริ่มแอป (ดูข้อ 4) Lalin Cast จะทำ
 การตรวจสอบการเชื่อมต่อ (TCP handshake ไปยัง `www.youtube.com:443` แบบเดียวกับข้อ 4 ไม่มี HTTP request
 หรือ payload อื่นใด) ซ้ำเองเป็นระยะโดยไม่ต้องกดปุ่ม เริ่มที่ 5 วินาทีแล้วเพิ่มเป็นสูงสุด 30 วินาที และหยุด
@@ -163,7 +181,8 @@ argument อื่นใดติดไปด้วย) แล้วคัดล
 **รีเซ็ตค่าเริ่มต้น (reset to defaults):** ปุ่ม "รีเซ็ตค่าเริ่มต้น" แบบกดสองจังหวะยืนยันในหน้าต่างการ
 ตั้งค่าคืนค่าเกือบทุกการตั้งค่ากลับเป็นค่าเริ่มต้นของแอปผ่าน path เดียวกับที่ใช้บันทึกค่าปกติทีละคีย์
 **แต่ไม่ลบ** รหัส/ชื่ออุปกรณ์ DIAL (`dialDeviceId`, `dialFriendlyName`), ภาษา (`language`), สถานะว่าผ่าน
-ตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows (`startWithWindows`) ออก — ทั้งห้าค่านี้ยังคงเดิมหลังกดรีเซ็ต (ดูข้อ 12 สำหรับวิธีลบ
+ตัวช่วยติดตั้งแล้ว (`setupCompleted`) หรือรายการเริ่มพร้อม Windows (`startWithWindows`) หรือการจดทะเบียน
+`lalin-cast://` (`deepLinkScheme`) ออก — ทั้งหกค่านี้ยังคงเดิมหลังกดรีเซ็ต (ดูข้อ 12 สำหรับวิธีลบ
 ค่าเหล่านี้ด้วยตัวเองถ้าต้องการ)
 
 **ข้อมูลวินิจฉัย:** ปุ่ม "คัดลอกข้อมูลวินิจฉัย" ในหน้าต่างการตั้งค่าสร้างข้อความสรุปสถานะแอปแบบข้อความล้วน
@@ -181,7 +200,7 @@ shell **ในเครื่องเดียวกัน** เพื่อใ
 
 ทุกอย่างในข้อนี้ไม่เกี่ยวข้องกับระบบ telemetry ใด ๆ — Lalin Cast ยังคงไม่มี telemetry เหมือนที่ระบุในข้อ 1
 
-## 8. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์ และปุ่มสัมผัสบนจอ
+## 8. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มสัมผัสบนจอ และกันจอดับขณะเล่น
 
 ตัวจับเวลาปิดเล่นอัตโนมัติ (sleep timer, คีย์ `sleepTimerMinutes`) ทำงานทั้งหมดในเครื่อง: ตัวจับเวลาเป็น
 เธรด Rust ที่นับถอยหลังในหน่วยความจำ ไม่มีการเชื่อมต่อเครือข่ายใด ๆ เกี่ยวข้อง เมื่อหมดเวลา Rust จะส่ง
@@ -208,6 +227,13 @@ YouTube จะ override ฟังก์ชัน Web API มาตรฐาน�
 คีย์ persist ตามที่ระบุในข้อ 2) และไม่มีผลด้านความเป็นส่วนตัวเพิ่มเติม — เป็นเพียงการเปลี่ยนขนาด/ตำแหน่ง/
 กรอบของหน้าต่างที่มีอยู่แล้วเท่านั้น
 
+กันจอดับขณะเล่น (keep-display-awake, คีย์ `keepDisplayAwake`, ค่าเริ่มต้นเปิด) **เรียกเฉพาะ API ของ
+Windows เอง** (`SetThreadExecutionState`) เพื่อบอกระบบปฏิบัติการว่าเครื่องกำลังถูกใช้งานอยู่ **เฉพาะขณะ
+กำลังเล่นวิดีโอจริงเท่านั้น** (อิงจากสถานะเล่น/หยุดเดียวกับที่ใช้ตั้งชื่อวิดีโอที่กำลังเล่น ดูข้อ 7) API
+นี้ **ไม่ส่งข้อมูลใดออกจากเครื่อง ไม่อ่านเนื้อหาบนหน้าจอ และไม่เกี่ยวข้องกับเครือข่ายเลย** — เป็นเพียงการ
+บอกระบบปฏิบัติการไม่ให้ปิดจอ/พักเครื่องเท่านั้น เมื่อหยุดเล่น ปิดตัวเลือกนี้ หรือปิดแอป Lalin Cast จะยกเลิก
+การจองสถานะนี้ทันทีให้จอ/เครื่องกลับไปดับ/หลับตามการตั้งค่า Windows ปกติ
+
 ## 9. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
@@ -224,6 +250,16 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 อัลกอริทึมแนะนำวิดีโอ) อยู่ภายใต้การควบคุมของ YouTube/Google ทั้งหมด ไม่ใช่ของ Lalin Cast โปรดอ่าน
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
+
+**ซ่อนชั้น Shorts / แท็บ Shorts (คีย์ `hideShorts`, `hideGuideTabs`, ทั้งสองค่าเริ่มต้นปิด เป็น
+opt-in):** เมื่อเปิดตัวเลือกใดตัวเลือกหนึ่งจากหน้าต่างการตั้งค่า สคริปต์ที่ฉีดเข้าไปในหน้าจะ**อ่านเฉพาะ
+DOM ของหน้า YouTube ที่ render เสร็จแล้ว** เพื่อติด class ของ Lalin Cast เองบน element ที่ตรงกับรูปแบบ
+Shorts shelf/แท็บ Shorts แล้วซ่อนด้วย stylesheet ของ Lalin Cast เอง (`display: none`) — **ไม่มีการอ่าน
+เนื้อหาที่แสดงบนหน้าจอแล้วส่งออกไปที่ใด ไม่มีการดักหรือแก้ไข response ของ YouTube, ไม่มีการลบ node ออก
+จากหน้า, และไม่มีการซ่อนแท็บ Home ไม่ว่ากรณีใด** (ดู
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+สำหรับเหตุผลและเส้นแบ่งฉบับเต็ม) เนื่องจากเป็นการซ่อนด้วย CSS ของเราเองล้วน ๆ การซ่อนนี้จึงอาจหยุด
+ทำงานได้ทุกเมื่อที่ YouTube เปลี่ยนโครงสร้างหน้าเว็บ
 
 ## 11. Logging
 
@@ -300,9 +336,13 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `hardwareDecoding` | Turns hardware-accelerated video decoding on or off for the media window. Defaults to on; takes effect only after restarting the app — see section 8 | No |
 | `touchOverlay` | Turns the on-screen touch control buttons on or off; they appear after the first detected screen touch. Defaults to on — see section 8 | No |
 | `startWithWindows` | Turns starting Lalin Cast with Windows on or off (this account's registry Run key). Defaults to off; only ever set from the settings window — see section 7 | No |
+| `deepLinkScheme` | Turns registering `lalin-cast://` links to open in Lalin Cast on or off (writes/removes a value under `HKCU\Software\Classes\lalin-cast` for this account). Defaults to off; opt-in, only ever set from the settings window — see section 7 | No |
 | `windowBounds` | The media window's last position (x, y) and size (width, height), in pixels. Written by Rust only; never shown in the settings window's snapshot — see section 7 | No |
 | `uiScale` | The media window's display scale (zoom), through WebView2's own `set_zoom` API. Accepted values are {100, 125, 150, 175, 200} percent; applies immediately when set, and again after the app restarts — see section 7 | No |
 | `sleepAtEndOfVideo` | Turns on/off pausing playback automatically once the current video ends (guarding against one YouTube autoplay-next). Defaults to off; not reset back to off automatically — see section 7 | No |
+| `keepDisplayAwake` | Keeps the display/machine from sleeping only while a video is actually playing, by calling a Windows API only. Defaults to on — see section 8 | No |
+| `hideShorts` | Hides the Shorts shelf on the home page with Lalin Cast's own CSS. Defaults to off (opt-in) — see section 10 | No |
+| `hideGuideTabs` | Hides the Shorts tab in the side navigation with Lalin Cast's own CSS. Defaults to off (opt-in) — see section 10 | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -419,6 +459,23 @@ with fixed arguments (no PowerShell, no unsafe code). The value written is only 
 registry. This write/delete is limited to that single value in the current user's own account; it
 never touches machine-wide (`HKLM`) registry or another user's account.
 
+**`lalin-cast://` URL scheme link:** Only when the user turns on "Let `lalin-cast://` links open in
+Lalin Cast" from the settings window (off by default, the `deepLinkScheme` key, never enabled
+automatically, and never by the installer) does the app register the `lalin-cast` scheme into
+`HKCU\Software\Classes\lalin-cast` for the current Windows account only, through the
+`tauri-plugin-deep-link` crate, which is used solely to register, unregister, and check that
+registry entry and does nothing else. No administrator rights are required, and it never touches
+machine-wide (`HKLM`) registry or another account's. Turning the setting off unregisters it (removes
+the value from that same registry entry). The app persists this setting only once the registry actually
+reached the requested state (turning the setting off while nothing was registered counts as
+success without an unregister call). When a `lalin-cast://` link reaches the app (from
+Explorer, a browser, or another app), Windows delivers it as a new process's command-line argument,
+going through the exact same validation-and-convert-to-a-YouTube-URL path as the command-line link
+(see section 6) and under all the same rules: a value that fails validation is simply discarded, and
+one that passes is **never written to a log file or persisted to any settings file**. The raw
+`lalin-cast://` string itself is likewise never sent into the webview or logged — only the converted
+YouTube URL is ever seen.
+
 **Offline auto-retry:** When the status window is shown because the app started offline (see
 section 4), Lalin Cast repeats the same connectivity check (a TCP handshake to
 `www.youtube.com:443`, exactly as in section 4 — no HTTP request or payload beyond that) on its own,
@@ -440,10 +497,10 @@ clipboard **only when the user presses that button** — nothing else triggers t
 **Reset to defaults:** The two-step confirm "reset to defaults" button in the settings window resets
 almost every setting back to the app's own defaults, through the same per-key path used for normal
 setting saves, **but does not remove** the DIAL name/id (`dialDeviceId`, `dialFriendlyName`), the
-language (`language`), the setup-wizard-completed flag (`setupCompleted`), or the "start with
-Windows" entry (`startWithWindows`) — those five values
-stay exactly as they were after a reset (see section 12 for how to remove them yourself if you want
-to).
+language (`language`), the setup-wizard-completed flag (`setupCompleted`), the "start with
+Windows" entry (`startWithWindows`), or the `lalin-cast://` scheme registration (`deepLinkScheme`) —
+those six values stay exactly as they were after a reset (see section 12 for how to remove them
+yourself if you want to).
 
 **Diagnostics:** The "copy diagnostics" button in the settings window builds a plain-text summary of
 the app's state: app version, Tauri/WebView2 version, OS/architecture, current language, DIAL status
@@ -464,7 +521,7 @@ persisted and never leaves the device.
 
 None of this involves any telemetry system — Lalin Cast still has none, as stated in section 1.
 
-## 8. Playback: sleep timer, codec filter, hardware decoding, and touch overlay
+## 8. Playback: sleep timer, codec filter, hardware decoding, touch overlay, and keeping the display awake
 
 The sleep timer (`sleepTimerMinutes`) runs entirely on the device: the timer itself is a Rust thread
 counting down in memory, with no network connection involved. When it fires, Rust sends an event to
@@ -495,6 +552,15 @@ Mini-player mode is current-session state only. It is never written to the setti
 no persisted key for it, as noted in section 2) and has no additional privacy implication — it only
 changes the size, position, and frame of the window that already exists.
 
+Keeping the display awake (`keepDisplayAwake`, on by default) **calls a Windows API only**
+(`SetThreadExecutionState`) to tell the operating system the machine is in use **only while a video
+is actually playing** (driven by the same playing/paused state used for the now-playing title — see
+section 7). This API call **sends nothing off the device, reads nothing that is on screen, and
+involves no network of any kind** — it only asks the operating system not to sleep the display or
+the machine. As soon as playback stops, the setting is turned off, or Lalin Cast is closed, this
+request is released immediately and the display/machine go back to sleeping normally on Windows'
+own schedule.
+
 ## 9. Update checks
 
 The app contacts `github.com` (specifically
@@ -512,6 +578,17 @@ through a remote WebView. Everything that happens inside that page — cookies, 
 sign-in, watch history, ads, the recommendation algorithm — is entirely under YouTube's/Google's
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
+
+**Hiding the Shorts shelf / Shorts tab (`hideShorts`, `hideGuideTabs` keys, both off by default,
+opt-in):** When either option is turned on from the settings window, the script injected into the
+page **reads only the already-rendered DOM of the YouTube page** to tag matching Shorts-shelf/
+Shorts-tab elements with Lalin Cast's own class, then hides them with Lalin Cast's own stylesheet
+(`display: none`). **Nothing that is displayed on screen is ever read and sent anywhere, nothing
+about YouTube's response is intercepted or modified, no node is ever removed from the page, and the
+Home tab is never hidden under any circumstance** (see
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+for the full reasoning and the boundary this follows). Because this is entirely our own CSS, it may
+stop working at any time YouTube changes its page structure.
 
 ## 11. Logging
 

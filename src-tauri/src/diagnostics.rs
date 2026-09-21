@@ -21,7 +21,7 @@ use crate::{lifecycle, settings};
 /// alongside a `tauri` version bump.
 const TAURI_VERSION: &str = "2.11.5";
 
-/// The eleven `settings:` keys shown on the diagnostics line, in the exact
+/// The twelve `settings:` keys shown on the diagnostics line, in the exact
 /// order the contract's example shows them. Built by `settings::diagnostics_settings`
 /// (which has access to `settings::Settings`'s private fields) so this
 /// module never needs to know that struct's internals.
@@ -37,6 +37,13 @@ pub struct DiagnosticsSettings {
     pub touch_overlay: bool,
     pub start_with_windows: bool,
     pub mini_player: bool,
+    pub deep_link_scheme: bool,
+    pub deep_link_scheme_registered: bool,
+    /// Wave 8: whether the display/system is kept awake while a video is
+    /// actually playing (see `power.rs`). `hideShorts`/`hideGuideTabs` are
+    /// deliberately not on this line — the contract only asks for
+    /// `keepDisplayAwake`.
+    pub keep_display_awake: bool,
 }
 
 /// Everything [`format_diagnostics`] needs, gathered by `settings_diagnostics`
@@ -93,7 +100,8 @@ fn format_settings_line(settings: &DiagnosticsSettings) -> String {
     format!(
         "settings: fullscreen={} keepOnTop={} pauseOnBlur={} controllerEnabled={} \
          sleepTimerMinutes={} codecFilter={} hardwareDecoding={} \
-         hardwareDecodingRestartRequired={} touchOverlay={} startWithWindows={} miniPlayer={}",
+         hardwareDecodingRestartRequired={} touchOverlay={} startWithWindows={} miniPlayer={} \
+         deepLinkScheme={} deepLinkSchemeRegistered={} keepDisplayAwake={}",
         settings.fullscreen,
         settings.keep_on_top,
         settings.pause_on_blur,
@@ -105,11 +113,14 @@ fn format_settings_line(settings: &DiagnosticsSettings) -> String {
         settings.touch_overlay,
         settings.start_with_windows,
         settings.mini_player,
+        settings.deep_link_scheme,
+        settings.deep_link_scheme_registered,
+        settings.keep_display_awake,
     )
 }
 
 /// Renders the full diagnostics text block, one `key: value` line per row
-/// (the `settings:` row packs its eleven keys onto one line — see
+/// (the `settings:` row packs its twelve keys onto one line — see
 /// [`format_settings_line`]), in English throughout (no i18n — the contract
 /// is explicit that this text is meant to be pasted into an English-language
 /// bug report as-is).
@@ -209,6 +220,9 @@ mod tests {
             touch_overlay: true,
             start_with_windows: false,
             mini_player: false,
+            deep_link_scheme: false,
+            deep_link_scheme_registered: false,
+            keep_display_awake: true,
         }
     }
 
@@ -259,6 +273,9 @@ mod tests {
         assert_eq!(lines[7], "network: private (Wi-Fi)");
         assert!(lines[8].starts_with("settings: fullscreen=false"));
         assert!(lines[8].contains("miniPlayer=false"));
+        assert!(lines[8].contains("deepLinkScheme=false"));
+        assert!(lines[8].contains("deepLinkSchemeRegistered=false"));
+        assert!(lines[8].contains("keepDisplayAwake=true"));
         assert_eq!(lines[9], "dialFriendlyName: Lalin Cast");
         assert_eq!(lines[10], "lifecycle: ready (pid 1234)");
         assert_eq!(lines[11], "generatedAt: 1758380400");

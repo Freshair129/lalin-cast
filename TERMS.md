@@ -20,9 +20,13 @@ Lalin Cast เป็นโปรเจกต์อิสระที่พัฒ
 Lalin Cast เป็นเชลล์ Windows ที่เขียนด้วย Rust และ Tauri v2 ซึ่งเปิดหน้าเว็บ YouTube TV จริงจาก
 `https://www.youtube.com/tv` ในหน้าต่างของตัวเอง (remote WebView) พร้อมกลไกเสริมของตัวเอง เช่น
 เมนูเต็มจอ/อยู่บนสุดเสมอ, การอัปเดตแอปแบบมีการยืนยันจากผู้ใช้, และการตอบสนองโปรโตคอล DIAL บนเครือข่าย
-ท้องถิ่นเพื่อให้แอป YouTube บนมือถือค้นหาเจอ Lalin Cast บนเครือข่ายเดียวกันได้ Lalin Cast ไม่ได้
-ดัดแปลงเนื้อหา, โฆษณา, หรือฟีเจอร์ใด ๆ ภายในหน้า YouTube เอง — สิ่งที่ปรากฏในหน้านั้นเป็นไปตามที่
-YouTube ส่งมาให้ WebView โดยตรง
+ท้องถิ่นเพื่อให้แอป YouTube บนมือถือค้นหาเจอ Lalin Cast บนเครือข่ายเดียวกันได้ Lalin Cast ไม่ได้ดัดแปลง
+เนื้อหา, โฆษณา, หรือฟีเจอร์ใด ๆ ที่ YouTube ส่งมา และไม่ได้ดัก อ่าน หรือแก้ไขการรับส่งข้อมูลระหว่าง
+WebView กับ YouTube เลย ข้อยกเว้นเดียวคือตัวเลือกที่ผู้ใช้เปิดเองและปิดไว้เป็นค่าเริ่มต้น สำหรับซ่อน
+ชั้น Shorts และแท็บ Shorts ด้วย CSS ของ Lalin Cast เองบนหน้าที่ถูก render ออกมาแล้ว ซึ่งเป็นการเปลี่ยน
+การแสดงผลในหน้าต่างของผู้ใช้เท่านั้น ไม่ได้เปลี่ยนข้อมูลหรือการทำงานของ YouTube (ดู
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md))
+นอกเหนือจากนั้น สิ่งที่ปรากฏในหน้าเป็นไปตามที่ YouTube ส่งมาให้ WebView โดยตรง
 
 ## 3. ข้อผูกพันกับ YouTube
 
@@ -88,8 +92,13 @@ Lalin Cast is a Windows shell written in Rust and Tauri v2 that opens the real Y
 from `https://www.youtube.com/tv` in its own window (a remote WebView), plus its own supporting
 features such as a fullscreen/always-on-top menu, a user-confirmed app updater, and a local-network
 DIAL responder that lets the YouTube mobile app discover Lalin Cast on the same network. Lalin
-Cast does not modify the content, advertising, or features inside the YouTube page itself —
-whatever appears there is exactly what YouTube serves to the WebView.
+Cast does not modify the content, advertising, or features YouTube serves, and it never intercepts,
+reads, or rewrites the traffic between the WebView and YouTube. The single exception is an opt-in
+setting, off by default, that hides the Shorts shelf and the Shorts navigation tab using Lalin
+Cast's own CSS on the already-rendered page: a presentation change inside the user's own window
+that alters neither YouTube's data nor its behaviour (see
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)).
+Apart from that, whatever appears there is exactly what YouTube serves to the WebView.
 
 ## 3. Obligations to YouTube
 

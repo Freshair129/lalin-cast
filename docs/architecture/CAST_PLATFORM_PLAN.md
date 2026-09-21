@@ -125,6 +125,12 @@ reporting and uninstall/upgrade behavior have their own acceptance evidence. If
 distribution later bundles both apps, each app still retains an attributable
 runtime and version.
 
+> **Superseded in part by ADR-004 (2026-09-21).** Every "upstream ad-block controls" item below is
+> historical: the founder has decided Lalin Cast will not ship ad filtering, and will not intercept,
+> read or rewrite YouTube's traffic or data at all. See
+> [`ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md).
+> Those rows are kept only as a record of what the Electron-era plan contemplated.
+
 ## Contract boundary
 
 The initial contract is intentionally small and is now implemented for the

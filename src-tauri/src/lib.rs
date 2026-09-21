@@ -5,6 +5,7 @@ mod i18n;
 mod launch;
 mod lifecycle;
 mod network;
+mod power;
 mod settings;
 mod setup;
 mod sleep;
@@ -22,6 +23,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::{Emitter, Listener, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_store::StoreExt;
 
 pub(crate) const MEDIA_LABEL: &str = "media";
@@ -122,6 +124,12 @@ struct PrefsPayload {
     codec_filter: String,
     touch_overlay: bool,
     sleep_at_end_of_video: bool,
+    // Wave 8: CSS-only hide toggles, read by `injected.js`'s `hide` section
+    // and applied live via `PREFS_EVENT` below — see the wave 8 plan's
+    // contract 3. `keepDisplayAwake` deliberately never appears here: it is
+    // Rust-side only (see `power.rs`) and never travels to the page.
+    hide_shorts: bool,
+    hide_guide_tabs: bool,
     deep_link: Option<String>,
 }
 
@@ -143,6 +151,8 @@ struct PrefsEventPayload {
     codec_filter: String,
     touch_overlay: bool,
     sleep_at_end_of_video: bool,
+    hide_shorts: bool,
+    hide_guide_tabs: bool,
 }
 
 /// Emits the current `lang`/`controllerEnabled`/`pauseOnBlur`/`codecFilter`/
@@ -158,6 +168,8 @@ pub(crate) fn emit_prefs(app: &tauri::AppHandle) {
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
         sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
+        hide_shorts: read_bool_setting_or(app, "hideShorts", false),
+        hide_guide_tabs: read_bool_setting_or(app, "hideGuideTabs", false),
     };
     let _ = app.emit_to(MEDIA_LABEL, PREFS_EVENT, &payload);
 }
@@ -454,6 +466,17 @@ fn register_media_listener(app: &tauri::AppHandle) {
         let Some(parsed) = validate_media_event(event.payload()) else {
             return;
         };
+        // Wave 8 wiring point 1, applied ahead of the rate limiter: a
+        // `paused`/`idle` arriving within the limiter's window would
+        // otherwise be dropped and leave the display reserved until the
+        // next event. The call is idempotent and only touches an atomic
+        // plus a channel send, so running it on every validated event is
+        // cheaper than the title/tray work the limiter exists to throttle.
+        power::apply_playing(
+            &app_handle,
+            read_bool_setting_or(&app_handle, "keepDisplayAwake", true),
+            parsed.state == MediaPlaybackState::Playing,
+        );
         if !limiter.allow() {
             return;
         }
@@ -510,6 +533,19 @@ fn seed_settings(app: &tauri::AppHandle) {
     }
     if store.get("sleepAtEndOfVideo").is_none() {
         store.set("sleepAtEndOfVideo", false);
+    }
+    // Wave 8 store keys: keepDisplayAwake defaults on (matches the "should
+    // work out of the box" default every other toggle above uses);
+    // hideShorts/hideGuideTabs default off (opt-in, per the wave 8
+    // no-network-interception boundary — see docs/architecture/ADR-004).
+    if store.get("keepDisplayAwake").is_none() {
+        store.set("keepDisplayAwake", true);
+    }
+    if store.get("hideShorts").is_none() {
+        store.set("hideShorts", false);
+    }
+    if store.get("hideGuideTabs").is_none() {
+        store.set("hideGuideTabs", false);
     }
     // sleepTimerMinutes never survives a restart: a fresh process starts
     // with no live timer thread (see sleep.rs's SleepState, managed fresh
@@ -665,6 +701,8 @@ fn build_media_window(
         codec_filter: read_string_setting_or(app, "codecFilter", "off"),
         touch_overlay: read_bool_setting_or(app, "touchOverlay", true),
         sleep_at_end_of_video: read_bool_setting_or(app, "sleepAtEndOfVideo", false),
+        hide_shorts: read_bool_setting_or(app, "hideShorts", false),
+        hide_guide_tabs: read_bool_setting_or(app, "hideGuideTabs", false),
         deep_link: launch.deep_link.as_ref().map(launch::DeepLink::canonical),
     }
     .init_script();
@@ -913,6 +951,22 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Registered so `settings::set_one`/startup reconcile can call
+        // `DeepLinkExt::deep_link().register("lalin-cast")` /
+        // `unregister(...)` / `is_registered(...)` to manage the `lalin-cast`
+        // scheme's `HKCU\Software\Classes\lalin-cast` registration
+        // (opt-in, per the `deepLinkScheme` setting). This plugin is used
+        // ONLY for that registry management: `tauri-plugin-single-instance`'s
+        // `deep-link` feature is deliberately NOT enabled, and neither
+        // `handle_cli_arguments` nor `on_open_url` is used here. On Windows
+        // a `lalin-cast://` activation always launches (or forwards to, via
+        // the existing single-instance plugin) a new process with the URL as
+        // a plain argument, and `launch::parse_cli`/`parse_launch_url`
+        // already parse that argument with full test coverage (see
+        // `launch.rs`). Wiring both the plugin's own URL-handling path and
+        // the existing `parse_cli` path at once would create two independent
+        // code paths for the same event with no benefit.
+        .plugin(tauri_plugin_deep_link::init())
         .setup(move |app| {
             let handle = app.handle().clone();
             // Managed before anything below can possibly exit early, so
@@ -957,6 +1011,13 @@ pub fn run() {
             app.manage(status::AutoRetryState::default());
             app.manage(MediaTitleState::default());
             app.manage(tray::NowPlayingState::default());
+            // Wave 8: the single long-lived power worker thread (see
+            // `power.rs`'s module doc comment) — managed once, here, so
+            // `apply_media_event`/`settings::set_one`/`RunEvent::Exit` can
+            // all reach it via `app.try_state::<power::PowerState>()`
+            // regardless of call order. No reservation is requested yet at
+            // this point (nothing is playing on a fresh launch).
+            app.manage(power::PowerState::default());
             // Best-effort: re-add the Run key if the store says it should
             // be there (idempotent — always writes the current exe path).
             // Never blocks or fails startup; a failure here only means the
@@ -964,6 +1025,19 @@ pub fn run() {
             if read_bool_setting_or(app.handle(), "startWithWindows", false) {
                 if let Err(error) = autostart::set_enabled(true) {
                     eprintln!("Lalin Cast: could not reconcile Windows startup: {error}");
+                }
+            }
+            // Same idempotent reconcile as `startWithWindows` above, for the
+            // `lalin-cast://` scheme: re-register on every startup when the
+            // store says it should be on (e.g. after an update moved the exe
+            // to a new path), and do nothing when it is off. Best-effort and
+            // never blocks startup; the persisted value is never touched
+            // here (this only mirrors it into the registry).
+            if read_bool_setting_or(app.handle(), "deepLinkScheme", false) {
+                if let Err(error) = app.deep_link().register(launch::LALIN_SCHEME) {
+                    eprintln!(
+                        "Lalin Cast: could not reconcile the lalin-cast:// registration: {error}"
+                    );
                 }
             }
             // Built before `dial::start` so the tray's dial-status listener
@@ -1031,6 +1105,11 @@ pub fn run() {
     // the final `stopped` state exactly once.
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
+            // Wave 8 wiring point 3: release any power reservation before
+            // this process actually exits, for every exit path this
+            // `RunEvent::Exit` handler already covers (window close, tray
+            // quit, menu quit, a second instance's forwarded `close`).
+            power::release(app_handle);
             let already_stopped = app_handle
                 .try_state::<lifecycle::StoppedMarker>()
                 .map(|marker| marker.is_stopped())
@@ -1048,6 +1127,28 @@ mod tests {
         parse_shell_action, resolve_title_source, validate_media_event, window_title,
         MediaPlaybackState, ShellAction,
     };
+
+    #[test]
+    fn tauri_conf_declares_no_deep_link_plugin_config() {
+        // The `lalin-cast` scheme is registered at runtime only, and only
+        // when the user turns `deepLinkScheme` on: `DeepLinkExt::register`
+        // takes the protocol explicitly, so the plugin needs no config of
+        // its own. A `plugins."deep-link"` block would additionally be read
+        // by Tauri's bundler and could associate the scheme at install
+        // time, which would contradict the opt-in promise in README.md and
+        // PRIVACY.md — so its absence is asserted here rather than left to
+        // a future editor's memory.
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json should be valid JSON");
+        let plugins = conf
+            .get("plugins")
+            .and_then(serde_json::Value::as_object)
+            .expect("tauri.conf.json should carry a plugins object");
+        assert!(
+            !plugins.contains_key("deep-link"),
+            "tauri.conf.json must not configure the deep-link plugin; see this test's comment"
+        );
+    }
 
     #[test]
     fn falls_back_to_bare_app_name_for_empty_or_whitespace_title() {

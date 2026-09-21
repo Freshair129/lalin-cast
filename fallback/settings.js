@@ -25,6 +25,10 @@
  *       startWithWindows: boolean,
  *       uiScale: 100 | 125 | 150 | 175 | 200,
  *       sleepAtEndOfVideo: boolean,
+ *       deepLinkScheme: boolean,
+ *       keepDisplayAwake: boolean,
+ *       hideShorts: boolean,
+ *       hideGuideTabs: boolean,
  *     },
  *     dial: {
  *       state: "starting" | "ready" | "degraded" | "disabled",
@@ -34,23 +38,26 @@
  *     },
  *     sleepRemainingSeconds: number | null,
  *     hardwareDecodingRestartRequired: boolean,
+ *     deepLinkSchemeRegistered: boolean,
  *   };
  *
  * Commands (the host rejects these unless window.label() === "settings"):
- *   settings_get()                                -> SettingsSnapshot (= { settings, dial, sleepRemainingSeconds, hardwareDecodingRestartRequired })
+ *   settings_get()                                -> SettingsSnapshot (= { settings, dial, sleepRemainingSeconds, hardwareDecodingRestartRequired, deepLinkSchemeRegistered })
  *   settings_set(key: string, value: JsonValue)    -> SettingsSnapshot
  *     Whitelisted keys only ("language", "dialFriendlyName", "fullscreen",
  *     "keepOnTop", "pauseOnBlur", "controllerEnabled", "setupCompleted",
  *     "sleepTimerMinutes", "codecFilter", "hardwareDecoding", "touchOverlay",
- *     "miniPlayer", "startWithWindows", "uiScale", "sleepAtEndOfVideo"); an
- *     unknown key, a wrong value type, or a value outside the allowed set
- *     (e.g. a sleep timer minute count that is not one of {0, 15, 30, 60, 90,
- *     120}, or a `uiScale` not one of {100, 125, 150, 175, 200}) rejects. On
- *     success the returned snapshot is the new source of truth for every
- *     control on this page; on failure nothing changed server-side, so
- *     controls are re-rendered from the last known-good `settings`/`dial`/
- *     `sleepRemainingSeconds`/`hardwareDecodingRestartRequired` already held
- *     in memory.
+ *     "miniPlayer", "startWithWindows", "uiScale", "sleepAtEndOfVideo",
+ *     "deepLinkScheme", "keepDisplayAwake", "hideShorts", "hideGuideTabs");
+ *     an unknown key, a wrong value type, or a value
+ *     outside the allowed set (e.g. a sleep timer minute count that is not
+ *     one of {0, 15, 30, 60, 90, 120}, or a `uiScale` not one of {100, 125,
+ *     150, 175, 200}) rejects. On success the returned snapshot is the new
+ *     source of truth for every control on this page; on failure nothing
+ *     changed server-side, so controls are re-rendered from the last
+ *     known-good `settings`/`dial`/`sleepRemainingSeconds`/
+ *     `hardwareDecodingRestartRequired`/`deepLinkSchemeRegistered` already
+ *     held in memory.
  *   settings_open_setup()                          -> void (opens the `setup` window)
  *   settings_check_updates()                       -> void (result appears in the `update` window)
  *   settings_diagnostics()                         -> string (plain-text diagnostics snapshot;
@@ -96,6 +103,7 @@ const STRINGS = {
       languageTh: "ไทย",
       languageEn: "English",
       startWithWindowsLabel: "เริ่ม Lalin Cast อัตโนมัติเมื่อเข้าสู่ระบบ Windows",
+      deepLinkLabel: "เปิดลิงก์ lalin-cast://",
       uiScaleLabel: "ขนาดหน้าจอ UI",
       uiScaleNote: "หมายเหตุ: มีผลทันที",
       profileLegend: "โปรไฟล์ตั้งค่าด่วน",
@@ -124,6 +132,11 @@ const STRINGS = {
       hardwareDecodingLabel: "ถอดรหัสวิดีโอด้วยฮาร์ดแวร์",
       hardwareDecodingNote: "หมายเหตุ: มีผลหลังเปิดแอปใหม่",
       sleepAtEndLabel: "หยุดเล่นเมื่อจบวิดีโอ",
+      keepDisplayAwakeLabel: "กันจอดับ/เครื่องหลับขณะเล่น",
+    },
+    youtubePage: {
+      hideShortsLabel: "ซ่อนชั้น Shorts บนหน้าแรก",
+      hideGuideTabsLabel: "ซ่อนแท็บ Shorts ในแถบนำทางด้านข้าง",
     },
     display: {
       heading: "หน้าจอ",
@@ -175,6 +188,7 @@ const STRINGS = {
       languageTh: "ไทย",
       languageEn: "English",
       startWithWindowsLabel: "Start Lalin Cast automatically when Windows starts",
+      deepLinkLabel: "Enable lalin-cast:// links",
       uiScaleLabel: "UI scale",
       uiScaleNote: "Note: applies immediately",
       profileLegend: "Quick-setup profiles",
@@ -203,6 +217,11 @@ const STRINGS = {
       hardwareDecodingLabel: "Hardware video decoding",
       hardwareDecodingNote: "Note: applies after restarting the app",
       sleepAtEndLabel: "Stop playback at the end of the video",
+      keepDisplayAwakeLabel: "Keep the display/machine awake during playback",
+    },
+    youtubePage: {
+      hideShortsLabel: "Hide the Shorts shelf on the home page",
+      hideGuideTabsLabel: "Hide the Shorts tab in the side navigation",
     },
     display: {
       heading: "Display",
@@ -283,6 +302,28 @@ const CONTROLS_TABLE = {
 // docs/plans/W5_DESKTOP_PLAN.md.
 const START_WITH_WINDOWS_NOTE =
   "เพิ่ม Lalin Cast ในรายการเริ่มต้นของ Windows (registry Run key ของบัญชีนี้) มีผลตั้งแต่การเข้าสู่ระบบครั้งถัดไป / Adds Lalin Cast to this account's Windows startup (registry Run key); takes effect at the next sign-in";
+// Same fixed-vocabulary rationale as START_WITH_WINDOWS_NOTE above, per the
+// "หน้า settings" contract in docs/plans/W7_DEEPLINK_PLAN.md section 5.
+const DEEP_LINK_NOTE =
+  "ให้ลิงก์ lalin-cast:// เปิดด้วย Lalin Cast (เขียนในรีจิสทรีของบัญชีนี้เท่านั้น) / Let lalin-cast:// links open in Lalin Cast (written to this account's registry only)";
+const DEEP_LINK_STATUS_TEXT =
+  "เปิดไว้แต่ยังไม่ได้จดทะเบียน — ลองปิดแล้วเปิดใหม่ / Enabled but not registered — try turning it off and on again";
+// Same fixed-vocabulary rationale as DEEP_LINK_NOTE above, per the "หน้า
+// settings" contract in docs/plans/W8_BOUNDARY_PLAN.md section 4.
+const KEEP_DISPLAY_AWAKE_NOTE =
+  "กันจอดับเฉพาะตอนที่กำลังเล่นวิดีโอ / Only while a video is actually playing";
+// The "หน้า YouTube / YouTube page" section heading is itself bilingual-fixed
+// (shown verbatim regardless of the window's active UI language), same as
+// CONTROLS_TABLE.caption above — it names the section, it is not page chrome
+// translated per language.
+const YOUTUBE_PAGE_HEADING_TEXT = "หน้า YouTube / YouTube page";
+// States plainly (per the W8 boundary contract) that hiding is CSS-only on
+// our side, never touches YouTube's own data or behaviour, and may stop
+// working whenever YouTube changes its pages — the exact boundary recorded
+// in ADR-004.
+const HIDE_NOTE =
+  "การซ่อนนี้ทำด้วย CSS ของ Lalin Cast เท่านั้น ไม่ได้แก้ไขข้อมูลหรือการทำงานของ YouTube และอาจหยุดทำงานเมื่อ YouTube เปลี่ยนหน้าเว็บ / " +
+  "This hiding is done only with Lalin Cast's own CSS. It does not change YouTube's data or behaviour, and it may stop working when YouTube changes its pages.";
 const DIAGNOSTICS_COPIED_TEXT = "คัดลอกแล้ว / Copied";
 const DIAGNOSTICS_MANUAL_COPY_TEXT = "เลือกข้อความแล้วคัดลอกเอง / Select the text and copy it";
 
@@ -333,6 +374,10 @@ const SETTINGS_KEYS = {
   startWithWindows: "startWithWindows",
   uiScale: "uiScale",
   sleepAtEndOfVideo: "sleepAtEndOfVideo",
+  deepLinkScheme: "deepLinkScheme",
+  keepDisplayAwake: "keepDisplayAwake",
+  hideShorts: "hideShorts",
+  hideGuideTabs: "hideGuideTabs",
 };
 
 // Maps each profile button's element id to the profile name
@@ -448,6 +493,9 @@ function mergeSnapshot(data, snapshot) {
   if (Object.prototype.hasOwnProperty.call(s, "hardwareDecodingRestartRequired")) {
     data.hardwareDecodingRestartRequired = s.hardwareDecodingRestartRequired;
   }
+  if (Object.prototype.hasOwnProperty.call(s, "deepLinkSchemeRegistered")) {
+    data.deepLinkSchemeRegistered = s.deepLinkSchemeRegistered;
+  }
   return data;
 }
 
@@ -496,6 +544,11 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "start-with-windows-label", strings.general.startWithWindowsLabel);
   setText(doc, "start-with-windows-note", START_WITH_WINDOWS_NOTE);
 
+  setText(doc, "deep-link-label", strings.general.deepLinkLabel);
+  setText(doc, "deep-link-note", DEEP_LINK_NOTE);
+  setText(doc, "deep-link-status", DEEP_LINK_STATUS_TEXT);
+  setAttr(doc, "deep-link-status", "data-level", "warn");
+
   setText(doc, "ui-scale-label", strings.general.uiScaleLabel);
   setText(doc, "ui-scale-note", strings.general.uiScaleNote);
   buildSelectOptions(doc, "ui-scale-select", UI_SCALE_OPTIONS);
@@ -516,8 +569,15 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "codec-filter-note", strings.playback.codecFilterNote);
   setText(doc, "hardware-decoding-label", strings.playback.hardwareDecodingLabel);
   setText(doc, "sleep-at-end-label", strings.playback.sleepAtEndLabel);
+  setText(doc, "keep-display-awake-label", strings.playback.keepDisplayAwakeLabel);
+  setText(doc, "keep-display-awake-note", KEEP_DISPLAY_AWAKE_NOTE);
   buildSelectOptions(doc, "sleep-timer-select", SLEEP_TIMER_OPTIONS);
   buildSelectOptions(doc, "codec-filter-select", CODEC_FILTER_OPTIONS);
+
+  setText(doc, "youtube-page-heading", YOUTUBE_PAGE_HEADING_TEXT);
+  setText(doc, "hide-shorts-label", strings.youtubePage.hideShortsLabel);
+  setText(doc, "hide-guide-tabs-label", strings.youtubePage.hideGuideTabsLabel);
+  setText(doc, "hide-note", HIDE_NOTE);
 
   setText(doc, "display-heading", strings.display.heading);
   setText(doc, "fullscreen-label", strings.display.fullscreen);
@@ -607,6 +667,15 @@ function renderHardwareDecodingNote(doc, strings, restartRequired) {
   setAttr(doc, "hardware-decoding-note", "data-level", restartRequired ? "warn" : "info");
 }
 
+// Shown only when the toggle is on but the HKCU registration does not (yet)
+// match it, e.g. a `register` call failed silently on a previous launch's
+// startup reconcile. Same warning style as the hardware-decoding restart
+// note (`.note-line[data-level="warn"]`).
+function renderDeepLinkStatus(doc, deepLinkScheme, deepLinkSchemeRegistered) {
+  const visible = deepLinkScheme === true && deepLinkSchemeRegistered === false;
+  setHidden(doc, "deep-link-status", !visible);
+}
+
 // The DIAL name field is never overwritten while the user has it focused —
 // both for a normal settings_set response (they may already be editing the
 // next name) and, more importantly, for the background refresh loop, which
@@ -630,6 +699,8 @@ function renderDynamic(doc, strings, data) {
   setChecked(doc, "language-th", settings.language === "th");
   setChecked(doc, "language-en", settings.language !== "th");
   setChecked(doc, "start-with-windows-toggle", !!settings.startWithWindows);
+  setChecked(doc, "deep-link-toggle", !!settings.deepLinkScheme);
+  renderDeepLinkStatus(doc, settings.deepLinkScheme, data && data.deepLinkSchemeRegistered);
   setValue(doc, "ui-scale-select", settings.uiScale != null ? settings.uiScale : 100);
   renderDialNameInput(doc, settings.dialFriendlyName || "");
   renderDial(doc, strings, data && data.dial);
@@ -640,6 +711,10 @@ function renderDynamic(doc, strings, data) {
   setChecked(doc, "hardware-decoding-toggle", !!settings.hardwareDecoding);
   renderHardwareDecodingNote(doc, strings, !!(data && data.hardwareDecodingRestartRequired));
   setChecked(doc, "sleep-at-end-toggle", !!settings.sleepAtEndOfVideo);
+  setChecked(doc, "keep-display-awake-toggle", !!settings.keepDisplayAwake);
+
+  setChecked(doc, "hide-shorts-toggle", !!settings.hideShorts);
+  setChecked(doc, "hide-guide-tabs-toggle", !!settings.hideGuideTabs);
 
   setChecked(doc, "fullscreen-toggle", !!settings.fullscreen);
   setChecked(doc, "keep-on-top-toggle", !!settings.keepOnTop);
@@ -1088,6 +1163,10 @@ function init(doc, win) {
     wireBooleanToggle(doc, win, "hardware-decoding-toggle", SETTINGS_KEYS.hardwareDecoding);
     wireBooleanToggle(doc, win, "start-with-windows-toggle", SETTINGS_KEYS.startWithWindows);
     wireBooleanToggle(doc, win, "sleep-at-end-toggle", SETTINGS_KEYS.sleepAtEndOfVideo);
+    wireBooleanToggle(doc, win, "deep-link-toggle", SETTINGS_KEYS.deepLinkScheme);
+    wireBooleanToggle(doc, win, "keep-display-awake-toggle", SETTINGS_KEYS.keepDisplayAwake);
+    wireBooleanToggle(doc, win, "hide-shorts-toggle", SETTINGS_KEYS.hideShorts);
+    wireBooleanToggle(doc, win, "hide-guide-tabs-toggle", SETTINGS_KEYS.hideGuideTabs);
     wireSelectControl(doc, win, "sleep-timer-select", SETTINGS_KEYS.sleepTimerMinutes, (raw) => parseInt(raw, 10));
     wireSelectControl(doc, win, "codec-filter-select", SETTINGS_KEYS.codecFilter);
     wireSelectControl(doc, win, "ui-scale-select", SETTINGS_KEYS.uiScale, (raw) => parseInt(raw, 10));

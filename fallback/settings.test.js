@@ -72,6 +72,10 @@ function createStubDom() {
     "start-with-windows-toggle",
     "start-with-windows-label",
     "start-with-windows-note",
+    "deep-link-toggle",
+    "deep-link-label",
+    "deep-link-note",
+    "deep-link-status",
     "ui-scale-label",
     "ui-scale-select",
     "ui-scale-note",
@@ -97,6 +101,15 @@ function createStubDom() {
     "hardware-decoding-note",
     "sleep-at-end-toggle",
     "sleep-at-end-label",
+    "keep-display-awake-toggle",
+    "keep-display-awake-label",
+    "keep-display-awake-note",
+    "youtube-page-heading",
+    "hide-shorts-toggle",
+    "hide-shorts-label",
+    "hide-guide-tabs-toggle",
+    "hide-guide-tabs-label",
+    "hide-note",
     "display-heading",
     "fullscreen-toggle",
     "fullscreen-label",
@@ -149,6 +162,7 @@ function createStubDom() {
     "diagnostics-result",
     "launch-command-output",
     "launch-command-result",
+    "deep-link-status",
   ].forEach((id) => {
     elements[id].hidden = true;
   });
@@ -232,6 +246,10 @@ function baseSettings(overrides) {
       startWithWindows: false,
       uiScale: 100,
       sleepAtEndOfVideo: false,
+      deepLinkScheme: false,
+      keepDisplayAwake: true,
+      hideShorts: false,
+      hideGuideTabs: false,
     },
     overrides,
   );
@@ -246,6 +264,7 @@ function baseSettingsData(overrides) {
       dial: { state: "ready", host: "192.168.1.50", port: 51234, message: null },
       sleepRemainingSeconds: null,
       hardwareDecodingRestartRequired: false,
+      deepLinkSchemeRegistered: false,
     },
     overrides,
   );
@@ -354,6 +373,21 @@ pending.push(
     assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "info");
     assert.strictEqual(elements["sleep-at-end-toggle"].checked, false);
     assert.ok(elements["sleep-at-end-label"].textContent.length > 0);
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, true);
+    assert.ok(elements["keep-display-awake-label"].textContent.length > 0);
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("Only while a video is actually playing"));
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("กันจอดับเฉพาะตอนที่กำลังเล่นวิดีโอ"));
+
+    // YouTube page
+    assert.ok(elements["youtube-page-heading"].textContent.includes("หน้า YouTube"));
+    assert.ok(elements["youtube-page-heading"].textContent.includes("YouTube page"));
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, false);
+    assert.ok(elements["hide-shorts-label"].textContent.length > 0);
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, false);
+    assert.ok(elements["hide-guide-tabs-label"].textContent.length > 0);
+    assert.ok(elements["hide-note"].textContent.includes("CSS"));
+    assert.ok(elements["hide-note"].textContent.includes("YouTube's data or behaviour"));
+    assert.ok(elements["hide-note"].textContent.includes("ไม่ได้แก้ไขข้อมูลหรือการทำงานของ YouTube"));
 
     // Display
     assert.strictEqual(elements["fullscreen-toggle"].checked, false);
@@ -413,6 +447,15 @@ pending.push(
     init(doc, win);
     assert.strictEqual(doc.documentElement.lang, "th");
     assert.ok(elements["page-title"].textContent.includes("การตั้งค่า"));
+    assert.ok(elements["keep-display-awake-label"].textContent.length > 0);
+    assert.ok(elements["hide-shorts-label"].textContent.length > 0);
+    assert.ok(elements["hide-guide-tabs-label"].textContent.length > 0);
+    // The heading and notes for these three controls are bilingual-fixed
+    // (same rationale as CONTROLS_TABLE), so they must not change with the
+    // window's active UI language.
+    assert.ok(elements["youtube-page-heading"].textContent.includes("YouTube page"));
+    assert.ok(elements["keep-display-awake-note"].textContent.includes("Only while a video is actually playing"));
+    assert.ok(elements["hide-note"].textContent.includes("This hiding is done only with Lalin Cast's own CSS"));
   }),
 );
 
@@ -468,6 +511,10 @@ const BOOLEAN_CONTROLS = [
   { id: "hardware-decoding-toggle", key: "hardwareDecoding" },
   { id: "start-with-windows-toggle", key: "startWithWindows" },
   { id: "sleep-at-end-toggle", key: "sleepAtEndOfVideo" },
+  { id: "deep-link-toggle", key: "deepLinkScheme" },
+  { id: "keep-display-awake-toggle", key: "keepDisplayAwake" },
+  { id: "hide-shorts-toggle", key: "hideShorts" },
+  { id: "hide-guide-tabs-toggle", key: "hideGuideTabs" },
 ];
 
 BOOLEAN_CONTROLS.forEach(({ id, key }) => {
@@ -586,6 +633,238 @@ pending.push(
     assert.strictEqual(elements["start-with-windows-toggle"].checked, false, "reverted to the last known-good value");
     assert.strictEqual(elements["settings-error"].hidden, false);
     assert.ok(elements["settings-error"].textContent.includes("registry write failed"));
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for deepLinkScheme reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("register failed")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ deepLinkScheme: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    // Simulate the user turning the control on (browsers flip `checked`
+    // before the `change` listener runs).
+    elements["deep-link-toggle"].checked = true;
+    elements["deep-link-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["deep-link-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("register failed"));
+  }),
+);
+
+pending.push(
+  test("a successful deepLinkScheme toggle applies the returned snapshot's registration status", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ deepLinkScheme: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+          deepLinkSchemeRegistered: true,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ deepLinkScheme: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["deep-link-toggle"].checked = true;
+    elements["deep-link-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["deep-link-toggle"].checked, true);
+    assert.strictEqual(elements["deep-link-status"].hidden, true, "registered, so no warning shown");
+  }),
+);
+
+pending.push(
+  test("a deepLinkScheme toggle the host accepted but could not register raises the warning line", async () => {
+    // The exact condition #deep-link-status exists for: settings_set
+    // resolved (so the toggle stays on) but the returned snapshot reports
+    // the scheme is not actually registered.
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ deepLinkScheme: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+          deepLinkSchemeRegistered: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ deepLinkScheme: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["deep-link-toggle"].checked = true;
+    elements["deep-link-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["deep-link-toggle"].checked, true);
+    assert.strictEqual(elements["deep-link-status"].hidden, false, "not registered, so the warning must show");
+    assert.strictEqual(elements["deep-link-status"].getAttribute("data-level"), "warn");
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Wave 8: keepDisplayAwake, hideShorts, hideGuideTabs — each covered for both
+// its success path (also exercised generically via BOOLEAN_CONTROLS above)
+// and its own settings_set rejection/revert path, per the U3 contract in
+// docs/plans/W8_BOUNDARY_PLAN.md section 4.
+// ---------------------------------------------------------------------------
+
+pending.push(
+  test("a successful keepDisplayAwake toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ keepDisplayAwake: false }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ keepDisplayAwake: true }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["keep-display-awake-toggle"].checked = false;
+    elements["keep-display-awake-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, false);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for keepDisplayAwake reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("power API unavailable")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ keepDisplayAwake: true }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    // Simulate the user turning the control off (browsers flip `checked`
+    // before the `change` listener runs).
+    elements["keep-display-awake-toggle"].checked = false;
+    elements["keep-display-awake-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["keep-display-awake-toggle"].checked, true, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("power API unavailable"));
+  }),
+);
+
+pending.push(
+  test("a successful hideShorts toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ hideShorts: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideShorts: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-shorts-toggle"].checked = true;
+    elements["hide-shorts-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, true);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for hideShorts reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("store locked")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideShorts: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-shorts-toggle"].checked = true;
+    elements["hide-shorts-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-shorts-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("store locked"));
+  }),
+);
+
+pending.push(
+  test("a successful hideGuideTabs toggle applies the returned snapshot", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_set: () =>
+        Promise.resolve({
+          settings: baseSettings({ hideGuideTabs: true }),
+          dial: baseSettingsData().dial,
+          sleepRemainingSeconds: null,
+          hardwareDecodingRestartRequired: false,
+        }),
+    });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideGuideTabs: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-guide-tabs-toggle"].checked = true;
+    elements["hide-guide-tabs-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, true);
+    assert.strictEqual(elements["settings-error"].hidden, true);
+  }),
+);
+
+pending.push(
+  test("a settings_set rejection for hideGuideTabs reverts the toggle and shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_set: () => Promise.reject(new Error("store locked")) });
+    const win = {
+      __LALIN_SETTINGS__: baseSettingsData({ settings: baseSettings({ hideGuideTabs: false }) }),
+      __TAURI__: tauri,
+    };
+    init(doc, win);
+
+    elements["hide-guide-tabs-toggle"].checked = true;
+    elements["hide-guide-tabs-toggle"].dispatch("change");
+    await nextTick();
+
+    assert.strictEqual(elements["hide-guide-tabs-toggle"].checked, false, "reverted to the last known-good value");
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("store locked"));
   }),
 );
 
@@ -1268,6 +1547,66 @@ pending.push(
     init(doc, win);
     assert.strictEqual(elements["hardware-decoding-note"].getAttribute("data-level"), "warn");
     assert.ok(elements["hardware-decoding-note"].textContent.length > 0);
+  }),
+);
+
+// deep-link-status appears only when deepLinkScheme === true AND
+// deepLinkSchemeRegistered === false; every other combination of the two
+// snapshot fields keeps it hidden.
+const DEEP_LINK_STATUS_CASES = [
+  { deepLinkScheme: false, deepLinkSchemeRegistered: false, expectHidden: true, label: "off / not registered" },
+  { deepLinkScheme: false, deepLinkSchemeRegistered: true, expectHidden: true, label: "off / registered" },
+  { deepLinkScheme: true, deepLinkSchemeRegistered: true, expectHidden: true, label: "on / registered" },
+  { deepLinkScheme: true, deepLinkSchemeRegistered: false, expectHidden: false, label: "on / not registered" },
+];
+
+DEEP_LINK_STATUS_CASES.forEach(({ deepLinkScheme, deepLinkSchemeRegistered, expectHidden, label }) => {
+  pending.push(
+    test(`deep-link-status stays ${expectHidden ? "hidden" : "visible"} when ${label}`, () => {
+      const { doc, elements } = createStubDom();
+      const { tauri } = makeTauriStub();
+      const win = {
+        __LALIN_SETTINGS__: baseSettingsData({
+          settings: baseSettings({ deepLinkScheme }),
+          deepLinkSchemeRegistered,
+        }),
+        __TAURI__: tauri,
+      };
+      init(doc, win);
+      assert.strictEqual(elements["deep-link-status"].hidden, expectHidden);
+      if (!expectHidden) {
+        assert.ok(elements["deep-link-status"].textContent.length > 0);
+        assert.strictEqual(elements["deep-link-status"].getAttribute("data-level"), "warn");
+      }
+    }),
+  );
+});
+
+pending.push(
+  test("the refresh timer updates deep-link-status when the registration state changes elsewhere", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({
+      settings_get: () =>
+        Promise.resolve(
+          baseSettingsData({
+            settings: baseSettings({ deepLinkScheme: true }),
+            deepLinkSchemeRegistered: false,
+          }),
+        ),
+    });
+    const fake = makeFakeTimers();
+    const win = makeWinWithTimers(
+      baseSettingsData({ settings: baseSettings({ deepLinkScheme: true }), deepLinkSchemeRegistered: true }),
+      tauri,
+      fake,
+    );
+    init(doc, win);
+    assert.strictEqual(elements["deep-link-status"].hidden, true, "starts registered, so hidden");
+
+    fake.timers[0].fn();
+    await nextTick();
+
+    assert.strictEqual(elements["deep-link-status"].hidden, false, "registration dropped, so now visible");
   }),
 );
 
