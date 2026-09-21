@@ -468,7 +468,7 @@ crate name then version.
 | 365 | [tauri-plugin](https://github.com/tauri-apps/tauri) | 2.6.3 | `Apache-2.0 OR MIT` |
 | 366 | [tauri-plugin-deep-link](https://github.com/tauri-apps/plugins-workspace) | 2.4.10 | `Apache-2.0 OR MIT` |
 | 367 | [tauri-plugin-single-instance](https://github.com/tauri-apps/plugins-workspace) | 2.4.4 | `Apache-2.0 OR MIT` |
-| 368 | [tauri-plugin-store](https://github.com/tauri-apps/plugins-workspace) | 2.4.3 | `Apache-2.0 OR MIT` |
+| 368 | [tauri-plugin-store](https://github.com/tauri-apps/plugins-workspace) | 2.4.5 | `Apache-2.0 OR MIT` |
 | 369 | [tauri-plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.11.0 | `Apache-2.0 OR MIT` |
 | 370 | [tauri-runtime](https://github.com/tauri-apps/tauri) | 2.11.3 | `Apache-2.0 OR MIT` |
 | 371 | [tauri-runtime-wry](https://github.com/tauri-apps/tauri) | 2.11.4 | `Apache-2.0 OR MIT` |
