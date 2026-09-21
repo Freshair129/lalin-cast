@@ -24,6 +24,8 @@ version number.
   `license = "Apache-2.0"` ใน `src-tauri/Cargo.toml`) / Lalin Cast's own source code is licensed
   under the Apache License 2.0 (root `LICENSE` file and `license = "Apache-2.0"` in
   `src-tauri/Cargo.toml`)
+- ผู้ก่อตั้งอนุมัติ `PRIVACY.md` และ `TERMS.md` แล้ว ปิด human gate H1 / the founder approved
+  `PRIVACY.md` and `TERMS.md`, closing human gate H1
 
 #### H0 — Release readiness (`docs/plans/H0_RELEASE_READINESS_PLAN.md`)
 

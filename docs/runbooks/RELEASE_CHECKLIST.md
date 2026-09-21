@@ -1,7 +1,7 @@
 ---
-version: "0.1.8b"
+version: "0.1.9b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T19:00:00+07:00,LALIN"
+last_update: "2026-09-21T20:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -34,10 +34,14 @@ tag — if any item is not done, **do not tag**:
 
 - [ ] **Human gates H1–H4 ปิดครบแล้ว** (`docs/plans/H0_RELEASE_READINESS_PLAN.md`) — **human gates
       H1–H4 are all closed**:
-  - [ ] H1 — ผู้ก่อตั้งอนุมัติ `PRIVACY.md`/`TERMS.md` และเลือกสัญญาอนุญาตแล้ว
+  - [x] H1 — ผู้ก่อตั้งอนุมัติ `PRIVACY.md`/`TERMS.md` และเลือกสัญญาอนุญาตแล้ว
         (`docs/LICENSE_DECISION.md` มีสถานะ "ตัดสินใจแล้ว" ไม่ใช่ "ยังไม่ตัดสินใจ") — the founder has
         approved `PRIVACY.md`/`TERMS.md` and chosen a license (`docs/LICENSE_DECISION.md`'s status
         says "decided", not "undecided")
+        **ปิดแล้ว 2026-09-21:** เลือก Apache-2.0 (PR #17) และอนุมัติ PRIVACY/TERMS — ถ้า PRIVACY หรือ
+        TERMS ถูกแก้เนื้อหาหลังวันนี้ ให้ขออนุมัติใหม่ก่อน tag / **Closed 2026-09-21:** Apache-2.0
+        chosen (PR #17) and PRIVACY/TERMS approved — if either document's substance changes after
+        this date, get it re-approved before tagging
   - [ ] H2 — ผ่าน clean-VM install → update matrix แล้ว — the clean-VM install → update matrix has
         passed
   - [ ] H3 — regression บน Leanback จริง และการจับคู่ iPhone ด้วย identity ปัจจุบันผ่านแล้ว — real
@@ -319,3 +323,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.6b | 2026-09-21 | candidate | Added the pre-tag human gate H29 (extract the `lalin-cast-dryrun-portable` CI artifact to a USB drive on a clean machine, confirm settings persist across a restart, and confirm neither `%APPDATA%\ai.lalin.cast`/`%LOCALAPPDATA%\ai.lalin.cast` nor a Run key/`lalin-cast://` registry entry appears) for wave 11 (U3) | uncommitted | LALIN |
 | 0.1.7b | 2026-09-21 | candidate | Wave 12 (U3): noted that the version/CHANGELOG pre-tag items are now enforced by an automated guard (`Test-ReleaseVersion.ps1`) that fails `release.yml` before build if the tag doesn't match the app version or the CHANGELOG section is missing/empty; added post-tag items to check every asset exists for both architectures (installer, `.sig`, portable zip, `SHA256SUMS.txt`) and to verify checksums with `Get-FileHash`; added human gate H30 (first real draft release — download and verify every asset, run the portable zip, before publishing) | uncommitted | LALIN |
 | 0.1.8b | 2026-09-21 | candidate | Wave 12 (U3) repair: moved human gate H30 from section 1 (pre-tag) to section 3 (post-tag verification, right before "switch to published") since it can only close after a real tag exists; fixed the `Get-FileHash` installer example to use the real downloaded asset name `Lalin.Cast_<version>_<arch>-setup.exe` (GitHub turns the space in `productName` into a dot on upload), not the invented `Lalin-Cast_..._-setup.exe` | uncommitted | LALIN |
+| 0.1.9b | 2026-09-21 | candidate | Marked human gate H1 closed: Apache-2.0 chosen (PR #17) and the founder approved PRIVACY.md/TERMS.md; noted that a later change to either document's substance needs re-approval before tagging | uncommitted | LALIN |
