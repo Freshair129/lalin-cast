@@ -13,6 +13,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
+use crate::log;
+
 const MEDIA_LABEL: &str = "media";
 const DIAL_EVENT: &str = "lalin-cast-dial-request";
 /// App-wide event carrying [`DialStatus`], emitted on every state
@@ -397,7 +399,11 @@ fn run_supervisor(runtime: SupervisorState) {
             let current_ip = local_ipv4().ok();
 
             if runtime.reload.swap(false, Ordering::Relaxed) {
-                eprintln!("Lalin Cast: DIAL reload requested; rebinding listeners");
+                log::info(
+                    &runtime.app,
+                    "dial",
+                    "Lalin Cast: DIAL reload requested; rebinding listeners",
+                );
                 stop_generation(generation.take());
                 emit_status(
                     &runtime.app,
@@ -408,7 +414,11 @@ fn run_supervisor(runtime: SupervisorState) {
             }
 
             if address_changed(&active_host, current_ip) {
-                eprintln!("Lalin Cast: DIAL LAN address changed; rebinding listeners");
+                log::info(
+                    &runtime.app,
+                    "dial",
+                    "Lalin Cast: DIAL LAN address changed; rebinding listeners",
+                );
                 stop_generation(generation.take());
                 emit_status(
                     &runtime.app,
@@ -424,9 +434,13 @@ fn run_supervisor(runtime: SupervisorState) {
                         ListenerKind::Http => "HTTP",
                         ListenerKind::Ssdp => "SSDP",
                     };
-                    eprintln!(
-                        "Lalin Cast: DIAL {listener} listener stopped; rebinding: {}",
-                        failure.message
+                    log::warn(
+                        &runtime.app,
+                        "dial",
+                        &format!(
+                            "Lalin Cast: DIAL {listener} listener stopped; rebinding: {}",
+                            failure.message
+                        ),
                     );
                     stop_generation(generation.take());
                     emit_status(
@@ -464,15 +478,23 @@ fn run_supervisor(runtime: SupervisorState) {
         runtime.reload.store(false, Ordering::Relaxed);
         match start_generation(&runtime, failure_tx.clone(), local_ip, generation_id) {
             Ok(active) => {
-                eprintln!(
-                    "Lalin Cast: DIAL ready at {} (UDP {SSDP_PORT})",
-                    active.info.base
+                log::info(
+                    &runtime.app,
+                    "dial",
+                    &format!(
+                        "Lalin Cast: DIAL ready at {} (UDP {SSDP_PORT})",
+                        active.info.base
+                    ),
                 );
                 emit_status(&runtime.app, &runtime.status, ready_status(&active.info));
                 generation = Some(active);
             }
             Err(error) => {
-                eprintln!("Lalin Cast: DIAL bind failed; retrying: {error}");
+                log::warn(
+                    &runtime.app,
+                    "dial",
+                    &format!("Lalin Cast: DIAL bind failed; retrying: {error}"),
+                );
                 emit_status(
                     &runtime.app,
                     &runtime.status,
@@ -548,9 +570,10 @@ fn start_generation(
         failure_tx,
         generation_id,
     };
+    let ssdp_app = runtime.app.clone();
     let ssdp = match thread::Builder::new()
         .name("lalin-dial-ssdp".to_owned())
-        .spawn(move || run_ssdp(ssdp_socket, ssdp_state))
+        .spawn(move || run_ssdp(ssdp_socket, ssdp_app, ssdp_state))
     {
         Ok(thread) => thread,
         Err(error) => {
@@ -632,7 +655,11 @@ fn run_http(listener: TcpListener, app: AppHandle, state: RuntimeState) {
                 thread::sleep(Duration::from_millis(50));
             }
             Err(error) => {
-                eprintln!("Lalin Cast: DIAL HTTP accept failed: {error}");
+                log::error(
+                    &app,
+                    "dial",
+                    &format!("Lalin Cast: DIAL HTTP accept failed: {error}"),
+                );
                 let _ = state.failure_tx.send(ListenerFailure {
                     generation: state.generation_id,
                     kind: ListenerKind::Http,
@@ -696,7 +723,7 @@ fn handle_http(stream: &mut TcpStream, app: &AppHandle, state: &RuntimeState) {
     }
 }
 
-fn run_ssdp(socket: UdpSocket, state: RuntimeState) {
+fn run_ssdp(socket: UdpSocket, app: AppHandle, state: RuntimeState) {
     let mut buffer = [0_u8; 16 * 1024];
     while !state.stop.load(Ordering::Relaxed) {
         match socket.recv_from(&mut buffer) {
@@ -712,7 +739,11 @@ fn run_ssdp(socket: UdpSocket, state: RuntimeState) {
                     io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
                 ) => {}
             Err(error) => {
-                eprintln!("Lalin Cast: DIAL SSDP receive failed: {error}");
+                log::error(
+                    &app,
+                    "dial",
+                    &format!("Lalin Cast: DIAL SSDP receive failed: {error}"),
+                );
                 let _ = state.failure_tx.send(ListenerFailure {
                     generation: state.generation_id,
                     kind: ListenerKind::Ssdp,
@@ -1005,7 +1036,11 @@ fn persist_device_id(app: &AppHandle, device_id: &str) {
     };
     store.set("dialDeviceId", device_id);
     if let Err(error) = store.save() {
-        eprintln!("Lalin Cast: DIAL device id could not be saved: {error}");
+        log::warn(
+            app,
+            "dial",
+            &format!("Lalin Cast: DIAL device id could not be saved: {error}"),
+        );
     }
 }
 

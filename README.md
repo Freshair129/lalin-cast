@@ -115,6 +115,11 @@ Current scope:
 - a diagnostics snapshot in the settings window that can be copied to the clipboard on request
   (version, OS/WebView2, DIAL status and LAN IP, current settings — never a device id, URL, or TV
   code) — see [Settings](#settings);
+- a rotating local log file (at `%LOCALAPPDATA%\ai.lalin.cast\logs\`, capped at roughly 1 MiB
+  across two files) with a button in the settings window to open its folder, useful to attach when
+  reporting a problem — every line is run through a sanitiser that masks URLs and Windows paths
+  before anything is written, within the limits [`PRIVACY.md`](PRIVACY.md) sets out — see
+  [Support](#support);
 - a now-playing window title and tray-tooltip line, read locally from the standard Media Session
   API on the embedded YouTube page — see [Desktop integration](#desktop-integration) (human gate
   H16);
@@ -582,6 +587,8 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
   OS/WebView2, สถานะ DIAL พร้อม IP:พอร์ตบน LAN, ค่าตั้งปัจจุบัน — **ไม่มี** device id, URL หรือรหัส
   ทีวี) แล้วคัดลอกไปยังคลิปบอร์ดของเครื่องเมื่อกดปุ่มเท่านั้น (ถ้าคัดลอกอัตโนมัติไม่สำเร็จ ข้อความจะแสดง
   ในกล่องข้อความให้เลือกคัดลอกเอง) ใช้แนบกับรายงานปัญหา — ดู [`PRIVACY.md`](PRIVACY.md)
+- ปุ่ม "เปิดโฟลเดอร์ log" ในกลุ่ม "อัปเดตและเกี่ยวกับ" — เปิด Windows Explorer ที่โฟลเดอร์เก็บไฟล์ log
+  ในเครื่อง (`%LOCALAPPDATA%\ai.lalin.cast\logs\`) ทันทีที่กด ดู [Support](#support)
 
 การเปลี่ยนแต่ละค่ามีผลทันทีและบันทึกอัตโนมัติ ไม่ต้องกดปุ่มบันทึกแยก (ยกเว้น mini-player ซึ่งเป็นสถานะของ
 เซสชันปัจจุบัน ไม่ persist)
@@ -647,6 +654,9 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
   device id, URL, or TV code) and copies it to the device's clipboard only when the button is
   pressed (if the automatic copy fails, the text is shown in a box so you can select and copy it
   yourself); handy to attach to a bug report — see [`PRIVACY.md`](PRIVACY.md)
+- an "open log folder" button in the Updates & About group — opens Windows Explorer at the folder
+  holding the local log file (`%LOCALAPPDATA%\ai.lalin.cast\logs\`) as soon as it's pressed — see
+  [Support](#support)
 
 Every change applies immediately and saves automatically; there is no separate save button (except
 mini-player, which is current-session state and is not persisted).
@@ -693,6 +703,13 @@ never writes anything) exercises the same launcher lifecycle locally on a develo
 code) หรือข้อมูลบัญชีลงในรายงาน** ข้อความวินิจฉัยที่คัดลอกจากหน้าต่างการตั้งค่า (ดู [Settings](#settings))
 ไม่มีข้อมูลเหล่านี้อยู่แล้ว แต่ก็ควรตรวจทานก่อนวางเสมอ
 
+**ไฟล์ log ในเครื่อง:** Lalin Cast เก็บไฟล์ log ไว้ในเครื่องที่
+`%LOCALAPPDATA%\ai.lalin.cast\logs\lalin-cast.log` หมุนเวียนเมื่อไฟล์ปัจจุบันเกินประมาณ 512 KiB (เก็บไว้
+สูงสุดสองไฟล์ เพดานรวมประมาณ 1 MiB) กดปุ่ม "เปิดโฟลเดอร์ log" ในหน้าต่างการตั้งค่า (กลุ่ม "อัปเดตและ
+เกี่ยวกับ" — ดู [Settings](#settings)) เพื่อเปิดโฟลเดอร์นี้โดยตรง เวลารายงานปัญหา ควรแนบไฟล์
+`lalin-cast.log` (และ `lalin-cast.log.1` ถ้ามี) มาด้วย นอกเหนือจากข้อความวินิจฉัยที่คัดลอกได้ด้านบน —
+ดูรายละเอียดว่าไฟล์นี้เก็บและไม่เก็บอะไรที่ [`PRIVACY.md`](PRIVACY.md)
+
 **English:** Report a security issue privately following the steps in [`SECURITY.md`](SECURITY.md).
 See the app's change history in [`CHANGELOG.md`](CHANGELOG.md). File a bug or feature request
 through GitHub Issues using the prepared templates
@@ -701,6 +718,14 @@ through GitHub Issues using the prepared templates
 or account information into a report.** The diagnostics text copied from the settings window (see
 [Settings](#settings)) doesn't contain any of that, but it's still worth a quick look before you
 paste it.
+
+**Local log file:** Lalin Cast keeps a local log file at
+`%LOCALAPPDATA%\ai.lalin.cast\logs\lalin-cast.log`, rotating once the current file passes roughly
+512 KiB (keeping at most two files, so the total stays around 1 MiB). Press the "open log folder"
+button in the settings window (Updates & About group — see [Settings](#settings)) to open that
+folder directly. When reporting a problem, attach `lalin-cast.log` (and `lalin-cast.log.1` if
+present) along with the diagnostics text described above — see [`PRIVACY.md`](PRIVACY.md) for
+exactly what this file does and does not contain.
 
 ## Provenance
 

@@ -25,6 +25,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::launch::LifecycleCommand;
+use crate::log;
 
 const LIFECYCLE_FILE_NAME: &str = "lifecycle.json";
 const LIFECYCLE_TMP_FILE_NAME: &str = "lifecycle.json.tmp";
@@ -220,12 +221,20 @@ fn write(app: &AppHandle, state: &LifecycleState) {
     match app.path().app_local_data_dir() {
         Ok(dir) => {
             if let Err(error) = write_state_atomic(&dir, state) {
-                eprintln!("Lalin Cast: could not write lifecycle.json: {error}");
+                log::warn(
+                    app,
+                    "lifecycle",
+                    &format!("Lalin Cast: could not write lifecycle.json: {error}"),
+                );
             }
         }
         Err(error) => {
-            eprintln!(
-                "Lalin Cast: could not resolve the app local data dir for lifecycle.json: {error}"
+            log::warn(
+                app,
+                "lifecycle",
+                &format!(
+                    "Lalin Cast: could not resolve the app local data dir for lifecycle.json: {error}"
+                ),
             );
         }
     }

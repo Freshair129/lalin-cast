@@ -1,0 +1,11 @@
+# Permission for opening the local log folder from the settings window.
+
+[[permission]]
+identifier = "allow-settings-open-log-folder"
+description = "Enables the settings_open_log_folder command without any pre-configured scope."
+commands.allow = ["settings_open_log_folder"]
+
+[[permission]]
+identifier = "deny-settings-open-log-folder"
+description = "Denies the settings_open_log_folder command."
+commands.deny = ["settings_open_log_folder"]

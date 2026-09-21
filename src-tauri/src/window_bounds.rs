@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_plugin_store::StoreExt;
 
+use crate::log;
 use crate::window_mode;
 use crate::MEDIA_LABEL;
 
@@ -226,7 +227,11 @@ pub fn schedule_debounced_save(app: &AppHandle) {
     if let Err(error) = spawned {
         // Let the next event try again rather than leaving `pending` stuck.
         state.pending.store(false, Ordering::SeqCst);
-        eprintln!("Lalin Cast: could not schedule a window-bounds save: {error}");
+        log::warn(
+            app,
+            "window_bounds",
+            &format!("Lalin Cast: could not schedule a window-bounds save: {error}"),
+        );
     }
 }
 

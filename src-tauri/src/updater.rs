@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Window};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::i18n::{self, Lang};
+use crate::log;
 
 const UPDATE_LABEL: &str = "update";
 const UPDATE_WINDOW_WIDTH: f64 = 480.0;
@@ -171,7 +172,11 @@ fn open_update_window(app: &AppHandle, lang: Lang, payload: UpdatePayload) {
             .build();
 
     if let Err(error) = result {
-        eprintln!("Lalin Cast: could not open the update window: {error}");
+        log::error(
+            app,
+            "updater",
+            &format!("Lalin Cast: could not open the update window: {error}"),
+        );
     }
 }
 
@@ -252,7 +257,11 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
             );
         }
         Err(error) => {
-            eprintln!("Lalin Cast: startup update check failed: {error}");
+            log::warn(
+                app,
+                "updater",
+                &format!("Lalin Cast: startup update check failed: {error}"),
+            );
         }
     }
 }
@@ -262,15 +271,22 @@ async fn run_check_locked(app: &AppHandle, manual: bool) {
 /// the sleep never occupies a Tokio worker; the check itself then runs to
 /// completion on Tauri's async runtime via `block_on`.
 pub fn schedule_startup_check(app: &AppHandle) {
-    let app = app.clone();
+    // Cloned under its own name so `app` survives the `move` closure below
+    // and is still available for the `log::warn` call after `spawn`
+    // returns.
+    let thread_app = app.clone();
     let spawned = thread::Builder::new()
         .name("lalin-cast-update-startup".to_owned())
         .spawn(move || {
             thread::sleep(STARTUP_CHECK_DELAY);
-            tauri::async_runtime::block_on(run_check(&app, false));
+            tauri::async_runtime::block_on(run_check(&thread_app, false));
         });
     if let Err(error) = spawned {
-        eprintln!("Lalin Cast: could not schedule the startup update check: {error}");
+        log::warn(
+            app,
+            "updater",
+            &format!("Lalin Cast: could not schedule the startup update check: {error}"),
+        );
     }
 }
 

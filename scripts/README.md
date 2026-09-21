@@ -58,6 +58,20 @@ human gate H13 (`docs/plans/W5_DESKTOP_PLAN.md`) — run it against a real Windo
 `lalin-cast.exe` and confirm `launch`/`focus`/`close` each end with exit code `0` in the expected
 order before closing the gate.
 
+## `check-notices.mjs`
+
+**ภาษาไทย:** ตรวจว่าตาราง package ใน `THIRD_PARTY_NOTICES.md` ตรงกับ `src-tauri/Cargo.lock` แบบสองทาง
+รันด้วย `node scripts/check-notices.mjs` จากรากของ repository ไม่ต้องติดตั้งอะไรเพิ่ม ออกด้วยรหัส 1 พร้อม
+รายการที่ขาดในแต่ละทิศเมื่อไม่ตรง และรหัส 0 พร้อมจำนวนรายการเมื่อตรงกัน รับ argument สองตัวเป็น path ของ
+lock และ notices ได้ (ใช้ตอนทดสอบกับไฟล์สำเนา) CI รัน job `notices` ด้วยคำสั่งนี้แบบ blocking ตั้งแต่ wave 9
+
+**English:** Compares the package table in `THIRD_PARTY_NOTICES.md` against `src-tauri/Cargo.lock` in
+both directions. Run `node scripts/check-notices.mjs` from the repository root; it needs no
+dependencies. It exits 1 and prints what is missing on each side when they disagree, and exits 0 with
+the entry count when they agree. Two optional arguments override the lock and notices paths, which is
+how the negative case is exercised against throwaway copies. CI runs it as the blocking `notices` job
+from wave 9 onward.
+
 ## CI smoke job
 
 `.github/workflows/ci.yml`'s `smoke` job (wave 6 U4) exercises the same `--version` and

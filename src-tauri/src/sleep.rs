@@ -23,6 +23,8 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::log;
+
 use crate::MEDIA_LABEL;
 
 /// Rust → page: `{ minutes }`, emitted to the `media` window when the timer
@@ -188,22 +190,30 @@ fn tick(state: &SleepState, my_generation: u64, now: Instant) -> TickOutcome {
 /// external "please stop" signal needed) as soon as [`tick`] reports
 /// anything other than `Wait`.
 fn spawn_tick_thread(app: AppHandle, generation: u64, minutes: u32) {
+    // Cloned under its own name so `app` itself survives the `move`
+    // closure below and is still available for the `log::warn` call after
+    // `spawn` returns.
+    let thread_app = app.clone();
     let spawned = thread::Builder::new()
         .name("lalin-cast-sleep-timer".to_owned())
         .spawn(move || loop {
             thread::sleep(TICK_INTERVAL);
-            let state = app.state::<SleepState>();
+            let state = thread_app.state::<SleepState>();
             match tick(&state, generation, Instant::now()) {
                 TickOutcome::Stale => return,
                 TickOutcome::Wait => continue,
                 TickOutcome::Fire => {
-                    fire(&app, minutes);
+                    fire(&thread_app, minutes);
                     return;
                 }
             }
         });
     if let Err(error) = spawned {
-        eprintln!("Lalin Cast: could not start the sleep timer thread: {error}");
+        log::warn(
+            &app,
+            "sleep",
+            &format!("Lalin Cast: could not start the sleep timer thread: {error}"),
+        );
     }
 }
 

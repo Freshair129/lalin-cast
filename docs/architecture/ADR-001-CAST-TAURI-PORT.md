@@ -1,7 +1,7 @@
 ---
-version: "0.15.0b"
+version: "0.16.0b"
 created_at: "2026-09-19T19:25:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T03:10:00+07:00,LALIN"
+last_update: "2026-09-21T05:30:00+07:00,LALIN"
 status: "beta"
 superseded_by: null
 attributes:
@@ -100,6 +100,7 @@ Play owner is replaced by this candidate.
 | `lalin-cast://` URL scheme (not a VacuumTube feature; new in wave 7, roadmap H1) | Rust `launch.rs` `parse_launch_url` extended to accept `lalin-cast://watch?v=<id>`/`lalin-cast://playlist?list=<id>` (case-insensitive scheme/host, the existing `is_valid_video_id`/`is_valid_playlist_id` validators, unchanged for `https`) alongside the existing `https` forms; `canonical()` still always returns an `https://www.youtube.com/...` URL. Opt-in HKCU registration of the scheme itself is via the approved `tauri-plugin-deep-link` crate (`deepLinkScheme` setting, `DeepLinkExt::deep_link().register("lalin-cast")`/`unregister`) — see the security rules below | wave 7 local slice — see `docs/plans/W7_DEEPLINK_PLAN.md` | `parse_launch_url` unit tests (accept/reject matrix, `https` unchanged, `canonical()` still `https`) plus real Explorer/browser-launch and toggle-off evidence (human gate H23) |
 | Keep-display-awake (not a VacuumTube feature; new in wave 8, closes escalation ก item 6) | Rust `power.rs` (`execution_state_flags(enabled, playing) -> u32` pure fn, a single long-lived worker thread owning `SetThreadExecutionState`, released with `ES_CONTINUOUS` on setting-off/pause/exit) driven by `apply_media_event`, `settings_set` and `RunEvent::Exit`; the `keepDisplayAwake` setting (default `true`) | wave 8 local slice — see `docs/plans/W8_BOUNDARY_PLAN.md` and `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` | `execution_state_flags` unit tests (all four enabled/playing combinations) plus real display-stays-on-while-playing and sleeps-normally-when-stopped evidence (human gate H25) |
 | Hide Shorts shelf / guide tabs (VacuumTube has `hide-shorts.js`/`guide-tabs.js`; deliberately **not ported** as-is — new CSS/DOM-only design in wave 8, closes escalation ก item 3) | `injected.js` `hide` section: a `MutationObserver` on already-rendered DOM (`requestAnimationFrame`-coalesced), pure matchers `isShortsShelf(el)`/`isShortsGuideTab(el)` (non-text, attribute/tag-based), a class-only `lalin-cast-hidden-shorts`/`lalin-cast-hidden-guide-tab` tag plus one `<style id="lalin-cast-hide-style">` scoped by `data-lalin-hide-shorts`/`data-lalin-hide-guide-tabs` on `documentElement`; the `hideShorts`/`hideGuideTabs` settings (both default `false`) | wave 8 local slice — see `docs/plans/W8_BOUNDARY_PLAN.md` and `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` (records why upstream's response-rewriting approach is not used, and see `LALIN_PROVENANCE.md` for the review record) | `injected.test.js` matcher match/not-match, focused-element-never-hidden, Home-tab-never-hidden, and prefs-toggle unit tests, plus real Leanback selector and focus-safety evidence (human gate H24) |
+| Rotating local log file + sanitiser (not a VacuumTube feature; new in wave 9, closes the gap where all 32 `eprintln!` call sites were invisible in a `windows_subsystem = "windows"` release build) | Rust `src/log.rs` — `log::info`/`log::warn`/`log::error` (each taking `&AppHandle`), a managed `LogState` mutex serializing append + size-check + rotation into one critical section, and the pure fn `sanitize_log_message(raw: &str) -> String` that every one of those three functions calls before writing a byte; rotates the current file to `lalin-cast.log.1` past ~512 KiB, keeping at most two files (~1 MiB total); `settings_open_log_folder` command (path from `app_local_data_dir` only) plus a settings-window button; all 32 former `eprintln!` sites now call `log::warn`/`log::error` | wave 9 local slice — see `docs/plans/W9_SUPPORTABILITY_PLAN.md` | `sanitize_log_message` unit tests (all three URL schemes, both path forms, mixed-in-one-line, control characters, length truncation, untouched normal text) plus a rotation test writing to a temp dir; human gate H26 |
 
 ## Endpoint and identity boundary
 
@@ -310,6 +311,31 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
   codebase's only other `unsafe` blocks are the pre-existing `GetUserDefaultUILanguage` call in
   `src/i18n.rs` and the `AttachConsole` call in `src/lib.rs`; its only other `windows-sys` features
   are `Win32_Globalization` and `Win32_System_Console`.
+- Added in wave 9, **one pure function**, `sanitize_log_message`, runs before every
+  `log::info`/`log::warn`/`log::error` call can put a byte in the file — it is not a rule the 32
+  call sites (nor any future one) have to individually remember to follow. What it actually
+  enforces is narrower than the full "no TV code, cookie, token, URL, or path" rule: it strips any
+  `http://`/`https://`/`lalin-cast://` URL and any Windows path (`<letter>:\...` or `\\...`), each
+  up to the next whitespace character, to a fixed placeholder, replaces every control character
+  with a space, and caps the result at 512 characters (counted in Unicode scalar values, so a Thai
+  character is never split). Because the match stops at whitespace, a URL using a scheme outside
+  those three, or a Windows path that itself contains a space (e.g. `C:\Program Files\...` or
+  `C:\Users\First Last\...`), is not fully caught — see `PRIVACY.md` section 11 for the exact
+  limit. This still closes the concrete leak vector that motivated it for the common case —
+  several call sites interpolate an OS `{error}` string, which can itself embed a full path and,
+  with it, the Windows account name. A TV pairing code, a cookie, and a token are a separate
+  guarantee with a separate mechanism: `sanitize_log_message` has no rule that matches any of the
+  three, because none of them is ever handed to a logging call in the first place — that remains
+  call-site discipline, same as before this wave, not something this function can see or catch.
+  `LogState` holds a single `Mutex` so the append, the size check and the
+  rotation are one critical section, and every write is best-effort: a failure to open, write, or
+  rotate the file is swallowed, never panics, and never blocks or delays startup. In debug builds
+  the same message is still mirrored to `eprintln!` so a developer does not lose the immediate
+  console view they had before this wave. `settings_open_log_folder` takes its path only from
+  `app_local_data_dir`, never from a page-supplied argument, and, like every other command on that
+  window, is label-gated to `"settings"` — no other window's capability file grants it. Wave 9 adds
+  no new crate, no new `windows-sys` feature, and no new `unsafe` block (`unsafe` count is unchanged
+  from wave 8).
 
 ## P0 acceptance criteria
 
@@ -390,3 +416,4 @@ own commands need — `media` (the remote YouTube surface), `update`, `setup`, `
 | 0.13.0b | 2026-09-21 | beta | Wave 6: added feature-matrix rows for UI scale, settings profiles, reset to defaults, the launch-command copy button, sleep at end of video, tray/menu play-pause and the controller Y-button help binding; documented the three new `settings` capability permissions, that profiles/reset route through the existing `apply_setting` whitelist only, that `uiScale` is set-checked, and the one-action `lalin-cast-remote` whitelist on the unchanged remote capability (see `docs/plans/W6_POLISH_PLAN.md`) | uncommitted | LALIN |
 | 0.14.0b | 2026-09-21 | beta | Wave 7: added feature-matrix rows for the stricter SSDP `MAN` validation and the `lalin-cast://` URL scheme; documented that `tauri-plugin-deep-link` is the sole approved crate exception used only for HKCU registry registration, that `tauri-plugin-single-instance`'s `deep-link` feature is deliberately not enabled so the URL keeps arriving through the existing `parse_cli` path, that no `deep-link:*` capability permission is granted anywhere, and that the `MAN` hardening is an intentional DIAL behavior change gated on human gate H22 (see `docs/plans/W7_DEEPLINK_PLAN.md`) | uncommitted | LALIN |
 | 0.15.0b | 2026-09-21 | beta | Wave 8: added feature-matrix rows for keep-display-awake and opt-in CSS-only Shorts-shelf/guide-tab hiding; resolved the three previously-`deferred`/`not in P0` ad-filtering/interception rows to a permanent "will not do", pointing at the founder's escalation ก decision; added the no-network-interception security rule and the one-`unsafe`-block/one-feature exception for `SetThreadExecutionState`, both citing the new `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` (see `docs/plans/W8_BOUNDARY_PLAN.md`) | uncommitted | LALIN |
+| 0.16.0b | 2026-09-21 | beta | Wave 9: added the feature-matrix row for the rotating local log file and its `sanitize_log_message` sanitiser (replacing all 32 `eprintln!` call sites); added the security rule recording what `sanitize_log_message` actually enforces before every write — the three URL schemes and the two Windows path prefixes, each masked only up to the next whitespace character, control characters turned into spaces, and a 512-character cap — while keeping a TV pairing code, cookie or token out of the file remains call-site discipline with no matching rule in the sanitiser; and that `settings_open_log_folder` is local-data-dir-only and label-gated; no new crate/feature/`unsafe` (see `docs/plans/W9_SUPPORTABILITY_PLAN.md`) | uncommitted | LALIN |

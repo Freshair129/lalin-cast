@@ -134,6 +134,26 @@ version number.
   the Shorts tab in the guide navigation (`hideGuideTabs`, off by default), both implemented purely
   with Lalin Cast's own CSS/classes
 
+#### Wave 9 — Supportability and guardrails (`docs/plans/W9_SUPPORTABILITY_PLAN.md`)
+
+- ไฟล์ log ในเครื่องแบบหมุนเวียน (`<app_local_data_dir>/logs/lalin-cast.log`) แทนที่จุด `eprintln!`
+  ทั้ง 32 จุดที่หายไปเงียบ ๆ ใน release build (ไม่มี console เพราะ `windows_subsystem = "windows"`) —
+  หมุนเวียนเมื่อเกิน 512 KiB เก็บไว้สูงสุดสองไฟล์ (เพดานรวมประมาณ 1 MiB) / a rotating local log file
+  (`<app_local_data_dir>/logs/lalin-cast.log`) replacing all 32 `eprintln!` call sites that were
+  silently lost in release builds (no console, because of `windows_subsystem = "windows"`) —
+  rotates past 512 KiB, keeps at most two files (roughly a 1 MiB total ceiling)
+- ปุ่มเปิดโฟลเดอร์ log ในหน้าตั้งค่า (กลุ่ม Updates/About) พร้อมหมายเหตุสองภาษาว่า log อยู่ในเครื่อง
+  เท่านั้น ไม่ถูกส่งไปที่ใด / a button in the settings window (Updates/About group) that opens the log
+  folder, with a bilingual note that the log stays local and is never sent anywhere
+- บรรทัด `logFile:` ในสแนปช็อตข้อมูลวินิจฉัย (ชื่อไฟล์และขนาดเท่านั้น ไม่ใช่ path เต็ม) / a `logFile:`
+  line in the diagnostics snapshot (filename and size only, never the full path)
+- CI job `notices` (บังคับผ่าน, ไม่มี `continue-on-error`) พร้อมสคริปต์
+  `scripts/check-notices.mjs` (Node ล้วน ไม่มี dependency) เทียบ `THIRD_PARTY_NOTICES.md` กับ
+  `src-tauri/Cargo.lock` สองทางทุกครั้งที่มี pull request / a blocking `notices` CI job (no
+  `continue-on-error`), backed by `scripts/check-notices.mjs` (plain Node, zero dependencies), that
+  compares `THIRD_PARTY_NOTICES.md` against `src-tauri/Cargo.lock` in both directions on every pull
+  request
+
 ### Changed
 
 #### Wave 2 — Living-room readiness (`docs/plans/W2_LIVING_ROOM_PLAN.md`)
@@ -241,3 +261,22 @@ version number.
   อยู่เท่านั้น ไม่ส่งหรือบันทึกข้อมูลใด ๆ ออกจากเครื่อง / `keepDisplayAwake` calls the Windows
   `SetThreadExecutionState` API only to tell the operating system the app is still in active use — it
   sends or records no data anywhere
+
+#### Wave 9 — Supportability and guardrails (`docs/plans/W9_SUPPORTABILITY_PLAN.md`)
+
+- ทุกบรรทัดที่เขียนลงไฟล์ log ผ่าน `sanitize_log_message` เสมอ ไม่มีเส้นทางที่ข้ามได้: URL สาม scheme
+  (`http://`, `https://`, `lalin-cast://`) และ path ของ Windows สองรูปแบบถูกแทนที่ด้วย `<url>`/`<path>`
+  โดยปิดบังถึงช่องว่างถัดไปเท่านั้น, ตัวอักษรควบคุมกลายเป็นช่องว่าง, และตัดที่ 512 ตัวอักษร ส่วนรหัสจับคู่ทีวี,
+  cookie และ token ไม่เคยถูกส่งเข้าฟังก์ชัน log เลยตั้งแต่ต้นทาง ซึ่งเป็นวินัยของจุดเรียก ไม่ใช่กฎใน sanitiser /
+  every line written to the log file passes through `sanitize_log_message` with no bypass: the three
+  URL schemes (`http://`, `https://`, `lalin-cast://`) and the two Windows path forms are replaced with
+  `<url>`/`<path>`, each masked only as far as the next whitespace character; control characters become
+  spaces; and the message is truncated to 512 characters. A TV pairing code, cookie or token is kept out
+  by never being handed to a logging call in the first place — call-site discipline, not a sanitiser rule
+- การเขียน log ที่ล้มเหลวเงียบเสมอ — ไม่ panic ไม่ block การเริ่มแอป / a failed log write is always
+  silent — it never panics and never blocks app startup
+- job `notices` ป้องกันไม่ให้ `THIRD_PARTY_NOTICES.md` หลุดจาก `Cargo.lock` แบบเงียบ ๆ อีกครั้ง (เหมือนที่
+  เกิดตอน merge `tauri-plugin-store` 2.4.3 → 2.4.5 ใน PR #6 ซึ่งต้องตามแก้แยกใน PR #12) / the `notices`
+  job prevents `THIRD_PARTY_NOTICES.md` from silently drifting out of sync with `Cargo.lock` again
+  (as happened when `tauri-plugin-store` 2.4.3 → 2.4.5 merged in PR #6 and had to be fixed after the
+  fact in PR #12)
