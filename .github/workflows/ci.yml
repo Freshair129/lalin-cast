@@ -304,3 +304,19 @@ jobs:
             exit 1
           fi
           echo "OK: check-notices.mjs exited $fixture_exit_code (non-zero) against the mismatched fixture, as expected."
+
+  release-scripts:
+    name: Release scripts self-test
+    # Wave 12 U2 (docs/plans/W12_RELEASE_ASSETS_PLAN.md, contract 7): scripts/release/** (contracts
+    # 1-5, written in parallel by stream U1) is exercised end-to-end against its own fixtures on
+    # every PR, independent of the Windows dry-run legs in release-dryrun.yml -- so a broken release
+    # script is caught here first, before it can reach either dry run or a real tag push. Blocking
+    # (no continue-on-error). Needs no Rust toolchain or Windows runner, so it stays as fast as
+    # `supply-chain` / `notices` above.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pwsh scripts/release/selftest.ps1
+        run: pwsh scripts/release/selftest.ps1

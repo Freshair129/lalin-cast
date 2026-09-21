@@ -24,6 +24,11 @@ Lalin Cast — โหมดพกพา / Portable mode
 - ดาวน์โหลด zip เวอร์ชันใหม่ แตกไฟล์ไปยังโฟลเดอร์ใหม่ แล้วย้ายโฟลเดอร์ lalin-cast-data จากชุดเก่ามาไว้ข้าง
   lalin-cast.exe ของชุดใหม่ (เพื่อไม่ให้เสียการตั้งค่าและ session เดิม)
 
+การตรวจไฟล์ก่อนแตก zip:
+- ก่อนแตก zip นี้ ให้ตรวจกับไฟล์ SHA256SUMS.txt ที่แนบมาด้วยกัน ด้วยคำสั่ง PowerShell
+  Get-FileHash .\Lalin-Cast_<เวอร์ชัน>_<arch>_portable.zip -Algorithm SHA256 แล้วเทียบค่ากับบรรทัดของไฟล์
+  นี้ใน SHA256SUMS.txt ถ้าไม่ตรง ห้ามแตกไฟล์นี้
+
 
 [English]
 
@@ -50,3 +55,8 @@ Your data:
 How to update:
 - Download the new version's zip, extract it to a new folder, then move the lalin-cast-data
   folder from the old copy next to the new lalin-cast.exe so your settings and session carry over.
+
+Verifying before you extract:
+- Before extracting this zip, verify it against the SHA256SUMS.txt file it shipped with by running
+  Get-FileHash .\Lalin-Cast_<version>_<arch>_portable.zip -Algorithm SHA256 in PowerShell and
+  comparing the result to that file's line in SHA256SUMS.txt. Do not extract it if they don't match.

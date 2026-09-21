@@ -171,6 +171,65 @@ cargo tauri build --debug --no-bundle --ci
 The GUI/WebView2 smoke test and clean install/update smoke are separate Windows
 runtime gates. Do not remove the VacuumTube reference until Tauri parity passes.
 
+## Download
+
+**ภาษาไทย:** Lalin Cast ยังไม่มีเวอร์ชันที่ tag เผยแพร่ต่อสาธารณะ (ดูสถานะที่
+[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md)) — ส่วนนี้อธิบายรูปแบบ asset
+ที่จะปรากฏบน GitHub Releases เมื่อ tag แรกออก:
+
+- **ตัวติดตั้ง (installer)** — ไฟล์ `*-setup.exe` ของสถาปัตยกรรม x64 คือทางเลือกหลัก ติดตั้งลงเครื่องแบบ
+  ปกติ และรับการอัปเดตอัตโนมัติผ่าน updater ที่เซ็นชื่อในตัว (ดู [Updating](#updating))
+- **แบบพกพา (portable)** — zip ชื่อ `Lalin-Cast_<เวอร์ชัน>_<arch>_portable.zip` ไม่ต้องติดตั้ง ไม่แตะ
+  registry ใด ๆ ของเครื่อง เหมาะกับ USB หรือเครื่องที่ไม่มีสิทธิ์ผู้ดูแลระบบ — ดูรายละเอียดที่
+  [Portable mode](#portable-mode--โหมดพกพา) **portable mode ไม่รับอัปเดตอัตโนมัติ** ต้องดาวน์โหลดเวอร์ชัน
+  ใหม่มาเองทุกครั้ง (ปุ่ม "ติดตั้ง" ในหน้าต่างอัปเดตถูกปิดไว้โดยเจตนา)
+- **ARM64** — ทั้งตัวติดตั้งและ zip พกพาของสถาปัตยกรรม ARM64 (`aarch64-pc-windows-msvc`) **ยังอยู่ในสถานะ
+  experimental** ไม่ได้ผ่านเกณฑ์ตรวจรับเดียวกับ x64 (ดู `docs/plans/W4_PLAYBACK_PLAN.md`) ใช้ด้วยความ
+  ระมัดระวัง
+- **การตรวจ checksum** — แต่ละสถาปัตยกรรมมีไฟล์ `Lalin-Cast_<เวอร์ชัน>_<arch>_SHA256SUMS.txt` แนบมาด้วย
+  เปิด PowerShell ในโฟลเดอร์ที่ดาวน์โหลดไฟล์แล้วรัน โดยใช้ **ชื่อไฟล์ตามที่ดาวน์โหลดมาจริง** (GitHub
+  เปลี่ยนช่องว่างใน "Lalin Cast" เป็นจุดตอนอัปโหลด asset จึงได้ตัวติดตั้งชื่อ
+  `Lalin.Cast_<เวอร์ชัน>_<arch>-setup.exe` ไม่ใช่ `Lalin-Cast_...`):
+  ```powershell
+  Get-FileHash .\Lalin.Cast_<เวอร์ชัน>_<arch>-setup.exe -Algorithm SHA256
+  ```
+  แล้วเทียบค่าที่ได้กับบรรทัดของไฟล์นั้นใน `SHA256SUMS.txt` (ตัวพิมพ์เล็ก-ใหญ่ไม่สำคัญ) — ถ้าไม่ตรง ห้าม
+  ใช้ไฟล์นั้น
+- **เรื่องการเซ็นชื่อ (Authenticode)** — binary ของ Lalin Cast **ยังไม่ได้เซ็นชื่อแบบ Authenticode**
+  จนกว่า human gate H4 จะปิด (ซื้อใบรับรอง code-signing) — Windows SmartScreen หรือเบราว์เซอร์อาจเตือนว่า
+  ไฟล์มาจาก "publisher ที่ไม่รู้จัก" นี่เป็นเรื่องปกติสำหรับไฟล์ที่ยังไม่เซ็นชื่อ ไม่ใช่สัญญาณว่าไฟล์ถูก
+  ดัดแปลง — ตรวจ checksum ตามขั้นตอนด้านบนแทนเพื่อยืนยันความถูกต้อง
+
+**English:** Lalin Cast has not tagged a public release yet (see status at
+[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md)) — this section describes
+the asset layout that will appear on GitHub Releases once the first tag ships:
+
+- **Installer** — the x64 architecture's `*-setup.exe` is the primary option; it installs normally
+  and receives automatic updates through the built-in signed updater (see [Updating](#updating))
+- **Portable** — a zip named `Lalin-Cast_<version>_<arch>_portable.zip` that needs no installation
+  and never touches the machine's registry, suited to a USB drive or a machine with no administrator
+  rights — see [Portable mode](#portable-mode--โหมดพกพา) for details. **Portable mode never receives
+  automatic updates** — download a new version yourself each time (the update window's "install"
+  button is deliberately disabled)
+- **ARM64** — both the installer and the portable zip for the ARM64 architecture
+  (`aarch64-pc-windows-msvc`) are **still experimental** and are not held to the same acceptance
+  gates as x64 (see `docs/plans/W4_PLAYBACK_PLAN.md`); use with caution
+- **Verifying a checksum** — each architecture ships a
+  `Lalin-Cast_<version>_<arch>_SHA256SUMS.txt` file alongside it. Open PowerShell in the folder you
+  downloaded the file into and run the command below using **the file name exactly as downloaded**
+  (GitHub turns the space in "Lalin Cast" into a dot when it uploads the asset, so the installer's
+  real name is `Lalin.Cast_<version>_<arch>-setup.exe`, not `Lalin-Cast_...`):
+  ```powershell
+  Get-FileHash .\Lalin.Cast_<version>_<arch>-setup.exe -Algorithm SHA256
+  ```
+  then compare the resulting hash (case-insensitive) against that file's line in
+  `SHA256SUMS.txt` — do not use the file if it does not match
+- **About signing (Authenticode)** — Lalin Cast's binaries are **not Authenticode-signed** until
+  human gate H4 closes (purchasing a code-signing certificate). Windows SmartScreen or your browser
+  may warn that the file is from an "unknown publisher"; this is expected for an unsigned file and is
+  not by itself a sign of tampering — verify the checksum per the steps above instead to confirm
+  integrity
+
 ## Controller and keyboard
 
 **ภาษาไทย:** Lalin Cast รองรับเกมคอนโทรลเลอร์ผ่าน Gamepad API มาตรฐานของเบราว์เซอร์ (ออกแบบมาให้ใช้กับ

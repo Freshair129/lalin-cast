@@ -1,7 +1,7 @@
 ---
-version: "0.1.6b"
+version: "0.1.8b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T15:00:00+07:00,LALIN"
+last_update: "2026-09-21T19:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -148,6 +148,20 @@ tag — if any item is not done, **do not tag**:
       stripped) — `.github/workflows/release.yml` automatically extracts this section as the GitHub
       Release body (see its "Extract CHANGELOG section for release body" step); if it cannot find
       one, it falls back to a generic sentence instead
+  > **wave 12:** ทั้งสองข้อข้างบนไม่ใช่แค่คำแนะนำอีกต่อไป — ตอนนี้มี **guard อัตโนมัติ**
+  > (`scripts/release/Test-ReleaseVersion.ps1`) เป็นสเต็ปแรกของ `.github/workflows/release.yml` ที่
+  > **ล้ม tag/release ทั้งชุดก่อนเริ่ม build ใด ๆ** ถ้า (ก) tag ที่ push ไม่ตรงกับเวอร์ชันแอปเป๊ะ ๆ
+  > (`vX.Y.Z` เทียบกับ `tauri.conf.json`/`Cargo.toml`) **หรือ** (ข) `CHANGELOG.md` ไม่มีหัวข้อ
+  > `## [X.Y.Z]` ของเวอร์ชันนั้น (หรือหัวข้อนั้นว่างเปล่า ไม่มีเนื้อหาใต้หัวข้อ) — ลืมข้อใดข้อหนึ่งจะไม่ได้
+  > draft release ที่ตั้งชื่อผิด/มี release note fallback อีกต่อไป แต่ workflow จะแดงทันทีก่อน build เริ่ม
+  > พร้อมข้อความบอกวิธีแก้ / **wave 12:** the two items above are no longer just guidance — there is now
+  > an **automated guard** (`scripts/release/Test-ReleaseVersion.ps1`) as the first step of
+  > `.github/workflows/release.yml` that **fails the whole tag/release before any build starts** if
+  > either (a) the pushed tag does not exactly match the app version (`vX.Y.Z` against
+  > `tauri.conf.json`/`Cargo.toml`), **or** (b) `CHANGELOG.md` has no `## [X.Y.Z]` heading for that
+  > version (or that heading has no content under it). Forgetting either one no longer produces a
+  > misnamed draft release with a fallback note — the workflow turns red immediately, before the
+  > build starts, with a message describing the fix
 - [ ] **`THIRD_PARTY_NOTICES.md` ตรงกับ `src-tauri/Cargo.lock` ปัจจุบัน** — รัน
       `cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1` แล้วตรวจว่ารายชื่อ
       crate/เวอร์ชัน/สัญญาอนุญาตในไฟล์ตรงกัน (ดูขั้นตอนที่ท้าย `THIRD_PARTY_NOTICES.md`) —
@@ -212,6 +226,44 @@ published:
       จริงได้ (ไม่ใช่แค่ดาวน์โหลดตรง) — open a previous release of the app (if one exists) and press
       "check for updates", confirming it sees this new release and can install it through the real
       updater (not just a direct download)
+- [ ] **(wave 12) ตรวจว่า asset ครบทั้งสองสถาปัตยกรรม** บน draft release — ต่อ leg (x64 และ arm64)
+      ต้องมี: ตัวติดตั้ง NSIS (`*-setup.exe`), ไฟล์ลายเซ็น (`.sig`), zip พกพา
+      (`Lalin-Cast_<version>_<arch>_portable.zip`) และไฟล์ checksum
+      (`Lalin-Cast_<version>_<arch>_SHA256SUMS.txt`); `latest.json` มีครั้งเดียวรวมทั้งสอง arch —
+      **confirm every asset exists for both architectures** on the draft release — each leg (x64 and
+      arm64) must have: the NSIS installer (`*-setup.exe`), its signature file (`.sig`), the portable
+      zip (`Lalin-Cast_<version>_<arch>_portable.zip`), and its checksum file
+      (`Lalin-Cast_<version>_<arch>_SHA256SUMS.txt`); `latest.json` appears once, covering both
+      architectures
+- [ ] **(wave 12) ตรวจ checksum ด้วย `Get-FileHash`** — ดาวน์โหลดไฟล์ installer และ zip พกพาของแต่ละ
+      arch มาไว้โฟลเดอร์เดียวกับไฟล์ `SHA256SUMS.txt` ของ arch นั้น แล้วรัน (PowerShell) โดยใช้ **ชื่อไฟล์
+      ตามที่ดาวน์โหลดมาจริง** (GitHub เปลี่ยนช่องว่างใน `productName` เป็นจุดตอนอัปโหลด asset จึงได้ชื่อ
+      `Lalin.Cast_<version>_<arch>-setup.exe` ไม่ใช่ `Lalin-Cast_...`):
+      ```powershell
+      Get-FileHash .\Lalin.Cast_<version>_<arch>-setup.exe -Algorithm SHA256
+      Get-FileHash .\Lalin-Cast_<version>_<arch>_portable.zip -Algorithm SHA256
+      ```
+      เทียบค่า hash ที่ได้ (ตัวพิมพ์เล็ก-ใหญ่ไม่สำคัญ) กับบรรทัดของไฟล์นั้นใน `SHA256SUMS.txt` — ถ้าไม่ตรง
+      แม้แต่ไฟล์เดียว **ห้าม publish release นี้** — **verify checksums with `Get-FileHash`** —
+      download the installer and portable zip for each architecture into the same folder as that
+      architecture's `SHA256SUMS.txt`, then run the PowerShell command above using **the file name
+      exactly as downloaded** (GitHub turns the space in `productName` into a dot when it uploads the
+      asset, so the real name is `Lalin.Cast_<version>_<arch>-setup.exe`, not `Lalin-Cast_...`), and
+      compare the resulting hash (case-insensitive) against that file's line in `SHA256SUMS.txt` — if
+      even one file does not match, **do not publish this release**
+- [ ] **human gate H30 ปิดแล้ว** (`docs/plans/W12_RELEASE_ASSETS_PLAN.md`) — บังคับสำหรับ **draft
+      release จริงครั้งแรก** ที่เกิดจาก `.github/workflows/release.yml` (ไม่ใช่ dry run) — **human gate
+      H30 is closed** (`docs/plans/W12_RELEASE_ASSETS_PLAN.md`) — required for the **very first real**
+      draft release produced by `.github/workflows/release.yml` (not the dry run):
+  - [ ] H30 — ดาวน์โหลด asset **ทุกตัว** จาก draft release จริงครั้งแรก (installer, `.sig`, `latest.json`,
+        zip พกพา, `SHA256SUMS.txt` ทั้งสองสถาปัตยกรรม) ตรวจ checksum ด้วย `Get-FileHash` ตามข้อด้านบน
+        และแตก zip พกพาไปรันบนเครื่องสะอาดจริง ก่อนกด publish — ทำครั้งเดียวพอสำหรับ tag แรกที่พิสูจน์ว่า
+        pipeline ของ `release.yml` เองทำงานถูก (ไม่ใช่แค่ dry run) — download **every** asset from the
+        very first real draft release (installer, `.sig`, `latest.json`, the portable zip, both
+        architectures' `SHA256SUMS.txt`), verify checksums with `Get-FileHash` per the item above, and
+        extract and actually run the portable zip on a clean machine, before pressing publish — this
+        is a one-time gate for the first tag that proves `release.yml`'s own pipeline works (not just
+        the dry run)
 - [ ] เปลี่ยน draft release เป็น **published** บน GitHub — switch the draft release to **published**
       on GitHub
 
@@ -265,3 +317,5 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.4b | 2026-09-21 | candidate | Added the pre-tag human gate H26 (log file appears in a release build, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path) for wave 9 (U3) | uncommitted | LALIN |
 | 0.1.5b | 2026-09-21 | candidate | Added the pre-tag human gate H28 (install the `lalin-cast-dryrun-installer` CI artifact on a clean machine and confirm it launches) for wave 10 (U2); noted that the former H27 is now enforced automatically by the `notices` job's fixture self-test instead of being a manual checklist item; added `notices` and `release-dryrun` to the CI-green pre-tag item | uncommitted | LALIN |
 | 0.1.6b | 2026-09-21 | candidate | Added the pre-tag human gate H29 (extract the `lalin-cast-dryrun-portable` CI artifact to a USB drive on a clean machine, confirm settings persist across a restart, and confirm neither `%APPDATA%\ai.lalin.cast`/`%LOCALAPPDATA%\ai.lalin.cast` nor a Run key/`lalin-cast://` registry entry appears) for wave 11 (U3) | uncommitted | LALIN |
+| 0.1.7b | 2026-09-21 | candidate | Wave 12 (U3): noted that the version/CHANGELOG pre-tag items are now enforced by an automated guard (`Test-ReleaseVersion.ps1`) that fails `release.yml` before build if the tag doesn't match the app version or the CHANGELOG section is missing/empty; added post-tag items to check every asset exists for both architectures (installer, `.sig`, portable zip, `SHA256SUMS.txt`) and to verify checksums with `Get-FileHash`; added human gate H30 (first real draft release — download and verify every asset, run the portable zip, before publishing) | uncommitted | LALIN |
+| 0.1.8b | 2026-09-21 | candidate | Wave 12 (U3) repair: moved human gate H30 from section 1 (pre-tag) to section 3 (post-tag verification, right before "switch to published") since it can only close after a real tag exists; fixed the `Get-FileHash` installer example to use the real downloaded asset name `Lalin.Cast_<version>_<arch>-setup.exe` (GitHub turns the space in `productName` into a dot on upload), not the invented `Lalin-Cast_..._-setup.exe` | uncommitted | LALIN |

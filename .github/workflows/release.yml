@@ -40,6 +40,16 @@ jobs:
       - name: Checkout tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Guard tag against app version and CHANGELOG (Test-ReleaseVersion.ps1)
+        # Wave 12 U2 (docs/plans/W12_RELEASE_ASSETS_PLAN.md, contract 7): runs first, right after
+        # checkout and before the Rust checks below, so a tag that does not match the app version
+        # (or has no `## [<version>]` CHANGELOG section) fails before anything is built. No
+        # `-SkipChangelog` here -- that switch exists on Test-ReleaseVersion.ps1 (contract 1) only
+        # for release-dryrun.yml's simulated tag; a real release must never skip the CHANGELOG check.
+        id: guard
+        shell: pwsh
+        run: scripts/release/Test-ReleaseVersion.ps1 -Tag $env:GITHUB_REF_NAME -CargoToml src-tauri/Cargo.toml -TauriConf src-tauri/tauri.conf.json -Changelog CHANGELOG.md
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
@@ -142,6 +152,7 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifacts: Windows ${{ matrix.label }} NSIS installer (.exe), updater signature (.sig), latest.json"
 
       - name: Build signed Tauri release
+        id: tauri-build
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -163,3 +174,61 @@ jobs:
           # file. Both x64 and arm64 legs can safely upload the updater JSON;
           # `max-parallel: 1` above avoids a lost-update race between them.
           uploadUpdaterJson: true
+
+      - name: Locate the signed setup executable
+        # Wave 12 U2 (docs/plans/W12_RELEASE_ASSETS_PLAN.md, contract 7): same fail-closed discovery
+        # release-dryrun.yml uses, so New-PortableZip.ps1 / Write-Checksums.ps1 below get this leg's
+        # actual installer path instead of a guessed one.
+        id: find-installer
+        shell: pwsh
+        run: |
+          $setupFiles = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*-setup.exe" -ErrorAction SilentlyContinue
+          if (-not $setupFiles -or $setupFiles.Count -eq 0) {
+            throw "No *-setup.exe found under src-tauri/target -- the bundle step did not produce an NSIS installer."
+          }
+          $setupFile = $setupFiles | Select-Object -First 1
+          Write-Host "Installer: $($setupFile.FullName)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$($setupFile.FullName)"
+
+      - name: Verify installer scheme (Test-InstallerScheme.ps1)
+        # Wave 12 U2 (contract 7, contract 2): the same fail-closed scheme check release-dryrun.yml
+        # runs, now also gating a real release -- not just its rehearsal.
+        shell: pwsh
+        run: scripts/release/Test-InstallerScheme.ps1 -SearchRoot src-tauri/target
+
+      - name: Build the portable zip (New-PortableZip.ps1)
+        # Wave 12 U2 (contract 7, contract 3): version comes from the guard step's output (already
+        # validated against the pushed tag), arch label from this leg's own matrix.label (x64/arm64,
+        # matching the -Arch x64|arm64 parameter exactly).
+        id: build-portable-zip
+        shell: pwsh
+        run: scripts/release/New-PortableZip.ps1 -ExePath "src-tauri/target/${{ matrix.target }}/release/lalin-cast.exe" -ReadmePath packaging/portable/README-PORTABLE.txt -OutputDir "${{ runner.temp }}" -Version "${{ steps.guard.outputs.version }}" -Arch "${{ matrix.label }}"
+
+      - name: Write checksums (Write-Checksums.ps1)
+        # Wave 12 U2 (contract 7, contract 4): SHA-256 over this leg's signed setup exe and its
+        # portable zip together, one SHA256SUMS file per architecture. -GitHubAssetNames records the
+        # installer as GitHub publishes it (`Lalin.Cast_...`, space turned into a dot), so
+        # `sha256sum -c` works against the downloaded assets.
+        shell: pwsh
+        run: scripts/release/Write-Checksums.ps1 -Files "${{ steps.find-installer.outputs.path }}","${{ steps.build-portable-zip.outputs.path }}" -OutputPath "${{ runner.temp }}\Lalin-Cast_${{ steps.guard.outputs.version }}_${{ matrix.label }}_SHA256SUMS.txt" -GitHubAssetNames
+
+      - name: Publish release assets (Publish-ReleaseAssets.ps1)
+        # Wave 12 U2 (contract 7, contract 5): attaches the portable zip and the checksum file to
+        # the draft release tauri-action just created/updated for this tag. The installer is not
+        # re-uploaded: tauri-action already attached it, and `--clobber` would delete and re-add
+        # the very asset latest.json points to. GH_TOKEN is scoped to
+        # this one step only -- no other step in this workflow needs or gets it. No new secret: this
+        # is the same `secrets.GITHUB_TOKEN` tauri-action's own step above already uses.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/release/Publish-ReleaseAssets.ps1 -Tag $env:GITHUB_REF_NAME -Files "${{ steps.build-portable-zip.outputs.path }}","${{ runner.temp }}\Lalin-Cast_${{ steps.guard.outputs.version }}_${{ matrix.label }}_SHA256SUMS.txt"
+
+      - name: Extend release job summary with attached assets
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Installer scheme check (Test-InstallerScheme.ps1): ``pass``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Portable zip attached: ``${{ steps.build-portable-zip.outputs.path }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Checksums attached: ``Lalin-Cast_${{ steps.guard.outputs.version }}_${{ matrix.label }}_SHA256SUMS.txt``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Assets uploaded to the draft release for tag ``$env:GITHUB_REF_NAME`` via Publish-ReleaseAssets.ps1"
