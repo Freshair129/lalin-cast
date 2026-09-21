@@ -32,7 +32,7 @@ body:
       description: >-
         ดูได้จากหัวข้อ "เกี่ยวกับ" ในหน้าต่างตั้งค่า หรือบรรทัดแรกของข้อมูลวินิจฉัยด้านล่าง / Find this
         in the settings window's About section, or the first line of the diagnostics text below.
-      placeholder: "เช่น / e.g. 0.1.0"
+      placeholder: "เช่น / e.g. 0.2.0"
     validations:
       required: true
   - type: input

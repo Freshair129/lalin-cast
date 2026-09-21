@@ -6,15 +6,16 @@
 notable changes to Lalin Cast, following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 adopting [Semantic Versioning](https://semver.org/) once tagged releases begin.
 
-Lalin Cast ยังไม่มีเวอร์ชันที่ tag เผยแพร่ต่อสาธารณะ (ดู
-[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md)) ทุกรายการด้านล่างจึงอยู่ใต้
-`[Unreleased]` และจัดกลุ่มย่อยตาม wave การพัฒนา (อ้างอิงแผนใน `docs/plans/`) แทนเลขเวอร์ชัน / Lalin Cast
-has not tagged a public release yet (see
-[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md)), so every entry below sits
-under `[Unreleased]`, sub-grouped by development wave (see the plans under `docs/plans/`) instead of a
-version number.
+`0.2.0` เป็นรุ่นแรกที่เผยแพร่ต่อสาธารณะ รายการของรุ่นนี้จัดกลุ่มย่อยตาม wave การพัฒนา (อ้างอิงแผนใน
+`docs/plans/`) ขั้นตอนการปล่อยแต่ละรุ่นอยู่ที่
+[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md) / `0.2.0` is the first public
+release; its entries are sub-grouped by development wave (see the plans under `docs/plans/`). The
+steps for each release are in
+[`docs/runbooks/RELEASE_CHECKLIST.md`](docs/runbooks/RELEASE_CHECKLIST.md).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-21
 
 ### Added
 
