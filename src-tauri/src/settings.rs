@@ -38,6 +38,11 @@ const KEY_START_WITH_WINDOWS: &str = "startWithWindows";
 const KEY_UI_SCALE: &str = "uiScale";
 const KEY_SLEEP_AT_END_OF_VIDEO: &str = "sleepAtEndOfVideo";
 const KEY_DEEP_LINK_SCHEME: &str = "deepLinkScheme";
+// Wave 8: keep-display-awake plus the two CSS-only hide toggles — see the
+// wave 8 plan's contract 1 and `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`.
+const KEY_KEEP_DISPLAY_AWAKE: &str = "keepDisplayAwake";
+const KEY_HIDE_SHORTS: &str = "hideShorts";
+const KEY_HIDE_GUIDE_TABS: &str = "hideGuideTabs";
 
 /// The only valid `uiScale` values (percent). Out-of-set → `Err` in
 /// [`apply_setting`].
@@ -63,6 +68,9 @@ const DEFAULT_START_WITH_WINDOWS: bool = false;
 const DEFAULT_UI_SCALE: u32 = 100;
 const DEFAULT_SLEEP_AT_END_OF_VIDEO: bool = false;
 const DEFAULT_DEEP_LINK_SCHEME: bool = false;
+const DEFAULT_KEEP_DISPLAY_AWAKE: bool = true;
+const DEFAULT_HIDE_SHORTS: bool = false;
+const DEFAULT_HIDE_GUIDE_TABS: bool = false;
 
 /// The full set of user-editable settings, mirrored 1:1 onto individual
 /// `media-settings.json` store keys (unchanged keys from waves 1–3, plus
@@ -91,6 +99,9 @@ pub struct Settings {
     ui_scale: u32,
     sleep_at_end_of_video: bool,
     deep_link_scheme: bool,
+    keep_display_awake: bool,
+    hide_shorts: bool,
+    hide_guide_tabs: bool,
 }
 
 /// Return type of `settings_get`/`settings_set` and the `settings`+`dial`+…
@@ -207,6 +218,17 @@ fn load_settings(app: &AppHandle) -> Settings {
             KEY_DEEP_LINK_SCHEME,
             DEFAULT_DEEP_LINK_SCHEME,
         ),
+        keep_display_awake: crate::read_bool_setting_or(
+            app,
+            KEY_KEEP_DISPLAY_AWAKE,
+            DEFAULT_KEEP_DISPLAY_AWAKE,
+        ),
+        hide_shorts: crate::read_bool_setting_or(app, KEY_HIDE_SHORTS, DEFAULT_HIDE_SHORTS),
+        hide_guide_tabs: crate::read_bool_setting_or(
+            app,
+            KEY_HIDE_GUIDE_TABS,
+            DEFAULT_HIDE_GUIDE_TABS,
+        ),
     }
 }
 
@@ -313,6 +335,21 @@ pub fn apply_setting(key: &str, value: &Value, current: &Settings) -> Result<Set
             next.deep_link_scheme = value
                 .as_bool()
                 .ok_or_else(|| "deepLinkScheme must be a boolean".to_owned())?;
+        }
+        KEY_KEEP_DISPLAY_AWAKE => {
+            next.keep_display_awake = value
+                .as_bool()
+                .ok_or_else(|| "keepDisplayAwake must be a boolean".to_owned())?;
+        }
+        KEY_HIDE_SHORTS => {
+            next.hide_shorts = value
+                .as_bool()
+                .ok_or_else(|| "hideShorts must be a boolean".to_owned())?;
+        }
+        KEY_HIDE_GUIDE_TABS => {
+            next.hide_guide_tabs = value
+                .as_bool()
+                .ok_or_else(|| "hideGuideTabs must be a boolean".to_owned())?;
         }
         _ => return Err(format!("unknown settings key: {key}")),
     }
@@ -500,6 +537,25 @@ fn set_one(
             })?;
             crate::write_bool_setting(app, KEY_DEEP_LINK_SCHEME, next.deep_link_scheme);
         }
+        // Wave 8 wiring point 2: recompute the power reservation for the
+        // new `keepDisplayAwake` value against whatever `playing` state
+        // `power.rs` last recorded — turning it off releases immediately,
+        // even mid-playback, per the contract.
+        KEY_KEEP_DISPLAY_AWAKE => {
+            crate::write_bool_setting(app, KEY_KEEP_DISPLAY_AWAKE, next.keep_display_awake);
+            crate::power::apply_enabled(app, next.keep_display_awake);
+        }
+        // CSS-only hide toggles: save-and-re-emit, exactly like
+        // `touchOverlay` — the page applies both live via `PREFS_EVENT`,
+        // no reload needed.
+        KEY_HIDE_SHORTS => {
+            crate::write_bool_setting(app, KEY_HIDE_SHORTS, next.hide_shorts);
+            crate::emit_prefs(app);
+        }
+        KEY_HIDE_GUIDE_TABS => {
+            crate::write_bool_setting(app, KEY_HIDE_GUIDE_TABS, next.hide_guide_tabs);
+            crate::emit_prefs(app);
+        }
         // Never persisted (session-only); only acts when the requested
         // value actually differs from the live state, so a redundant
         // `settings_set("miniPlayer", true)` while already mini is a
@@ -637,6 +693,9 @@ pub(crate) fn reset_plan() -> Vec<(&'static str, Value)> {
         (KEY_UI_SCALE, json!(100)),
         (KEY_SLEEP_AT_END_OF_VIDEO, json!(false)),
         (KEY_MINI_PLAYER, json!(false)),
+        (KEY_KEEP_DISPLAY_AWAKE, json!(true)),
+        (KEY_HIDE_SHORTS, json!(false)),
+        (KEY_HIDE_GUIDE_TABS, json!(false)),
     ]
 }
 
@@ -743,6 +802,7 @@ pub(crate) fn diagnostics_settings(app: &AppHandle) -> diagnostics::DiagnosticsS
         mini_player: settings.mini_player,
         deep_link_scheme: settings.deep_link_scheme,
         deep_link_scheme_registered: app.deep_link().is_registered(LALIN_SCHEME).unwrap_or(false),
+        keep_display_awake: settings.keep_display_awake,
     }
 }
 
@@ -752,6 +812,7 @@ mod tests {
         apply_setting, format_launch_command, profile_settings, reset_plan, Settings,
         ALLOWED_UI_SCALES, DEFAULT_CODEC_FILTER, DEFAULT_CONTROLLER_ENABLED,
         DEFAULT_DEEP_LINK_SCHEME, DEFAULT_FULLSCREEN, DEFAULT_HARDWARE_DECODING,
+        DEFAULT_HIDE_GUIDE_TABS, DEFAULT_HIDE_SHORTS, DEFAULT_KEEP_DISPLAY_AWAKE,
         DEFAULT_KEEP_ON_TOP, DEFAULT_PAUSE_ON_BLUR, DEFAULT_SETUP_COMPLETED,
         DEFAULT_SLEEP_AT_END_OF_VIDEO, DEFAULT_SLEEP_TIMER_MINUTES, DEFAULT_START_WITH_WINDOWS,
         DEFAULT_TOUCH_OVERLAY, DEFAULT_UI_SCALE,
@@ -776,6 +837,9 @@ mod tests {
             ui_scale: 100,
             sleep_at_end_of_video: false,
             deep_link_scheme: false,
+            keep_display_awake: true,
+            hide_shorts: false,
+            hide_guide_tabs: false,
         }
     }
 
@@ -825,6 +889,37 @@ mod tests {
         assert!(apply_setting("sleepAtEndOfVideo", &json!(null), &base()).is_err());
         assert!(apply_setting("deepLinkScheme", &json!("yes"), &base()).is_err());
         assert!(apply_setting("deepLinkScheme", &json!(null), &base()).is_err());
+        assert!(apply_setting("keepDisplayAwake", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("keepDisplayAwake", &json!(null), &base()).is_err());
+        assert!(apply_setting("hideShorts", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("hideShorts", &json!(null), &base()).is_err());
+        assert!(apply_setting("hideGuideTabs", &json!("yes"), &base()).is_err());
+        assert!(apply_setting("hideGuideTabs", &json!(null), &base()).is_err());
+    }
+
+    #[test]
+    fn applies_keep_display_awake_and_leaves_the_rest_untouched() {
+        let current = base();
+        let next = apply_setting("keepDisplayAwake", &json!(false), &current).expect("valid bool");
+        assert!(!next.keep_display_awake);
+        assert_eq!(next.ui_scale, current.ui_scale);
+        assert_eq!(next.hide_shorts, current.hide_shorts);
+
+        let next = apply_setting("keepDisplayAwake", &json!(true), &next).expect("valid bool");
+        assert!(next.keep_display_awake);
+    }
+
+    #[test]
+    fn applies_hide_shorts_and_hide_guide_tabs_independently() {
+        let current = base();
+        let next = apply_setting("hideShorts", &json!(true), &current).expect("valid bool");
+        assert!(next.hide_shorts);
+        assert!(!next.hide_guide_tabs);
+        assert_eq!(next.keep_display_awake, current.keep_display_awake);
+
+        let next = apply_setting("hideGuideTabs", &json!(true), &next).expect("valid bool");
+        assert!(next.hide_shorts);
+        assert!(next.hide_guide_tabs);
     }
 
     #[test]
@@ -1069,6 +1164,9 @@ mod tests {
                 ("uiScale", json!(100)),
                 ("sleepAtEndOfVideo", json!(false)),
                 ("miniPlayer", json!(false)),
+                ("keepDisplayAwake", json!(true)),
+                ("hideShorts", json!(false)),
+                ("hideGuideTabs", json!(false)),
             ]
         );
     }
@@ -1106,6 +1204,9 @@ mod tests {
         assert_eq!(DEFAULT_UI_SCALE, 100);
         assert!(!DEFAULT_SLEEP_AT_END_OF_VIDEO);
         assert!(!DEFAULT_DEEP_LINK_SCHEME);
+        assert!(DEFAULT_KEEP_DISPLAY_AWAKE);
+        assert!(!DEFAULT_HIDE_SHORTS);
+        assert!(!DEFAULT_HIDE_GUIDE_TABS);
         assert!(ALLOWED_UI_SCALES.contains(&DEFAULT_UI_SCALE));
     }
 }

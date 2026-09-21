@@ -122,6 +122,18 @@ version number.
   `lalin-cast://` แบบ opt-in / an opt-in toggle (`deepLinkScheme`, off by default) in the settings
   window to register or unregister the `lalin-cast://` scheme
 
+#### Wave 8 — Client-side boundary (`docs/plans/W8_BOUNDARY_PLAN.md`)
+
+- ตัวเลือก "กันจอดับ" (`keepDisplayAwake`, เปิดเป็นค่าเริ่มต้น) ที่กันจอดับ/เครื่องหลับเฉพาะขณะกำลังเล่น
+  วิดีโอจริง โดยอิงสถานะจาก event `lalin-cast-media` เดิม / a "keep display awake" toggle
+  (`keepDisplayAwake`, on by default) that prevents the display/system from sleeping only while a
+  video is actually playing, driven by the existing `lalin-cast-media` event
+- ตัวเลือกซ่อนชั้น Shorts บนหน้าแรก (`hideShorts`, ปิดเป็นค่าเริ่มต้น) และซ่อนแท็บ Shorts ในแถบนำทาง
+  (`hideGuideTabs`, ปิดเป็นค่าเริ่มต้น) ด้วย CSS/คลาสของ Lalin Cast เองเท่านั้น / an opt-in toggle to
+  hide the Shorts shelf on the home page (`hideShorts`, off by default) and an opt-in toggle to hide
+  the Shorts tab in the guide navigation (`hideGuideTabs`, off by default), both implemented purely
+  with Lalin Cast's own CSS/classes
+
 ### Changed
 
 #### Wave 2 — Living-room readiness (`docs/plans/W2_LIVING_ROOM_PLAN.md`)
@@ -151,6 +163,14 @@ version number.
   surrounding double quotes, case-insensitive) alongside the existing `ST` check, or the datagram is
   dropped; anyone upgrading should confirm human gate H22 (mobile YouTube app discovery) before the
   next tag
+
+#### Wave 8 — Client-side boundary (`docs/plans/W8_BOUNDARY_PLAN.md`)
+
+- **CI job `smoke` กลายเป็น check บังคับ:** human gate H20 ปิดแล้วหลังจากรันเขียวสองรอบติดกันใน PR #9
+  และ PR #10 จึงลบ `continue-on-error: true` ออก — ตั้งแต่นี้ไปการรวม pull request ทุกครั้งต้องรอ job
+  `smoke` ผ่านด้วย / **the CI `smoke` job is now a blocking check:** human gate H20 is closed after two
+  consecutive green runs on PR #9 and PR #10, so `continue-on-error: true` has been removed — merging
+  a pull request from here on requires the `smoke` job to pass
 
 ### Security
 
@@ -200,3 +220,24 @@ version number.
   page) is granted any deep-link plugin permission — the
   `src-tauri/capabilities/default.json` capability is unchanged, and registering, unregistering, or
   checking the scheme happens only through the Rust-side `settings_get`/`settings_set` commands
+
+#### Wave 8 — Client-side boundary (`docs/plans/W8_BOUNDARY_PLAN.md`)
+
+- **Lalin Cast ไม่ดัก อ่าน หรือแก้ไขทราฟฟิกหรือข้อมูลของเครือข่าย YouTube และจะไม่ทำเช่นนั้น:** ตัวเลือก
+  ซ่อน Shorts/แท็บนำทาง (`hideShorts`, `hideGuideTabs`) ทำงานด้วยการอ่าน DOM ที่หน้าเว็บ render ออกมา
+  แล้ว ติดคลาสของเราเอง แล้วซ่อนด้วย stylesheet ของเราเองเท่านั้น ไม่มีการห่อหรือแทนที่
+  `XMLHttpRequest`/`window.fetch`/`Response`, ไม่มีการอ่านหรือเขียนทับ response ของ
+  `/youtubei/v1/browse` หรือ `/youtubei/v1/guide`, ไม่มีการแก้ config JSON ของ YouTube และไม่มีการลบ
+  node ออกจาก DOM ดูเหตุผลและเส้นแบ่งเต็มใน `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`
+  / **Lalin Cast does not intercept, read, or modify YouTube's network traffic or data, and never
+  will:** the Shorts/guide-tab hiding toggles (`hideShorts`, `hideGuideTabs`) work only by reading the
+  DOM as already rendered by the page, tagging matched elements with our own class, and hiding them
+  with our own stylesheet — there is no wrapping or replacing of
+  `XMLHttpRequest`/`window.fetch`/`Response`, no reading or rewriting of `/youtubei/v1/browse` or
+  `/youtubei/v1/guide` responses, no modification of YouTube's config JSON, and no DOM node removal;
+  see `docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md` for the full reasoning and
+  boundary
+- `keepDisplayAwake` เรียก Windows API (`SetThreadExecutionState`) เพื่อบอกระบบปฏิบัติการว่ายังใช้งาน
+  อยู่เท่านั้น ไม่ส่งหรือบันทึกข้อมูลใด ๆ ออกจากเครื่อง / `keepDisplayAwake` calls the Windows
+  `SetThreadExecutionState` API only to tell the operating system the app is still in active use — it
+  sends or records no data anywhere

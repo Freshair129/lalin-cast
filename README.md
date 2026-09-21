@@ -22,6 +22,22 @@ license (separate from its third-party dependencies) has not been chosen yet and
 founder approval; see the options in
 [`docs/LICENSE_DECISION.md`](docs/LICENSE_DECISION.md).
 
+## Positioning: no ad filtering
+
+**ภาษาไทย:** Lalin Cast **ไม่มีและจะไม่มี** ตัวกรองโฆษณาในทุกรูปแบบ ไม่ว่าจะเป็นการดัก/แก้ไขทราฟฟิก
+ของ YouTube, การข้ามโฆษณาอัตโนมัติ หรือกลไกอื่นใดที่ทำหน้าที่กรองโฆษณา นี่คือการตัดสินใจถาวรของผู้ก่อตั้ง
+ไม่ใช่ "ยังไม่ได้ทำ" — เหตุผลและเส้นแบ่งที่ใช้ตัดสินอยู่ที่
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+ผู้ใช้ที่สมัคร YouTube Premium ใช้งาน Lalin Cast ได้ตามปกติทุกประการ ไม่มีสิ่งใดในแอปนี้เปลี่ยนแปลงหรือ
+รบกวนสิทธิ์ที่ Premium ให้ไว้อยู่แล้ว
+
+**English:** Lalin Cast **has no ad filtering and none is planned** — not network-level, not
+autoplay-skip, not any other mechanism that removes or bypasses ads. This is a permanent founder
+decision, not a "not yet"; see the reasoning and the boundary that governs it in
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md).
+YouTube Premium subscribers are entirely unaffected — nothing in this app changes or interferes with
+what Premium already gives them.
+
 Current scope:
 
 - native Tauri window and lifecycle;
@@ -105,7 +121,14 @@ Current scope:
 - playback-speed keys (`Shift+,` / `Shift+.`) with an on-screen indicator, session-only and not
   persisted — see [Controller and keyboard](#controller-and-keyboard) (human gate H16);
 - a bilingual keyboard/controller help overlay (`?` / `F1`) — see
-  [Controller and keyboard](#controller-and-keyboard) (human gate H16).
+  [Controller and keyboard](#controller-and-keyboard) (human gate H16);
+- a "keep display awake" setting (on by default) that only tells Windows the machine is in use while
+  a video is actually playing, so the display and the machine don't sleep mid-playback — see
+  [Playback](#playback) (human gate H25);
+- opt-in hiding of the Shorts shelf on the home page and of the Shorts tab in the side navigation
+  (both off by default), done entirely with Lalin Cast's own CSS on the already-rendered page — see
+  [YouTube page](#youtube-page) and [Positioning: no ad filtering](#positioning-no-ad-filtering)
+  (human gate H24).
 
 Windows x64 is the primary, fully-supported release target. The tagged release workflow also
 produces an ARM64 (`aarch64-pc-windows-msvc`) build as an **experimental**, `continue-on-error` job
@@ -122,8 +145,10 @@ the device descriptor with an `Application-URL` header and passes the Rust
 unit tests (DIAL, HTTP parser, identity and i18n). Same-Wi-Fi iPhone TV-code connection is user-confirmed for the previous
 debug runtime. Standalone packaging, signed updater artifacts, network-drop
 recovery, controller parity and account acceptance remain separate gates until
-rerun in this repository. Ad filtering and SponsorBlock are not implemented; they
-wait on the decisions recorded in `docs/plans/H0_RELEASE_READINESS_PLAN.md`.
+rerun in this repository. Ad filtering, SponsorBlock, DeArrow, and Return YouTube Dislike are not
+implemented and never will be — see
+[Positioning: no ad filtering](#positioning-no-ad-filtering) and
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md).
 
 Static check:
 
@@ -193,11 +218,11 @@ turned on or off from the settings window (the "Controller" toggle).
 
 ## Playback
 
-**ภาษาไทย:** Lalin Cast มีตัวเลือกการเล่นเพิ่มเติมหกอย่าง ตั้งค่าได้จากหน้าต่างการตั้งค่า (ดู
+**ภาษาไทย:** Lalin Cast มีตัวเลือกการเล่นเพิ่มเติมเจ็ดอย่าง ตั้งค่าได้จากหน้าต่างการตั้งค่า (ดู
 [Settings](#settings)) ทั้งหมดทำงานในเครื่องล้วน ๆ ไม่มีการส่งข้อมูลใดออกนอกเครื่องเพิ่มเติม (ดู
 [`PRIVACY.md`](PRIVACY.md))
 
-**English:** Lalin Cast has six additional playback options, all set from the settings window (see
+**English:** Lalin Cast has seven additional playback options, all set from the settings window (see
 [Settings](#settings)) and all entirely local — none of them send anything off the device (see
 [`PRIVACY.md`](PRIVACY.md)).
 
@@ -260,6 +285,19 @@ machines where hardware decoding causes stutter or corruption. **It only takes e
 restarting the app** — the settings window shows a warning color when the saved value doesn't match
 what's currently running.
 
+### Keep display awake / กันจอดับขณะเล่น
+
+**ภาษาไทย:** ตัวเลือก "กันจอดับขณะเล่น" (`keepDisplayAwake`, ค่าเริ่มต้นเปิด) บอก Windows ว่าเครื่อง
+กำลังถูกใช้งานอยู่ **เฉพาะขณะที่กำลังเล่นวิดีโอจริงเท่านั้น** เพื่อไม่ให้จอดับหรือเครื่องหลับกลางคัน เมื่อ
+หยุดเล่นหรือปิดตัวเลือกนี้ จอ/เครื่องจะกลับไปดับ/หลับตามการตั้งค่า Windows ปกติทันที ไม่มีการส่งข้อมูลใด
+ออกนอกเครื่อง — ดู [`PRIVACY.md`](PRIVACY.md)
+
+**English:** "Keep display awake" (`keepDisplayAwake`, on by default) tells Windows the machine is in
+use **only while a video is actually playing**, so the display and the machine don't sleep
+mid-playback. As soon as playback stops or you turn this setting off, the display/machine go back to
+sleeping normally on Windows' own schedule. Nothing is sent off the device — see
+[`PRIVACY.md`](PRIVACY.md).
+
 ### Mini-player / โหมดหน้าต่างเล็ก
 
 **ภาษาไทย:** กด `Ctrl+Shift+M`, เลือก "mini-player" จากเมนูหน้าต่างสื่อ, ไอคอนถาด ("tray-mini"), หรือ
@@ -287,6 +325,38 @@ Lalin Cast's own on-screen control buttons appear (direction, select, back, play
 VacuumTube — see [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md). Useful on handhelds (ROG Ally, Legion
 Go, and similar) — see [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md). Can
 be turned off at any time from the settings window.
+
+## YouTube page
+
+**ภาษาไทย:** สองตัวเลือกนี้อยู่ในกลุ่มการตั้งค่าแยกต่างหาก "หน้า YouTube" (ดู [Settings](#settings))
+ทั้งสองปิดเป็นค่าเริ่มต้น (opt-in) และทำงานด้วยวิธีเดียวกัน: **อ่าน DOM ของหน้า YouTube ที่ render เสร็จ
+แล้วเท่านั้น แล้วซ่อนด้วย CSS ของ Lalin Cast เอง** ไม่มีการอ่าน แก้ไข หรือดักข้อมูล/ทราฟฟิกของ YouTube
+แต่อย่างใด — ดูเหตุผลและเส้นแบ่งที่ใช้ตัดสินฟีเจอร์ลักษณะนี้ที่
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+**เพราะเป็นการซ่อนด้วย CSS ของเราเองเท่านั้น การซ่อนนี้อาจหยุดทำงานได้ทุกเมื่อที่ YouTube เปลี่ยน
+โครงสร้างหน้าเว็บ** — ไม่ใช่สัญญาที่รับประกันตลอดไป
+
+- **ซ่อนชั้น Shorts บนหน้าแรก** (`hideShorts`, ค่าเริ่มต้นปิด)
+- **ซ่อนแท็บ Shorts ในแถบนำทางด้านข้าง** (`hideGuideTabs`, ค่าเริ่มต้นปิด) — แท็บ Home จะไม่ถูกซ่อนไม่ว่า
+  กรณีใด เพราะการปิดแท็บ Home ทำให้หน้าเว็บพัง (ดู [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md))
+
+ทั้งสองมีผลทันทีโดยไม่ต้องโหลดหน้าใหม่
+
+**English:** These two options live in their own settings group, "YouTube page" (see
+[Settings](#settings)). Both are off by default (opt-in) and work the same way: **reading only the
+already-rendered DOM of the YouTube page, then hiding it with Lalin Cast's own CSS.** Nothing about
+YouTube's network traffic or data is read, modified, or intercepted — see the reasoning and the
+boundary that governs features like this in
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md).
+**Because this is our own CSS and nothing more, it may stop working any time YouTube changes its page
+structure** — it isn't a guarantee.
+
+- **Hide the Shorts shelf on the home page** (`hideShorts`, off by default)
+- **Hide the Shorts tab in the side navigation** (`hideGuideTabs`, off by default) — the Home tab is
+  never hidden under any circumstance, because disabling it breaks the page (see
+  [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md))
+
+Both take effect immediately, with no page reload needed.
 
 ## Command line
 
@@ -464,7 +534,12 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
   หยุดเล่นเมื่อจบวิดีโอ (`sleepAtEndOfVideo`, ดู [Playback](#playback)), ตัวกรอง codec (`codecFilter`,
   พร้อมหมายเหตุ "มีผลหลังโหลดใหม่"), การถอดรหัสวิดีโอด้วยฮาร์ดแวร์
   (`hardwareDecoding`, พร้อมหมายเหตุ "มีผลหลังเปิดแอปใหม่" ที่ขึ้นสีเตือนเมื่อค่ายังไม่ตรงกับค่าที่ใช้งานอยู่
-  จริง) — ดู [Playback](#playback)
+  จริง) และกันจอดับขณะเล่น (`keepDisplayAwake`, ค่าเริ่มต้นเปิด, กันเฉพาะตอนกำลังเล่นวิดีโอจริง) — ดู
+  [Playback](#playback)
+- **หน้า YouTube / YouTube page** — ซ่อนชั้น Shorts บนหน้าแรก (`hideShorts`, ค่าเริ่มต้นปิด) และซ่อนแท็บ
+  Shorts ในแถบนำทาง (`hideGuideTabs`, ค่าเริ่มต้นปิด) ทั้งสองเป็น opt-in ทำด้วย CSS ของ Lalin Cast เองบน
+  DOM ที่ render เสร็จแล้วเท่านั้น ไม่แก้ข้อมูลหรือการทำงานของ YouTube และอาจหยุดทำงานเมื่อ YouTube
+  เปลี่ยนหน้าเว็บ — ดู [YouTube page](#youtube-page)
 - **ทั่วไป / General** — ภาษา, เริ่มพร้อม Windows (`startWithWindows`), มาตราส่วน UI
   (`uiScale`, 100/125/150/175/200% — ปรับ zoom ของหน้าต่างสื่อผ่าน API ของ WebView2 เอง **มีผลทันที**
   ทั้งตอนเลือกและตอนเปิดแอปครั้งถัดไป เหมาะกับการดูจากที่นั่งไกลบนทีวี 4K) และปุ่ม profile สามปุ่ม
@@ -516,9 +591,15 @@ sent anywhere — real behavior on the Leanback surface is still human gate H16.
 
 - **Playback** — the sleep timer (`sleepTimerMinutes`, with a live countdown), sleep at end of
   video (`sleepAtEndOfVideo`, see [Playback](#playback)), the codec filter
-  (`codecFilter`, noted "effective after reload"), and hardware decoding (`hardwareDecoding`, noted
+  (`codecFilter`, noted "effective after reload"), hardware decoding (`hardwareDecoding`, noted
   "effective after restarting the app" and shown in a warning color when the saved value doesn't
-  match what's currently running) — see [Playback](#playback)
+  match what's currently running), and keep the display awake while playing
+  (`keepDisplayAwake`, on by default, active only while a video is actually playing) — see
+  [Playback](#playback)
+- **YouTube page** — hide the Shorts shelf on the home page (`hideShorts`, off by default) and hide
+  the Shorts tab in the guide navigation (`hideGuideTabs`, off by default); both are opt-in and done
+  with Lalin Cast's own CSS on the already-rendered DOM, never touching YouTube's data or behavior,
+  and may stop working when YouTube changes its page — see [YouTube page](#youtube-page)
 - **General** — language, start with Windows (`startWithWindows`), UI scale (`uiScale`,
   100/125/150/175/200% — zooms the media window through WebView2's own API. **Applies immediately**,
   both when you pick it and again the next time the app starts; useful for reading text from across
@@ -584,7 +665,8 @@ never installs an update without user confirmation.
 ## Development
 
 **ภาษาไทย:** นอกจาก `cargo check`/`cargo fmt`/`cargo tauri build` ด้านบน CI (`ci.yml`) ยังมีงาน `smoke`
-(รันบน `windows-latest`, ทำเครื่องหมาย `continue-on-error` จนกว่าจะเสถียร) ที่ build เวอร์ชัน debug ของ
+(รันบน `windows-latest`, เป็น check ที่บังคับผ่าน (blocking) ตั้งแต่ wave 8 หลังเขียวติดกันสองรอบใน
+PR #9 และ #10 — H20) ที่ build เวอร์ชัน debug ของ
 `lalin-cast.exe` แล้วรันจริงด้วย `--version` และ `--lifecycle close --request-id ci-smoke` เพื่อตรวจสอบ
 ว่าไฟล์ `lifecycle.json` (ดู [`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md))
 ถูกเขียนถูกต้อง — เป็นหลักฐานอัตโนมัติสำหรับ human gate H13 ทุกครั้งที่ push สคริปต์
@@ -592,7 +674,8 @@ never installs an update without user confirmation.
 ใช้ทดสอบ launcher lifecycle นี้ด้วยตัวเองบนเครื่องนักพัฒนา — ดูวิธีใช้ที่ `scripts/README.md`
 
 **English:** Beyond the `cargo check`/`cargo fmt`/`cargo tauri build` commands above, CI (`ci.yml`)
-also runs a `smoke` job (on `windows-latest`, marked `continue-on-error` until it's proven stable)
+also runs a `smoke` job (on `windows-latest`, a blocking required check since wave 8, after two
+stable green runs in PR #9 and #10 — H20)
 that builds a debug `lalin-cast.exe` and actually runs it with `--version` and
 `--lifecycle close --request-id ci-smoke`, checking that `lifecycle.json` (see
 [`docs/architecture/CAST_LAUNCHER_IPC.md`](docs/architecture/CAST_LAUNCHER_IPC.md)) is written
@@ -622,5 +705,7 @@ paste it.
 ## Provenance
 
 See [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md),
-[`docs/architecture/ADR-001-CAST-TAURI-PORT.md`](docs/architecture/ADR-001-CAST-TAURI-PORT.md)
-and [`docs/architecture/LALIN_CAST_UPDATER_SPEC.md`](docs/architecture/LALIN_CAST_UPDATER_SPEC.md).
+[`docs/architecture/ADR-001-CAST-TAURI-PORT.md`](docs/architecture/ADR-001-CAST-TAURI-PORT.md),
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+(the client-side modification boundary and why upstream's `hide-shorts.js`/`guide-tabs.js` were not
+ported), and [`docs/architecture/LALIN_CAST_UPDATER_SPEC.md`](docs/architecture/LALIN_CAST_UPDATER_SPEC.md).

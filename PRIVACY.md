@@ -44,6 +44,9 @@ app-data directory ของระบบ) คีย์ที่เก็บม�
 | `windowBounds` | ตำแหน่ง (x, y) และขนาด (width, height) ของหน้าต่างสื่อ (media) ล่าสุด เป็นพิกเซล เขียนโดย Rust เท่านั้น ไม่ปรากฏในผลลัพธ์ของหน้าต่างการตั้งค่า — ดูข้อ 7 | ไม่ |
 | `uiScale` | มาตราส่วนการแสดงผล (zoom) ของหน้าต่างสื่อ ผ่าน API `set_zoom` ของ WebView2 เอง ค่าที่รับ ∈ {100, 125, 150, 175, 200} เปอร์เซ็นต์ มีผลทันทีที่ตั้งค่าและอีกครั้งหลังเปิดแอปใหม่ — ดูข้อ 7 | ไม่ |
 | `sleepAtEndOfVideo` | เปิด/ปิดการหยุดเล่นอัตโนมัติเมื่อวิดีโอปัจจุบันจบ (กัน autoplay-next ของ YouTube หนึ่งครั้ง) ค่าเริ่มต้นปิด ไม่รีเซ็ตกลับเป็นปิดเอง — ดูข้อ 7 | ไม่ |
+| `keepDisplayAwake` | กันจอดับ/เครื่องหลับเฉพาะขณะกำลังเล่นวิดีโอจริง โดยเรียก API ของ Windows เองเท่านั้น ค่าเริ่มต้นเปิด — ดูข้อ 8 | ไม่ |
+| `hideShorts` | ซ่อนชั้น Shorts บนหน้าแรกด้วย CSS ของ Lalin Cast เอง ค่าเริ่มต้นปิด (opt-in) — ดูข้อ 10 | ไม่ |
+| `hideGuideTabs` | ซ่อนแท็บ Shorts ในแถบนำทางด้านข้างด้วย CSS ของ Lalin Cast เอง ค่าเริ่มต้นปิด (opt-in) — ดูข้อ 10 | ไม่ |
 
 การตั้งค่ารุ่นก่อนหน้าเคยมีคีย์ `adFilterMode` ซึ่งถูกลบออกในรุ่น H0 นี้แล้ว (ไม่มีการเก็บ/อ่านคีย์นี้
 อีกต่อไป) หากพบไฟล์ `media-settings.json` เก่าที่ยังมีคีย์นี้ค้างอยู่ แอปจะไม่ใช้งานค่านั้น
@@ -197,7 +200,7 @@ shell **ในเครื่องเดียวกัน** เพื่อใ
 
 ทุกอย่างในข้อนี้ไม่เกี่ยวข้องกับระบบ telemetry ใด ๆ — Lalin Cast ยังคงไม่มี telemetry เหมือนที่ระบุในข้อ 1
 
-## 8. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์ และปุ่มสัมผัสบนจอ
+## 8. การเล่น: ตัวจับเวลาปิดเล่นอัตโนมัติ, ตัวกรอง codec, การถอดรหัสด้วยฮาร์ดแวร์, ปุ่มสัมผัสบนจอ และกันจอดับขณะเล่น
 
 ตัวจับเวลาปิดเล่นอัตโนมัติ (sleep timer, คีย์ `sleepTimerMinutes`) ทำงานทั้งหมดในเครื่อง: ตัวจับเวลาเป็น
 เธรด Rust ที่นับถอยหลังในหน่วยความจำ ไม่มีการเชื่อมต่อเครือข่ายใด ๆ เกี่ยวข้อง เมื่อหมดเวลา Rust จะส่ง
@@ -224,6 +227,13 @@ YouTube จะ override ฟังก์ชัน Web API มาตรฐาน�
 คีย์ persist ตามที่ระบุในข้อ 2) และไม่มีผลด้านความเป็นส่วนตัวเพิ่มเติม — เป็นเพียงการเปลี่ยนขนาด/ตำแหน่ง/
 กรอบของหน้าต่างที่มีอยู่แล้วเท่านั้น
 
+กันจอดับขณะเล่น (keep-display-awake, คีย์ `keepDisplayAwake`, ค่าเริ่มต้นเปิด) **เรียกเฉพาะ API ของ
+Windows เอง** (`SetThreadExecutionState`) เพื่อบอกระบบปฏิบัติการว่าเครื่องกำลังถูกใช้งานอยู่ **เฉพาะขณะ
+กำลังเล่นวิดีโอจริงเท่านั้น** (อิงจากสถานะเล่น/หยุดเดียวกับที่ใช้ตั้งชื่อวิดีโอที่กำลังเล่น ดูข้อ 7) API
+นี้ **ไม่ส่งข้อมูลใดออกจากเครื่อง ไม่อ่านเนื้อหาบนหน้าจอ และไม่เกี่ยวข้องกับเครือข่ายเลย** — เป็นเพียงการ
+บอกระบบปฏิบัติการไม่ให้ปิดจอ/พักเครื่องเท่านั้น เมื่อหยุดเล่น ปิดตัวเลือกนี้ หรือปิดแอป Lalin Cast จะยกเลิก
+การจองสถานะนี้ทันทีให้จอ/เครื่องกลับไปดับ/หลับตามการตั้งค่า Windows ปกติ
+
 ## 9. การตรวจสอบอัปเดต
 
 แอปจะติดต่อ `github.com` (ที่อยู่: `github.com/Freshair129/lalin-cast/releases/latest/download/
@@ -240,6 +250,16 @@ WebView ทุกสิ่งที่เกิดขึ้นภายในห
 อัลกอริทึมแนะนำวิดีโอ) อยู่ภายใต้การควบคุมของ YouTube/Google ทั้งหมด ไม่ใช่ของ Lalin Cast โปรดอ่าน
 นโยบายความเป็นส่วนตัวของ Google ที่ `https://policies.google.com/privacy` สำหรับสิ่งที่เกิดขึ้นในหน้า
 นั้นโดยเฉพาะ
+
+**ซ่อนชั้น Shorts / แท็บ Shorts (คีย์ `hideShorts`, `hideGuideTabs`, ทั้งสองค่าเริ่มต้นปิด เป็น
+opt-in):** เมื่อเปิดตัวเลือกใดตัวเลือกหนึ่งจากหน้าต่างการตั้งค่า สคริปต์ที่ฉีดเข้าไปในหน้าจะ**อ่านเฉพาะ
+DOM ของหน้า YouTube ที่ render เสร็จแล้ว** เพื่อติด class ของ Lalin Cast เองบน element ที่ตรงกับรูปแบบ
+Shorts shelf/แท็บ Shorts แล้วซ่อนด้วย stylesheet ของ Lalin Cast เอง (`display: none`) — **ไม่มีการอ่าน
+เนื้อหาที่แสดงบนหน้าจอแล้วส่งออกไปที่ใด ไม่มีการดักหรือแก้ไข response ของ YouTube, ไม่มีการลบ node ออก
+จากหน้า, และไม่มีการซ่อนแท็บ Home ไม่ว่ากรณีใด** (ดู
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+สำหรับเหตุผลและเส้นแบ่งฉบับเต็ม) เนื่องจากเป็นการซ่อนด้วย CSS ของเราเองล้วน ๆ การซ่อนนี้จึงอาจหยุด
+ทำงานได้ทุกเมื่อที่ YouTube เปลี่ยนโครงสร้างหน้าเว็บ
 
 ## 11. Logging
 
@@ -320,6 +340,9 @@ exact path follows Tauri's app-data directory for the system). The stored keys a
 | `windowBounds` | The media window's last position (x, y) and size (width, height), in pixels. Written by Rust only; never shown in the settings window's snapshot — see section 7 | No |
 | `uiScale` | The media window's display scale (zoom), through WebView2's own `set_zoom` API. Accepted values are {100, 125, 150, 175, 200} percent; applies immediately when set, and again after the app restarts — see section 7 | No |
 | `sleepAtEndOfVideo` | Turns on/off pausing playback automatically once the current video ends (guarding against one YouTube autoplay-next). Defaults to off; not reset back to off automatically — see section 7 | No |
+| `keepDisplayAwake` | Keeps the display/machine from sleeping only while a video is actually playing, by calling a Windows API only. Defaults to on — see section 8 | No |
+| `hideShorts` | Hides the Shorts shelf on the home page with Lalin Cast's own CSS. Defaults to off (opt-in) — see section 10 | No |
+| `hideGuideTabs` | Hides the Shorts tab in the side navigation with Lalin Cast's own CSS. Defaults to off (opt-in) — see section 10 | No |
 
 A previous build stored an `adFilterMode` key; it was removed in this H0 release and is no longer
 read or written. If an old `media-settings.json` still has that key from a previous install, the
@@ -498,7 +521,7 @@ persisted and never leaves the device.
 
 None of this involves any telemetry system — Lalin Cast still has none, as stated in section 1.
 
-## 8. Playback: sleep timer, codec filter, hardware decoding, and touch overlay
+## 8. Playback: sleep timer, codec filter, hardware decoding, touch overlay, and keeping the display awake
 
 The sleep timer (`sleepTimerMinutes`) runs entirely on the device: the timer itself is a Rust thread
 counting down in memory, with no network connection involved. When it fires, Rust sends an event to
@@ -529,6 +552,15 @@ Mini-player mode is current-session state only. It is never written to the setti
 no persisted key for it, as noted in section 2) and has no additional privacy implication — it only
 changes the size, position, and frame of the window that already exists.
 
+Keeping the display awake (`keepDisplayAwake`, on by default) **calls a Windows API only**
+(`SetThreadExecutionState`) to tell the operating system the machine is in use **only while a video
+is actually playing** (driven by the same playing/paused state used for the now-playing title — see
+section 7). This API call **sends nothing off the device, reads nothing that is on screen, and
+involves no network of any kind** — it only asks the operating system not to sleep the display or
+the machine. As soon as playback stops, the setting is turned off, or Lalin Cast is closed, this
+request is released immediately and the display/machine go back to sleeping normally on Windows'
+own schedule.
+
 ## 9. Update checks
 
 The app contacts `github.com` (specifically
@@ -546,6 +578,17 @@ through a remote WebView. Everything that happens inside that page — cookies, 
 sign-in, watch history, ads, the recommendation algorithm — is entirely under YouTube's/Google's
 control, not Lalin Cast's. See Google's privacy policy at `https://policies.google.com/privacy`
 for what happens specifically inside that page.
+
+**Hiding the Shorts shelf / Shorts tab (`hideShorts`, `hideGuideTabs` keys, both off by default,
+opt-in):** When either option is turned on from the settings window, the script injected into the
+page **reads only the already-rendered DOM of the YouTube page** to tag matching Shorts-shelf/
+Shorts-tab elements with Lalin Cast's own class, then hides them with Lalin Cast's own stylesheet
+(`display: none`). **Nothing that is displayed on screen is ever read and sent anywhere, nothing
+about YouTube's response is intercepted or modified, no node is ever removed from the page, and the
+Home tab is never hidden under any circumstance** (see
+[`docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md`](docs/architecture/ADR-004-CLIENT-SIDE-MODIFICATION-BOUNDARY.md)
+for the full reasoning and the boundary this follows). Because this is entirely our own CSS, it may
+stop working at any time YouTube changes its page structure.
 
 ## 11. Logging
 
