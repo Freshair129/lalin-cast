@@ -109,6 +109,20 @@ p[hidden] {
   display: none;
 }
 
+.portable-banner {
+  color: var(--info);
+  background: var(--surface);
+  border: 1px solid var(--info);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.portable-banner[hidden] {
+  display: none;
+}
+
 .field-group {
   margin: 0 0 10px;
   padding: 0;

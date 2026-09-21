@@ -13,7 +13,17 @@
  *     notes?: string,
  *     pubDate?: string,
  *     message?: string,
+ *     portable: boolean,
  *   };
+ *
+ * `portable` (wave 11, contract 4/5 in docs/plans/W11_PORTABLE_PLAN.md) is
+ * true when the app is running in portable mode. The NSIS in-place updater
+ * installs into its own install folder, not beside the exe, so it must never run in
+ * that mode: while `state === "available"` and `portable` is true, the
+ * install button is disabled and a short instruction to download the new
+ * zip (and move the `lalin-cast-data` folder into it) is shown instead — no
+ * new external link, no URL opened. A missing `portable` field (e.g. an
+ * older test fixture) is treated the same as `false`.
  *
  * When the window is already open and the host re-checks (or the state
  * otherwise changes), the host does:
@@ -94,6 +104,15 @@ const STRINGS = {
 };
 
 const STATE_SECTION_IDS = ["state-available", "state-uptodate", "state-error", "state-no-tauri"];
+
+// Fixed-vocabulary, bilingual (Thai first, English after) — same rationale
+// as fallback/settings.js's PORTABLE_* constants: short, pinned wording
+// shown regardless of the window's active UI language. Per contract 5, no
+// new external link and no URL opening; this only tells the person what to
+// do by hand.
+const PORTABLE_INSTALL_NOTICE_TEXT =
+  "โหมดพกพา — ดาวน์โหลด zip เวอร์ชันใหม่แล้วย้ายโฟลเดอร์ lalin-cast-data เข้าไปด้วย ไม่มีการติดตั้งอัตโนมัติในโหมดพกพา / " +
+  "Portable mode — download the new zip and move the lalin-cast-data folder into it. There is no automatic install in portable mode.";
 
 // ---------------------------------------------------------------------------
 // DOM helpers (operate on a `doc` param so tests can pass a stub)
@@ -191,6 +210,11 @@ function wireInstallButton(doc, win) {
     if (state.installInFlight) return;
 
     const data = win.__LALIN_UPDATE__ || {};
+    // Defense in depth: the Rust host already refuses cast_update_install in
+    // portable mode (contract 3), and the button is disabled in that state
+    // (renderAvailable above); this guard just makes sure a stray click
+    // (e.g. bypassing `disabled` in a test) can never fire the invoke.
+    if (data.portable) return;
     const strings = STRINGS[langOf(data)];
 
     state.installInFlight = true;
@@ -219,6 +243,7 @@ function wireInstallButton(doc, win) {
 
 function renderAvailable(doc, win, strings, data) {
   const state = getState(win);
+  const portable = !!data.portable;
   showOnly(doc, "state-available");
   setText(doc, "available-title", strings.available.title);
 
@@ -232,9 +257,15 @@ function renderAvailable(doc, win, strings, data) {
   setHidden(doc, "install-error", true);
   setText(doc, "install-error", "");
 
+  // Contract 5: in portable mode, hide/disable the install button (the NSIS
+  // updater installs into its own install folder, not beside the exe) and show a
+  // short instruction to download the zip by hand instead.
+  setHidden(doc, "portable-install-notice", !portable);
+  setText(doc, "portable-install-notice", portable ? PORTABLE_INSTALL_NOTICE_TEXT : "");
+
   const installBtn = byId(doc, "install-btn");
   if (installBtn) {
-    installBtn.disabled = state.installInFlight;
+    installBtn.disabled = portable || state.installInFlight;
     installBtn.textContent = state.installInFlight ? strings.available.installing : strings.available.install;
   }
   const laterBtn = byId(doc, "later-btn");
