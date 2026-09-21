@@ -1,7 +1,7 @@
 ---
-version: "0.1.5b"
+version: "0.1.6b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T09:15:00+07:00,LALIN"
+last_update: "2026-09-21T15:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -112,6 +112,21 @@ tag — if any item is not done, **do not tag**:
       > `scripts/fixtures/notices-mismatch/` fixture and the self-test step in `ci.yml`'s `notices`
       > job prove this on every CI run, so it no longer needs a separate manual item in this
       > checklist
+- [ ] **human gate H29 ปิดแล้ว** (`docs/plans/W11_PORTABLE_PLAN.md`) — ถ้าฟีเจอร์ wave 11 รวมอยู่ในรุ่นนี้
+      — **human gate H29 is closed** (`docs/plans/W11_PORTABLE_PLAN.md`) — if wave 11's features are
+      included in this release:
+  - [ ] H29 — ดาวน์โหลด artifact `lalin-cast-dryrun-portable` จาก run ล่าสุดของ
+        `.github/workflows/release-dryrun.yml` บน commit ที่จะ tag (ถ้า commit นั้นไม่มี run เพราะไม่ได้แตะไฟล์
+        ที่เกี่ยวกับการ bundle ให้สั่งรันเองด้วย `workflow_dispatch`) แตก zip ลง USB บนเครื่องสะอาด เปิดแอป ตั้งค่า
+        บางอย่าง ปิดแล้วเปิดใหม่ ยืนยันว่าค่าที่ตั้งยังอยู่ ยืนยันว่า `%APPDATA%\ai.lalin.cast` และ
+        `%LOCALAPPDATA%\ai.lalin.cast` ไม่ถูกสร้างหรือแก้ไข และไม่มี Run key หรือ
+        `HKCU\Software\Classes\lalin-cast` ใหม่เกิดขึ้น — download the `lalin-cast-dryrun-portable`
+        artifact from the latest `.github/workflows/release-dryrun.yml` run on the commit about to be
+        tagged (start one with `workflow_dispatch` if that commit touched no bundle file and so has no
+        run), extract the zip onto a USB drive on a clean machine, open the app, change a setting,
+        close and reopen it, confirm the setting persisted, confirm
+        `%APPDATA%\ai.lalin.cast` and `%LOCALAPPDATA%\ai.lalin.cast` were not created or modified, and
+        confirm no new Run key or `HKCU\Software\Classes\lalin-cast` registry entry appears
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -249,3 +264,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.3b | 2026-09-21 | candidate | Added the pre-tag human gates H24 (Shorts shelf/guide tab hide on a real Leanback session without stealing focus) and H25 (display stays awake during playback, sleeps normally when paused/stopped) for wave 8 (U4) | uncommitted | LALIN |
 | 0.1.4b | 2026-09-21 | candidate | Added the pre-tag human gate H26 (log file appears in a release build, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path) for wave 9 (U3) | uncommitted | LALIN |
 | 0.1.5b | 2026-09-21 | candidate | Added the pre-tag human gate H28 (install the `lalin-cast-dryrun-installer` CI artifact on a clean machine and confirm it launches) for wave 10 (U2); noted that the former H27 is now enforced automatically by the `notices` job's fixture self-test instead of being a manual checklist item; added `notices` and `release-dryrun` to the CI-green pre-tag item | uncommitted | LALIN |
+| 0.1.6b | 2026-09-21 | candidate | Added the pre-tag human gate H29 (extract the `lalin-cast-dryrun-portable` CI artifact to a USB drive on a clean machine, confirm settings persist across a restart, and confirm neither `%APPDATA%\ai.lalin.cast`/`%LOCALAPPDATA%\ai.lalin.cast` nor a Run key/`lalin-cast://` registry entry appears) for wave 11 (U3) | uncommitted | LALIN |

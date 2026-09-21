@@ -124,6 +124,103 @@ jobs:
             Write-Host "lifecycle.json does not exist at $lifecyclePath"
           }
 
+      # Wave 11 U3 (docs/plans/W11_PORTABLE_PLAN.md, contract 6): proves the portable-mode marker
+      # really moves lifecycle.json beside the exe AND that installed mode (the step above) is left
+      # completely untouched by it -- the two properties this wave's single most important rule
+      # (installed mode must not change by even one path) and its second rule (no in-place install
+      # in portable mode) both depend on. Runs after the installed-mode steps above so their
+      # `%LOCALAPPDATA%\ai.lalin.cast\lifecycle.json` (written with requestId ci-smoke) already
+      # exists and can be used as the "did portable mode leak here" baseline.
+      - name: Copy debug exe into a portable layout
+        shell: pwsh
+        run: |
+          $portableDir = Join-Path $env:RUNNER_TEMP "lalin-portable"
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          Copy-Item -Path "src-tauri/target/debug/lalin-cast.exe" -Destination (Join-Path $portableDir "lalin-cast.exe")
+          # Empty marker file -- contents are never read, only its presence beside the exe
+          # (docs/plans/W11_PORTABLE_PLAN.md, contract 1).
+          New-Item -ItemType File -Force -Path (Join-Path $portableDir "lalin-cast.portable") | Out-Null
+          Write-Host "OK: portable layout created at $portableDir"
+
+      - name: Record installed-mode lifecycle.json LastWriteTimeUtc before the portable run
+        shell: pwsh
+        run: |
+          $lifecyclePath = Join-Path $env:LOCALAPPDATA "ai.lalin.cast\lifecycle.json"
+          if (-not (Test-Path $lifecyclePath)) {
+            throw "$lifecyclePath does not exist -- the installed-mode smoke steps above must run and write it first"
+          }
+          $before = (Get-Item -Path $lifecyclePath).LastWriteTimeUtc.ToString("o")
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALLED_LIFECYCLE_LASTWRITE_BEFORE=$before"
+          Write-Host "Installed-mode lifecycle.json LastWriteTimeUtc before portable run: $before"
+
+      - name: Run portable exe --lifecycle close --request-id ci-portable (60s timeout)
+        shell: pwsh
+        run: |
+          $exePath = Join-Path $env:RUNNER_TEMP "lalin-portable\lalin-cast.exe"
+          $proc = Start-Process -FilePath $exePath -ArgumentList "--lifecycle", "close", "--request-id", "ci-portable" -PassThru
+          # Same WaitForExit pattern as the installed-mode step above (not Wait-Process), so a
+          # process that already exited before the wait is not reported as "cannot find process".
+          if (-not $proc.WaitForExit(60000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw "portable lalin-cast.exe --lifecycle close --request-id ci-portable did not exit within 60s"
+          }
+          Write-Host "exit code: $($proc.ExitCode)"
+
+      - name: Assert portable lifecycle.json landed beside the exe
+        shell: pwsh
+        run: |
+          $portableLifecyclePath = Join-Path $env:RUNNER_TEMP "lalin-portable\lalin-cast-data\lifecycle.json"
+          if (-not (Test-Path $portableLifecyclePath)) {
+            throw "$portableLifecyclePath not found -- portable mode did not write lifecycle.json under lalin-cast-data beside the exe"
+          }
+          $state = Get-Content -Raw -Path $portableLifecyclePath | ConvertFrom-Json
+          if ($state.type -ne "stopped" -or $state.requestId -ne "ci-portable" -or $state.exitCode -ne 0) {
+            Write-Host "portable lifecycle.json contents:"
+            Get-Content -Raw -Path $portableLifecyclePath
+            throw "portable lifecycle.json did not match the expected stopped/ci-portable/exitCode=0 state"
+          }
+          Write-Host "OK: portable lifecycle.json matched the expected stopped/ci-portable/exitCode=0 state"
+
+      - name: Assert installed-mode lifecycle.json was NOT touched by the portable run
+        shell: pwsh
+        run: |
+          $lifecyclePath = Join-Path $env:LOCALAPPDATA "ai.lalin.cast\lifecycle.json"
+          if (-not (Test-Path $lifecyclePath)) {
+            throw "$lifecyclePath disappeared after the portable run"
+          }
+          $state = Get-Content -Raw -Path $lifecyclePath | ConvertFrom-Json
+          if ($state.requestId -eq "ci-portable") {
+            Write-Host "installed-mode lifecycle.json contents:"
+            Get-Content -Raw -Path $lifecyclePath
+            throw "installed-mode lifecycle.json requestId is ci-portable -- portable mode leaked into %LOCALAPPDATA%\ai.lalin.cast"
+          }
+          $after = (Get-Item -Path $lifecyclePath).LastWriteTimeUtc.ToString("o")
+          if ($after -ne $env:INSTALLED_LIFECYCLE_LASTWRITE_BEFORE) {
+            Write-Host "LastWriteTimeUtc before: $env:INSTALLED_LIFECYCLE_LASTWRITE_BEFORE"
+            Write-Host "LastWriteTimeUtc after:  $after"
+            throw "installed-mode lifecycle.json LastWriteTimeUtc changed -- portable mode wrote to %LOCALAPPDATA%\ai.lalin.cast"
+          }
+          Write-Host "OK: installed-mode lifecycle.json is untouched (requestId still ci-smoke, LastWriteTimeUtc unchanged)"
+
+      - name: Print portable and installed-mode lifecycle.json on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $portableLifecyclePath = Join-Path $env:RUNNER_TEMP "lalin-portable\lalin-cast-data\lifecycle.json"
+          if (Test-Path $portableLifecyclePath) {
+            Write-Host "portable lifecycle.json contents:"
+            Get-Content -Raw -Path $portableLifecyclePath
+          } else {
+            Write-Host "portable lifecycle.json does not exist at $portableLifecyclePath"
+          }
+          $lifecyclePath = Join-Path $env:LOCALAPPDATA "ai.lalin.cast\lifecycle.json"
+          if (Test-Path $lifecyclePath) {
+            Write-Host "installed-mode lifecycle.json contents:"
+            Get-Content -Raw -Path $lifecyclePath
+          } else {
+            Write-Host "installed-mode lifecycle.json does not exist at $lifecyclePath"
+          }
+
   arm64-check:
     name: ARM64 cross-compile check (experimental)
     # Wave 4 U4 (docs/plans/W4_PLAYBACK_PLAN.md): confirms the ARM64 target

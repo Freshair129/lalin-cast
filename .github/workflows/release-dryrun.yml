@@ -38,6 +38,7 @@ on:
       - "src-tauri/icons/**"
       - ".github/workflows/release.yml"
       - ".github/workflows/release-dryrun.yml"
+      - "packaging/portable/**"
 
 permissions:
   contents: read
@@ -139,6 +140,58 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Locate the built exe for the portable zip (fail closed)
+        id: find-portable-exe
+        # Wave 11 U3 (docs/plans/W11_PORTABLE_PLAN.md, contract 6): the x64 build above already
+        # produced a debug-free release exe at this fixed path -- fail closed rather than silently
+        # skip the portable zip if it is missing, same discipline as the installer.nsi and
+        # *-setup.exe checks above. The build above passes an explicit --target
+        # x86_64-pc-windows-msvc (see the tauri-action step's `args`), so cargo/tauri place the exe
+        # under target/<triple>/release/, not target/release/ -- nothing is ever written there.
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/x86_64-pc-windows-msvc/release/lalin-cast.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "$exePath not found -- the build step did not produce a release exe, so the portable zip would verify nothing. Failing closed."
+          }
+          Write-Host "Found release exe: $exePath"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$exePath"
+
+      - name: Build the portable zip
+        # zip contents match packaging/portable/README-PORTABLE.txt's own description: the exe, an
+        # empty lalin-cast.portable marker (contents never read -- only its presence beside the exe
+        # matters, see docs/plans/W11_PORTABLE_PLAN.md contract 1), and the README itself.
+        id: build-portable-zip
+        shell: pwsh
+        run: |
+          $stagingDir = Join-Path $env:RUNNER_TEMP "lalin-cast-portable-zip"
+          New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+          Copy-Item -Path "${{ steps.find-portable-exe.outputs.path }}" -Destination (Join-Path $stagingDir "lalin-cast.exe")
+          New-Item -ItemType File -Force -Path (Join-Path $stagingDir "lalin-cast.portable") | Out-Null
+          Copy-Item -Path "packaging/portable/README-PORTABLE.txt" -Destination (Join-Path $stagingDir "README-PORTABLE.txt")
+
+          $zipPath = Join-Path $env:RUNNER_TEMP "lalin-cast-portable.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item -Path $zipPath -Force
+          }
+          Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath
+
+          $sizeBytes = (Get-Item -Path $zipPath).Length
+          $sizeMiB = [Math]::Round($sizeBytes / 1MB, 2)
+          Write-Host "Portable zip: $zipPath ($sizeMiB MiB)"
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$zipPath"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_bytes=$sizeBytes"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_mib=$sizeMiB"
+
+      - name: Upload portable zip artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lalin-cast-dryrun-portable
+          path: ${{ steps.build-portable-zip.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Write job summary
         shell: pwsh
         run: |
@@ -148,3 +201,111 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``Classes\lalin-cast`` scheme-registration check: ``${{ steps.nsis-check.outputs.result }}``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **This installer is UNSIGNED** (Authenticode signing is human gate H4, not yet closed) -- do not distribute it as a real release artifact."
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifact: ``lalin-cast-dryrun-installer`` (retained 7 days) -- use for human gate H28 (install on a clean machine, confirm it launches)."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Portable zip size: ``${{ steps.build-portable-zip.outputs.size_mib }} MiB`` (``${{ steps.build-portable-zip.outputs.size_bytes }}`` bytes)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **The portable zip's exe is UNSIGNED** (same as the installer above) -- do not distribute it as a real release artifact."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifact: ``lalin-cast-dryrun-portable`` (retained 7 days) -- use for human gate H29 (extract to a USB drive on a clean machine, confirm settings persist and no registry/AppData writes happen)."
+
+  dry-run-arm64:
+    name: Build unsigned installer (arm64 dry run, experimental, no release)
+    # Wave 11 U3 (docs/plans/W11_PORTABLE_PLAN.md, contract 6): a dry-run rehearsal of release.yml's
+    # experimental arm64 leg, which has never actually run in CI (see that file's `arm64-check` job
+    # comment). This is a separate top-level job, not a matrix entry sharing state with `dry-run`
+    # above -- GitHub Actions does not cancel one independent job because a different independent job
+    # fails or is slow, so `continue-on-error: true` here is already enough to keep an arm64 failure
+    # from turning this workflow red or blocking the x64 leg, mirroring what release.yml achieves with
+    # its matrix's `fail-fast: false` + per-leg `continue-on-error: ${{ matrix.experimental }}`
+    # (a arm64 failure there does not cancel or fail the x64 leg either). Does not build the portable
+    # zip -- contract 6 only asks for that from the x64 leg.
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+
+      - name: rustup target add aarch64-pc-windows-msvc
+        shell: pwsh
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - name: Build unsigned Tauri bundle (dry run -- no release, no updater artifacts)
+        # Same pinned tauri-action SHA and same createUpdaterArtifacts=false override as the x64 leg
+        # above, plus --target for this leg's triple. See that step's comment for why no
+        # TAURI_SIGNING_PRIVATE_KEY* secret is needed and why no release is created or uploaded.
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        with:
+          projectPath: .
+          args: '--target aarch64-pc-windows-msvc --config {"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Check rendered NSIS script for self-registered scheme
+        id: nsis-check
+        # Identical fail-closed scheme check as the x64 leg above -- see that step's comment for the
+        # full reasoning. Kept in lockstep so this leg cannot quietly become a weaker rehearsal than
+        # the x64 one.
+        shell: pwsh
+        run: |
+          $nsiFiles = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "installer.nsi" -ErrorAction SilentlyContinue
+          if (-not $nsiFiles -or $nsiFiles.Count -eq 0) {
+            throw "No rendered installer.nsi found under src-tauri/target/**/nsis/** -- the bundle step did not produce an NSIS script, so the scheme check would verify nothing. Failing closed."
+          }
+
+          Write-Host "Found $($nsiFiles.Count) rendered installer.nsi file(s):"
+          $nsiFiles | ForEach-Object { Write-Host " - $($_.FullName)" }
+
+          $schemeHits = @()
+          foreach ($f in $nsiFiles) {
+            $content = Get-Content -Raw -Path $f.FullName
+            if ($content -match [regex]::Escape('Classes\lalin-cast')) {
+              $schemeHits += $f.FullName
+            }
+          }
+
+          if ($schemeHits.Count -gt 0) {
+            Write-Host "The following installer.nsi file(s) contain 'Classes\lalin-cast':"
+            $schemeHits | ForEach-Object { Write-Host " - $_" }
+            throw "installer.nsi references Classes\lalin-cast -- the installer must never self-register the lalin-cast:// URL scheme (see docs/plans/W7_DEEPLINK_PLAN.md). Failing."
+          }
+
+          Write-Host "OK: no installer.nsi references Classes\lalin-cast -- the installer does not self-register the scheme."
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "result=pass"
+
+      - name: Locate the unsigned setup executable
+        id: find-installer
+        shell: pwsh
+        run: |
+          $setupFiles = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*-setup.exe" -ErrorAction SilentlyContinue
+          if (-not $setupFiles -or $setupFiles.Count -eq 0) {
+            throw "No *-setup.exe found under src-tauri/target -- the bundle step did not produce an NSIS installer."
+          }
+
+          $setupFile = $setupFiles | Select-Object -First 1
+          $sizeBytes = $setupFile.Length
+          $sizeMiB = [Math]::Round($sizeBytes / 1MB, 2)
+
+          Write-Host "Installer: $($setupFile.FullName) ($sizeMiB MiB)"
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$($setupFile.FullName)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_bytes=$sizeBytes"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "size_mib=$sizeMiB"
+
+      - name: Upload unsigned installer artifact (arm64)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lalin-cast-dryrun-installer-arm64
+          path: ${{ steps.find-installer.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write job summary
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Lalin Cast release dry run (unsigned, arm64, experimental)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Installer size: ``${{ steps.find-installer.outputs.size_mib }} MiB`` (``${{ steps.find-installer.outputs.size_bytes }}`` bytes)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``Classes\lalin-cast`` scheme-registration check: ``${{ steps.nsis-check.outputs.result }}``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **This installer is UNSIGNED** (Authenticode signing is human gate H4, not yet closed) -- do not distribute it as a real release artifact."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- This is the **experimental arm64** leg (``continue-on-error: true``, mirrors ``release.yml``'s matrix) -- a failure here is reported but does not fail this workflow or block the x64 leg above."
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Artifact: ``lalin-cast-dryrun-installer-arm64`` (retained 7 days)."
