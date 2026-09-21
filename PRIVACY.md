@@ -261,12 +261,39 @@ Shorts shelf/แท็บ Shorts แล้วซ่อนด้วย stylesheet
 สำหรับเหตุผลและเส้นแบ่งฉบับเต็ม) เนื่องจากเป็นการซ่อนด้วย CSS ของเราเองล้วน ๆ การซ่อนนี้จึงอาจหยุด
 ทำงานได้ทุกเมื่อที่ YouTube เปลี่ยนโครงสร้างหน้าเว็บ
 
-## 11. Logging
+## 11. ไฟล์ log ในเครื่อง
 
-Lalin Cast ไม่ log ข้อมูลส่วนบุคคล (PII), รหัสจับคู่ทีวี (TV code), คุกกี้, หรือ token/key ใด ๆ ลงไฟล์
-log อย่างถาวร ข้อความ debug/log ระหว่างพัฒนา (ถ้ามี) จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิคของแอปเอง (เช่น
-สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง (ข้อ 6) ก็อยู่
-ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
+Lalin Cast เขียนไฟล์ log ไว้ในเครื่องที่ `%LOCALAPPDATA%\ai.lalin.cast\logs\lalin-cast.log` เพื่อช่วย
+วินิจฉัยปัญหา (เช่น DIAL bind ไม่สำเร็จ หรือตรวจสอบอัปเดตล้มเหลว) **ไฟล์นี้อยู่ในเครื่องเท่านั้น ไม่มีการ
+ส่งออกไปที่ใดโดยอัตโนมัติไม่ว่ากรณีใด** — ผู้ใช้เป็นคนตัดสินใจเองว่าจะแนบไฟล์นี้ไปกับรายงานปัญหาหรือไม่
+(ดู [`README.md`](README.md) หัวข้อ "Support")
+
+ก่อนข้อความใด ๆ จะถูกเขียนลงไฟล์นี้ ทุกบรรทัดต้องผ่านฟังก์ชัน sanitiser ตัวเดียวกันเสมอ (ไม่มีทางลัดที่
+เขียนข้อความดิบลงไฟล์ได้) ซึ่งทำสามอย่างกับทุกข้อความก่อนเขียนเสมอ:
+
+- แทนที่ URL ที่ขึ้นต้นด้วย `http://`, `https://` หรือ `lalin-cast://` (ไปจนถึงช่องว่างถัดไป) ด้วย
+  `<url>`
+- แทนที่ path แบบ Windows ที่ขึ้นต้นด้วย `<ตัวอักษร>:\` (เช่น `C:\`) หรือ `\\` (ไปจนถึงช่องว่างถัดไป)
+  ด้วย `<path>` — เพราะ path แบบนี้มักมีชื่อบัญชี Windows ของผู้ใช้ฝังอยู่ (เช่น `C:\Users\<ชื่อบัญชี>\...`)
+- แทนที่ตัวอักษรควบคุมทุกตัว (รวมทั้ง `\r` และ `\n`) ด้วยช่องว่าง แล้วตัดความยาวข้อความเหลือ 512 ตัวอักษร
+
+เพราะ**ทุกการเขียนไฟล์ log ต้องผ่านฟังก์ชันนี้เพียงจุดเดียว** (ไม่ใช่การไว้ใจให้ทุกจุดในโค้ดที่เรียก log
+ระวังเอง) การแทนที่ทั้งสามข้อข้างต้นจึงเกิดขึ้นทุกครั้งโดยอัตโนมัติ กับทุกจุดที่เรียก log รวมถึงจุดที่จะเพิ่ม
+ในอนาคตด้วย แต่ก็มีขอบเขตที่ต้องรู้ไว้: การจับคู่แต่ละแบบทำไปได้แค่ **จนถึงช่องว่างถัดไป** เท่านั้น ดังนั้น
+URL ที่ใช้ scheme อื่นนอกจากสามแบบที่ระบุจะหลุดรอดไปทั้งเส้น และ path แบบ Windows ที่มีช่องว่างอยู่ในตัวเอง
+(เช่น `C:\Program Files\...` หรือ `C:\Users\ชื่อ นามสกุล\...`) จะถูกตัดครึ่งหลังของช่องว่างทิ้งไว้ในบรรทัด
+log ไฟล์นี้จึงไม่ได้การันตีว่าจะไม่มี URL หรือ path หลุดเข้ามาได้เลย รับประกันได้แค่ว่ารูปแบบที่ตรงกับกฎ
+ทั้งสามข้อจะถูกแทนที่แน่นอน ส่วนที่แยกออกไปคนละกลไกกัน: Lalin Cast ยังไม่ log ข้อมูลส่วนบุคคล (PII),
+รหัสจับคู่ทีวี (TV pairing code), คุกกี้ หรือ token/key ใด ๆ ลงไฟล์นี้อย่างถาวร — ค่าเหล่านี้ไม่เคยถูกส่งเข้า
+มาที่จุดเขียน log ตั้งแต่แรก จึงไม่มีรูปแบบให้ sanitiser จับได้เลย การไม่มีค่าเหล่านี้ในไฟล์ log เป็นเรื่องวินัย
+ของแต่ละจุดที่เรียก log ไม่ใช่สิ่งที่ฟังก์ชันนี้บังคับใช้ ข้อความ debug/log จะพิมพ์เฉพาะข้อมูลสถานะทางเทคนิค
+ของแอปเอง (เช่น สถานะการ bind พอร์ต, สถานะการเชื่อมต่อ) ไม่ใช่เนื้อหาที่ระบุตัวตนผู้ใช้ ลิงก์จากบรรทัดคำสั่ง
+(ข้อ 6) ก็อยู่ภายใต้กฎเดียวกันนี้ — ไม่ถูก log ไม่ว่าจะผ่านการตรวจสอบรูปแบบหรือไม่ก็ตาม
+
+ไฟล์นี้หมุนเวียนเองเมื่อไฟล์ปัจจุบันมีขนาดเกินประมาณ 512 KiB — ไฟล์เก่าจะถูกเก็บไว้อีกหนึ่งไฟล์
+(`lalin-cast.log.1`) แล้วเริ่มไฟล์ใหม่ เก็บไว้สูงสุดสองไฟล์เท่านั้น เพดานรวมจึงประมาณ 1 MiB และไม่โตต่อไป
+เรื่อย ๆ หน้าต่างการตั้งค่ามีปุ่มเปิดโฟลเดอร์นี้โดยตรง (ดู [`README.md`](README.md) หัวข้อ "Support" และ
+"Settings") ลบไฟล์เหล่านี้ได้โดยลบโฟลเดอร์ `logs` ทิ้ง (ดูข้อ 12)
 
 ## 12. การลบข้อมูล
 
@@ -278,8 +305,9 @@ log อย่างถาวร ข้อความ debug/log ระหว่�
 ```
 
 การลบโฟลเดอร์แรกจะลบทั้ง `media-settings.json` (รวม `dialDeviceId`/`dialFriendlyName` ที่ตั้งไว้) และ
-สถานะภายในอื่น ๆ ของแอป ส่วนโฟลเดอร์ที่สองมีไฟล์วงจรชีวิตของตัวเปิดแอป (`lifecycle.json` — ดูข้อ 7)
-หากเคยเปิดตัวเลือก "เริ่มพร้อม Windows" ไว้ ให้ปิดตัวเลือกนั้นจากหน้าต่างการตั้งค่าก่อนลบโฟลเดอร์ (หรือลบค่า
+สถานะภายในอื่น ๆ ของแอป ส่วนโฟลเดอร์ที่สองมีไฟล์วงจรชีวิตของตัวเปิดแอป (`lifecycle.json` — ดูข้อ 7) และ
+โฟลเดอร์ย่อย `logs\` ที่เก็บไฟล์ log ในเครื่อง (`lalin-cast.log` และ `lalin-cast.log.1` ถ้ามี — ดูข้อ 11)
+การลบโฟลเดอร์ที่สองทั้งโฟลเดอร์จึงลบไฟล์ log ไปด้วยเสมอ หากเคยเปิดตัวเลือก "เริ่มพร้อม Windows" ไว้ ให้ปิดตัวเลือกนั้นจากหน้าต่างการตั้งค่าก่อนลบโฟลเดอร์ (หรือลบค่า
 `Lalin Cast` ออกจาก registry ที่ `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` เอง) มิฉะนั้นแอปจะยัง
 ถูกเรียกให้เริ่มทำงานทุกครั้งที่เข้าสู่ระบบ Windows ต่อไป — ดูข้อ 7 การลบข้อมูลบัญชี Google/YouTube (ประวัติ
 การรับชม, คุกกี้เข้าสู่ระบบ) ต้องทำผ่านการตั้งค่าบัญชี Google โดยตรง เพราะข้อมูลนั้นไม่ได้อยู่ในความควบคุม
@@ -590,13 +618,47 @@ Home tab is never hidden under any circumstance** (see
 for the full reasoning and the boundary this follows). Because this is entirely our own CSS, it may
 stop working at any time YouTube changes its page structure.
 
-## 11. Logging
+## 11. Local log file
 
-Lalin Cast does not persistently log personal information (PII), TV pairing codes, cookies, or any
-tokens/keys. Whatever debug/log output exists during development prints only the app's own
+Lalin Cast writes a local log file at `%LOCALAPPDATA%\ai.lalin.cast\logs\lalin-cast.log` to help
+diagnose problems (such as a failed DIAL bind or a failed update check). **This file stays on the
+device only — nothing in it is ever sent anywhere automatically, under any circumstance.** It is
+entirely up to the user whether to attach it to a bug report (see the "Support" section of
+[`README.md`](README.md)).
+
+Before any text reaches this file, every line always passes through the same one sanitiser
+function first — there is no path that writes raw text to the file. That function does exactly
+three things to every message before it is written:
+
+- replaces any URL starting with `http://`, `https://`, or `lalin-cast://` (up to the next
+  whitespace) with `<url>`
+- replaces any Windows filesystem path starting with `<letter>:\` (e.g. `C:\`) or `\\` (up to the
+  next whitespace) with `<path>` — because a path like this often has the user's own Windows
+  account name embedded in it (e.g. `C:\Users\<account name>\...`)
+- replaces every control character (including `\r` and `\n`) with a space, then truncates the
+  message to 512 characters
+
+Because **every log write funnels through this one function** — not something each call site in
+the code has to remember to do on its own — the three replacements above happen every time,
+automatically, for every call site including any added later. They do have a known limit: each
+match runs only up to the next whitespace character, so a URL using a scheme other than the three
+listed leaks in full, and a Windows path that itself contains a space (for example
+`C:\Program Files\...` or `C:\Users\First Last\...`) has its tail past that space left in the
+line. This file is therefore not a guarantee that no URL or path can ever appear in it, only that
+the three matched forms are caught. Separately, and by a different mechanism, Lalin Cast still
+does not persistently log personal information (PII), a TV pairing code, a cookie, or any
+token/key to this file — those values are never handed to the logging call in the first place, so
+there is no pattern here for the sanitiser to catch; keeping them out is call-site discipline, not
+something this function enforces. Whatever debug/log output exists prints only the app's own
 technical state (such as port-bind status or connection status), never user-identifying content.
 The command-line deep link (section 6) falls under this same rule — it is never logged, whether or
 not it passes validation.
+
+This file rotates on its own once the current file passes roughly 512 KiB: the older file is kept
+as one extra copy (`lalin-cast.log.1`) and a new file is started; at most two files are ever kept,
+so the total stays around 1 MiB and never grows without bound. The settings window has a button
+that opens this folder directly (see the "Support" and "Settings" sections of
+[`README.md`](README.md)). Delete these files by deleting the `logs` folder (see section 12).
 
 ## 12. Deleting your data
 
@@ -610,7 +672,9 @@ deleting both of the app's data folders:
 
 Deleting the first folder removes `media-settings.json` (including any `dialDeviceId`/
 `dialFriendlyName` you set) and any other internal app state. The second folder holds the launcher
-lifecycle file (`lifecycle.json` — see section 7). If you ever turned on "start with Windows", turn
+lifecycle file (`lifecycle.json` — see section 7) and the `logs\` subfolder holding the local log
+file (`lalin-cast.log` and `lalin-cast.log.1` if present — see section 11); deleting that whole
+second folder always removes the log file along with it. If you ever turned on "start with Windows", turn
 it off from the settings window before deleting the folders (or remove the `Lalin Cast` value from
 the registry yourself, at `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) — otherwise the app
 will keep being launched at sign-in — see section 7. Deleting Google/YouTube account data (watch
