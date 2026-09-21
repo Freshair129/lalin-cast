@@ -375,3 +375,46 @@ version number.
   พร้อมกับตัวติดตั้งไม่ได้ / `packaging/portable/README-PORTABLE.txt` (Thai + English): how to use it,
   the WebView2 runtime requirement, treating the `lalin-cast-data` folder's signed-in YouTube session
   like a password, how to update, and a warning against running it alongside an installed copy
+
+#### Wave 12 — Release assets (`docs/plans/W12_RELEASE_ASSETS_PLAN.md`)
+
+- ย้าย logic ของ dry run ไปเป็นสคริปต์ที่ใช้ร่วมกันใน `scripts/release/` (ตรวจ tag/เวอร์ชัน/CHANGELOG,
+  ตรวจ scheme ของ installer แบบ fail-closed, สร้าง zip พกพา, สร้าง checksum SHA-256, อัปโหลด asset
+  พร้อมโหมด `-WhatIf`) พร้อม self-test ที่รันบน CI ทุก PR ทำให้ dry run พิสูจน์โค้ดชุดเดียวกับที่
+  `release.yml` จะใช้จริง / moved the dry run's inline logic into shared scripts under
+  `scripts/release/` (tag/version/CHANGELOG check, a fail-closed installer-scheme check, portable-zip
+  creation, SHA-256 checksum generation, and asset upload with a `-WhatIf` mode), each with a
+  self-test that runs on CI for every pull request, so the dry run now proves the exact code
+  `release.yml` will run
+- guard เวอร์ชันใหม่ (`Test-ReleaseVersion.ps1`) เป็นสเต็ปแรกของ `release.yml` **ก่อน** เริ่ม build ใด ๆ
+  ล้มทันทีถ้า tag ที่ push ไม่ตรงกับเวอร์ชันแอปเป๊ะ ๆ หรือ `CHANGELOG.md` ไม่มีหัวข้อ `## [x.y.z]` ของ
+  เวอร์ชันนั้น (หรือหัวข้อว่างเปล่า) ปิดช่องโหว่ที่ `tagName: v__VERSION__` ของ `tauri-action` เคยอ่าน
+  เวอร์ชันจาก `Cargo.toml` แทน tag ที่ push จริงอย่างเงียบ ๆ / a new version guard
+  (`Test-ReleaseVersion.ps1`) runs as the very first step of `release.yml`, **before** any build
+  starts, and fails immediately if the pushed tag does not exactly match the app version or
+  `CHANGELOG.md` has no `## [x.y.z]` section for that version (or an empty one) — closing the gap
+  where `tauri-action`'s `tagName: v__VERSION__` silently read the version from `Cargo.toml` instead
+  of the tag actually pushed
+- `release.yml` แนบ zip พกพาและไฟล์ checksum (`Lalin-Cast_<เวอร์ชัน>_<arch>_SHA256SUMS.txt`) เข้ากับ
+  draft release จริงเป็นครั้งแรก ทั้งสองสถาปัตยกรรม (x64 และ ARM64) โดยไม่ลบหรือผ่อน step เดิมที่มีอยู่
+  แล้วแม้แต่ตัวเดียว (การตรวจ updater secret, Rust checks, clippy, placeholder ของ H4,
+  การดึง CHANGELOG, `max-parallel: 1`, `fail-fast: false`, `continue-on-error` ของ ARM64,
+  `uploadUpdaterJson`) / `release.yml` now attaches the portable zip and a checksum file
+  (`Lalin-Cast_<version>_<arch>_SHA256SUMS.txt`) to the real draft release for the first time, for
+  both architectures (x64 and ARM64), without removing or loosening a single existing step (the
+  updater-secret check, Rust checks, clippy, the H4 placeholder, the CHANGELOG extraction,
+  `max-parallel: 1`, `fail-fast: false`, ARM64's `continue-on-error`, `uploadUpdaterJson`)
+- `ci.yml` เพิ่มงาน `release-scripts` (blocking) ที่รัน self-test ของสคริปต์ release ทุกตัวบน
+  `ubuntu-latest` / `ci.yml` gained a new blocking `release-scripts` job that runs the release
+  scripts' self-test on `ubuntu-latest`
+- อัปเดตเอกสาร: `docs/runbooks/RELEASE_CHECKLIST.md` (guard อัตโนมัติ, การตรวจ asset ทั้งสอง
+  สถาปัตยกรรมหลัง tag, การตรวจ checksum ด้วย `Get-FileHash`, human gate H30), README (ส่วนดาวน์โหลด:
+  installer เทียบกับ portable เทียบกับ ARM64, วิธีตรวจ checksum, ยังไม่เซ็น Authenticode จนกว่า H4 จะปิด),
+  `docs/architecture/LALIN_CAST_UPDATER_SPEC.md` (zip พกพาไม่อยู่ใน `latest.json` และไม่รับอัปเดต
+  อัตโนมัติ), `packaging/portable/README-PORTABLE.txt` (วิธีตรวจ zip กับไฟล์ SHA256SUMS) / updated
+  documentation: `docs/runbooks/RELEASE_CHECKLIST.md` (the automated guard, checking both
+  architectures' assets after tagging, verifying checksums with `Get-FileHash`, human gate H30), the
+  README (a download section: installer vs. portable vs. ARM64, how to verify a checksum, not
+  Authenticode-signed until H4 closes), `docs/architecture/LALIN_CAST_UPDATER_SPEC.md` (the portable
+  zip is outside `latest.json` and receives no automatic updates), and
+  `packaging/portable/README-PORTABLE.txt` (how to verify the zip against its SHA256SUMS file)

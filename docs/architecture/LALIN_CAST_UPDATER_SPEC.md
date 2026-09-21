@@ -1,7 +1,7 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-20T04:12:08+07:00,LALIN,uncommitted"
-last_update: "2026-09-20T04:12:08+07:00,LALIN"
+last_update: "2026-09-21T18:10:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -146,6 +146,18 @@ The workflow must not reference the root G-Music project path, G-Music signing
 secret, root backend build or Studio installer. The first release remains a
 manual publish decision after review.
 
+### Portable zip is outside the update channel (wave 12)
+
+The portable zip asset (`Lalin-Cast_<version>_<arch>_portable.zip`, added to the release in wave 12
+— see `docs/plans/W12_RELEASE_ASSETS_PLAN.md`) is **not listed in `latest.json`** and is not part of
+the signed updater manifest described above. The updater's check/download/install flow only ever
+looks at the installed-mode NSIS installer and its signature; it has no knowledge of the portable
+zip at all. A portable-mode install can still call the check-for-updates action to see whether a
+newer version exists, but the "install" action is disabled in that mode (see the README's
+[Portable mode](../../README.md#portable-mode--โหมดพกพา) section) — there is no in-place update path
+for a portable install, signed or otherwise. Getting a new portable version is always a manual
+download-and-replace, per `packaging/portable/README-PORTABLE.txt`.
+
 ## Secret and key lifecycle
 
 1. Generate a new Tauri updater keypair specifically for Lalin Cast outside the
@@ -184,3 +196,4 @@ The existing `keys/g-music.key` and `keys/g-music.key.pub` are never reused.
 | Version | Date | Status | Summary | Commit Hash | Agent |
 |---|---|---|---|---|---|
 | 0.1.0b | 2026-09-20 | candidate | Proposed signed Tauri updater, static GitHub manifest and Cast release workflow | uncommitted | LALIN |
+| 0.2.0b | 2026-09-21 | candidate | Wave 12 (U3): documented that the portable zip asset added to the release is not listed in `latest.json` and is outside the signed updater's check/download/install flow entirely — a portable install can still see that a newer version exists, but has no in-place update path, signed or otherwise (see `docs/plans/W12_RELEASE_ASSETS_PLAN.md`) | uncommitted | LALIN |
