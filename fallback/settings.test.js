@@ -139,6 +139,8 @@ function createStubDom() {
     "diagnostics-output",
     "diagnostics-result",
     "diagnostics-note",
+    "open-log-folder-btn",
+    "log-note",
     "copy-launch-command-btn",
     "launch-command-output",
     "launch-command-result",
@@ -428,6 +430,13 @@ pending.push(
     assert.ok(elements["diagnostics-note"].textContent.length > 0);
     assert.strictEqual(elements["diagnostics-output"].hidden, true, "diagnostics textarea starts hidden");
     assert.strictEqual(elements["diagnostics-result"].hidden, true);
+    assert.ok(elements["open-log-folder-btn"].textContent.length > 0);
+    assert.ok(elements["log-note"].textContent.includes("kept only on this device"));
+    assert.ok(elements["log-note"].textContent.includes("never sent anywhere"));
+    assert.ok(elements["log-note"].textContent.includes("1 MiB"));
+    assert.ok(elements["log-note"].textContent.includes("rotates at 512 KiB"));
+    assert.ok(elements["log-note"].textContent.includes("เก็บไว้ในเครื่องนี้เท่านั้น"));
+    assert.ok(elements["log-note"].textContent.includes("ไม่ถูกส่งออกไปที่ใดเลย"));
     assert.ok(elements["copy-launch-command-btn"].textContent.length > 0);
     assert.ok(elements["launch-command-note"].textContent.length > 0);
     assert.strictEqual(elements["launch-command-output"].hidden, true, "launch-command textarea starts hidden");
@@ -456,6 +465,9 @@ pending.push(
     assert.ok(elements["youtube-page-heading"].textContent.includes("YouTube page"));
     assert.ok(elements["keep-display-awake-note"].textContent.includes("Only while a video is actually playing"));
     assert.ok(elements["hide-note"].textContent.includes("This hiding is done only with Lalin Cast's own CSS"));
+    assert.ok(elements["open-log-folder-btn"].textContent.length > 0);
+    assert.ok(elements["log-note"].textContent.includes("kept only on this device"), "log-note stays bilingual-fixed in Thai mode too");
+    assert.ok(elements["log-note"].textContent.includes("เก็บไว้ในเครื่องนี้เท่านั้น"));
   }),
 );
 
@@ -1037,6 +1049,33 @@ pending.push(
     assert.strictEqual(elements["settings-error"].hidden, false);
     assert.ok(elements["settings-error"].textContent.includes("busy"));
     assert.strictEqual(elements["open-setup-btn"].disabled, false);
+  }),
+);
+
+pending.push(
+  test("Open log folder button invokes settings_open_log_folder with no args", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri, invokeCalls } = makeTauriStub();
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+    elements["open-log-folder-btn"].dispatch("click");
+    assert.strictEqual(invokeCalls.length, 1);
+    assert.strictEqual(invokeCalls[0].cmd, "settings_open_log_folder");
+    assert.strictEqual(invokeCalls[0].args, undefined);
+  }),
+);
+
+pending.push(
+  test("Open log folder failure shows an inline error", async () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub({ settings_open_log_folder: () => Promise.reject(new Error("folder missing")) });
+    const win = { __LALIN_SETTINGS__: baseSettingsData(), __TAURI__: tauri };
+    init(doc, win);
+    elements["open-log-folder-btn"].dispatch("click");
+    await nextTick();
+    assert.strictEqual(elements["settings-error"].hidden, false);
+    assert.ok(elements["settings-error"].textContent.includes("folder missing"));
+    assert.strictEqual(elements["open-log-folder-btn"].disabled, false);
   }),
 );
 

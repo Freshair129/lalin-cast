@@ -59,6 +59,8 @@
  *     `hardwareDecodingRestartRequired`/`deepLinkSchemeRegistered` already
  *     held in memory.
  *   settings_open_setup()                          -> void (opens the `setup` window)
+ *   settings_open_log_folder()                     -> void (opens this device's log folder;
+ *     no argument accepted from this page — the path comes only from the host)
  *   settings_check_updates()                       -> void (result appears in the `update` window)
  *   settings_diagnostics()                         -> string (plain-text diagnostics snapshot;
  *     contains no device id, URL, deep link, TV code, cookie or token)
@@ -154,6 +156,7 @@ const STRINGS = {
       heading: "อัปเดตและเกี่ยวกับ",
       checkUpdatesBtn: "ตรวจสอบอัปเดต",
       checkUpdatesStarted: "เริ่มตรวจสอบอัปเดตแล้ว ผลลัพธ์จะแสดงในหน้าต่างอัปเดต",
+      openLogFolderBtn: "เปิดโฟลเดอร์ log",
       versionLabel: "เวอร์ชัน ",
       unofficialText:
         "Lalin Cast เป็นซอฟต์แวร์อิสระที่ไม่เป็นทางการ ไม่ได้เป็นส่วนหนึ่งของ ไม่ได้รับการรับรอง และไม่มีความเกี่ยวข้องกับ Google, YouTube หรือเจ้าของแพลตฟอร์มใด ๆ",
@@ -169,6 +172,7 @@ const STRINGS = {
     },
     settingsErrorPrefix: "บันทึกการตั้งค่าไม่สำเร็จ: ",
     openSetupErrorPrefix: "เปิดตัวช่วยตั้งค่าไม่สำเร็จ: ",
+    openLogFolderErrorPrefix: "เปิดโฟลเดอร์ log ไม่สำเร็จ: ",
     checkUpdatesErrorPrefix: "ตรวจสอบอัปเดตไม่สำเร็จ: ",
     diagnosticsErrorPrefix: "ดึงข้อมูลวินิจฉัยไม่สำเร็จ: ",
     profileErrorPrefix: "ใช้โปรไฟล์ไม่สำเร็จ: ",
@@ -239,6 +243,7 @@ const STRINGS = {
       heading: "Updates and about",
       checkUpdatesBtn: "Check for updates",
       checkUpdatesStarted: "Update check started — the result will appear in the Update window.",
+      openLogFolderBtn: "Open log folder",
       versionLabel: "Version ",
       unofficialText:
         "Lalin Cast is unofficial, independent software. It is not affiliated with, endorsed by, or associated with Google, YouTube, or any platform owner.",
@@ -255,6 +260,7 @@ const STRINGS = {
     },
     settingsErrorPrefix: "Could not save settings: ",
     openSetupErrorPrefix: "Could not open network setup: ",
+    openLogFolderErrorPrefix: "Could not open the log folder: ",
     checkUpdatesErrorPrefix: "Could not check for updates: ",
     diagnosticsErrorPrefix: "Could not get diagnostics: ",
     profileErrorPrefix: "Could not apply profile: ",
@@ -326,6 +332,16 @@ const HIDE_NOTE =
   "This hiding is done only with Lalin Cast's own CSS. It does not change YouTube's data or behaviour, and it may stop working when YouTube changes its pages.";
 const DIAGNOSTICS_COPIED_TEXT = "คัดลอกแล้ว / Copied";
 const DIAGNOSTICS_MANUAL_COPY_TEXT = "เลือกข้อความแล้วคัดลอกเอง / Select the text and copy it";
+
+// Same fixed-vocabulary rationale as HIDE_NOTE/KEEP_DISPLAY_AWAKE_NOTE above,
+// per the "เปิดโฟลเดอร์ log" contract in docs/plans/W9_SUPPORTABILITY_PLAN.md
+// section 4. States plainly what the log file is and, just as importantly,
+// is not: kept on this device only, never sent anywhere, rotated at roughly
+// 1 MiB, and containing no TV pairing code and no links (both are stripped
+// by the sanitiser before a line is ever written).
+const LOG_NOTE_TEXT =
+  "ไฟล์ log เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกส่งออกไปที่ใดเลย หมุนเวียนที่ 512 KiB และเก็บสองไฟล์ รวมประมาณ 1 MiB / " +
+  "The log file is kept only on this device, is never sent anywhere, and rotates at 512 KiB keeping two files, so about 1 MiB in total.";
 
 // Same fixed-vocabulary rationale as CONTROLS_TABLE/DIAGNOSTICS_*: short,
 // pinned wording shown regardless of the window's active UI language.
@@ -603,6 +619,9 @@ function renderStaticLabels(doc, strings, data) {
   setText(doc, "diagnostics-note", strings.updates.diagnosticsNote);
   setAttr(doc, "diagnostics-output", "aria-label", strings.updates.diagnosticsOutputLabel);
 
+  setText(doc, "open-log-folder-btn", strings.updates.openLogFolderBtn);
+  setText(doc, "log-note", LOG_NOTE_TEXT);
+
   setText(doc, "copy-launch-command-btn", strings.updates.copyLaunchCommandBtn);
   setText(doc, "launch-command-note", strings.updates.launchCommandNote);
   setAttr(doc, "launch-command-output", "aria-label", strings.updates.launchCommandOutputLabel);
@@ -843,6 +862,31 @@ function wireOpenSetup(doc, win) {
       .invoke("settings_open_setup")
       .catch((err) => {
         showError(doc, strings.openSetupErrorPrefix + stringifyError(err, strings));
+      })
+      .then(() => {
+        btn.disabled = false;
+      });
+  });
+}
+
+// Opens this device's log folder (contract 4 in
+// docs/plans/W9_SUPPORTABILITY_PLAN.md). Same shape as wireOpenSetup above:
+// no arguments, no result text on success, an inline error on failure.
+function wireOpenLogFolder(doc, win) {
+  const btn = byId(doc, "open-log-folder-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    const data = win.__LALIN_SETTINGS__ || {};
+    const strings = STRINGS[langOf(data)];
+
+    btn.disabled = true;
+    showError(doc, "");
+
+    win.__TAURI__.core
+      .invoke("settings_open_log_folder")
+      .catch((err) => {
+        showError(doc, strings.openLogFolderErrorPrefix + stringifyError(err, strings));
       })
       .then(() => {
         btn.disabled = false;
@@ -1174,6 +1218,7 @@ function init(doc, win) {
     wireOpenSetup(doc, win);
     wireCheckUpdates(doc, win);
     wireCopyDiagnostics(doc, win);
+    wireOpenLogFolder(doc, win);
     wireCopyLaunchCommand(doc, win);
     wireProfileButtons(doc, win);
     wireResetDefaults(doc, win);
