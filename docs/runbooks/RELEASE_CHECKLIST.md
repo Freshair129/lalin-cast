@@ -1,7 +1,7 @@
 ---
-version: "0.1.16b"
+version: "0.1.17b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-23T12:00:00+07:00,LALIN"
+last_update: "2026-09-23T17:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -42,8 +42,27 @@ tag — if any item is not done, **do not tag**:
         TERMS ถูกแก้เนื้อหาหลังวันนี้ ให้ขออนุมัติใหม่ก่อน tag / **Closed 2026-09-21:** Apache-2.0
         chosen (PR #17) and PRIVACY/TERMS approved — if either document's substance changes after
         this date, get it re-approved before tagging
-  - [ ] H2 — ผ่าน clean-VM install → update matrix แล้ว — the clean-VM install → update matrix has
+  - [x] H2 — ผ่าน clean-VM install → update matrix แล้ว — the clean-VM install → update matrix has
         passed
+        **ปิดแล้ว 2026-09-23:** ขั้นตอนเต็มและผลอยู่ที่
+        [`docs/runbooks/H2_CLEAN_VM_MATRIX.md`](H2_CLEAN_VM_MATRIX.md) ผู้ก่อตั้งรันบนเครื่องจริงเครื่องที่สอง
+        ด้วย build จาก `main` ที่ `67c6f56` ผ่านครบทั้งหกแถวของช่วงก่อน tag: ติดตั้งสะอาด (M1 — ไม่มี UAC,
+        เลือกโฟลเดอร์ปลายทางเองบนไดรฟ์อื่นได้), ที่เก็บข้อมูลของโหมดติดตั้ง (M2), zip พกพา (M3 — ข้อมูลอยู่ข้าง
+        exe และไม่แตะ registry เลย ซึ่งเป็นการพิสูจน์ contract ของ wave 11 บนเครื่องจริงครั้งแรก), ติดตั้งทับ
+        (M4), การตรวจอัปเดตตอนยังไม่มี release (M5) และถอนการติดตั้ง (M7) M5 รอบแรก**ไม่ผ่าน** เพราะหน้าต่าง
+        แสดงข้อความดิบจากไลบรารีอัปเดตแทนข้อความที่แปลไว้ แก้ใน PR #29 แล้วทดสอบซ้ำผ่าน
+        **เหลือ M6 (อัปเดตข้ามเวอร์ชันจริง)** ซึ่งทำก่อน tag ไม่ได้เพราะ endpoint ของ updater ชี้ไปที่ release
+        ที่ยังไม่มี — ทำหลัง publish คู่กับ H30 โดยใช้ installer 0.1.9 ที่เตรียมไว้แล้ว /
+        **Closed 2026-09-23:** the full procedure and results are in
+        [`docs/runbooks/H2_CLEAN_VM_MATRIX.md`](H2_CLEAN_VM_MATRIX.md). The founder ran it on a second
+        physical machine with a build of `main` at `67c6f56`; all six pre-tag rows pass — fresh install
+        (M1), installed-mode data locations (M2), the portable zip (M3, the first real-hardware proof of
+        wave 11's no-registry contract), reinstall over the same version (M4), the update check with no
+        release published (M5) and uninstall (M7). M5 **failed** on the first attempt because the window
+        showed the update library's raw message instead of the translated one; fixed in PR #29 and
+        retested. **M6 (a real cross-version update) remains** and cannot run before the tag, because the
+        updater endpoint points at a release that does not exist yet — it runs after publishing, next to
+        H30, using the 0.1.9 installer already built for it
   - [ ] H3 — regression บน Leanback จริง และการจับคู่ iPhone ด้วย identity ปัจจุบันผ่านแล้ว — real
         Leanback regression and iPhone pairing with the current identity has passed
   - [x] H4 — ซื้อใบรับรอง code-signing แล้ว **หรือ** เผยแพร่รุ่นนี้แบบยังไม่เซ็น Authenticode โดยเจตนา
@@ -394,4 +413,5 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.13b | 2026-09-22 | candidate | Marked human gates H24 and H26 closed: the founder confirmed on a real Leanback session that the Shorts shelf/guide tab hide without stealing focus (H24), and confirmed on a real release build that the log file appears, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path (H26); H25 (keep-display-awake) remains open | uncommitted | LALIN |
 | 0.1.14b | 2026-09-22 | candidate | Marked human gate H25 closed: the founder confirmed both conditions — the display/system stays awake during playback with `keepDisplayAwake` on, and sleeps normally again once playback is paused or stopped; the H24-H25 group heading is now fully closed | uncommitted | LALIN |
 | 0.1.15b | 2026-09-22 | candidate | Added a note to human gate H22: its first closure only proved discovery, and DIAL launch returned 504 until PR #25; retested after PR #25 (name shown, launch 201, playback, song change from the phone) it passes, and the phone disconnecting after a song change is recorded as a known limitation shared with VacuumTube 1.8.2 | uncommitted | LALIN |
+| 0.1.17b | 2026-09-23 | candidate | Marked human gate H2 closed: the founder ran the new `docs/runbooks/H2_CLEAN_VM_MATRIX.md` on a second physical machine and all six pre-tag rows pass (fresh install, installed-mode data locations, portable zip with no registry writes, reinstall, update check with no release, uninstall); M5 failed first and was fixed in PR #29; M6, the real cross-version update, is recorded as a post-publish obligation next to H30 | uncommitted | LALIN |
 | 0.1.16b | 2026-09-23 | candidate | Added a retest note to human gate H24: its first closure could not have been valid because YouTube's CSP blocked the hiding stylesheet; after PR #27 switched to a constructed stylesheet the founder retested on a real Leanback session and Shorts hiding plus focus behaviour pass | uncommitted | LALIN |
