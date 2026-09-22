@@ -228,14 +228,16 @@ pub(crate) fn hardware_decoding_restart_required(app: &tauri::AppHandle) -> bool
     used != current
 }
 
-/// One `lalin-cast-shell` action, per the three-action whitelist in the
-/// contract (`toggle-mini` added in wave 4). Anything else in the payload's
-/// `action` field is discarded by [`parse_shell_action`].
+/// One `lalin-cast-shell` action, per the whitelist in the contract
+/// (`toggle-mini` added in wave 4, `start-drag` for the mini-player bar).
+/// Anything else in the payload's `action` field is discarded by
+/// [`parse_shell_action`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShellAction {
     ToggleFullscreen,
     OpenSettings,
     ToggleMini,
+    StartDrag,
 }
 
 #[derive(Deserialize)]
@@ -252,6 +254,7 @@ fn parse_shell_action(payload: &str) -> Option<ShellAction> {
         "toggle-fullscreen" => Some(ShellAction::ToggleFullscreen),
         "open-settings" => Some(ShellAction::OpenSettings),
         "toggle-mini" => Some(ShellAction::ToggleMini),
+        "start-drag" => Some(ShellAction::StartDrag),
         _ => None,
     }
 }
@@ -319,6 +322,8 @@ fn register_shell_listener(app: &tauri::AppHandle) {
             }
             ShellAction::OpenSettings => settings::open_settings_window(&app_handle),
             ShellAction::ToggleMini => window_mode::toggle_mini(&app_handle),
+            // Only acts in mini-player mode (see `window_mode::start_drag`).
+            ShellAction::StartDrag => window_mode::start_drag(&app_handle),
         }
     });
 }
@@ -1257,6 +1262,10 @@ mod tests {
         assert_eq!(
             parse_shell_action(r#"{"action":"toggle-mini"}"#),
             Some(ShellAction::ToggleMini)
+        );
+        assert_eq!(
+            parse_shell_action(r#"{"action":"start-drag"}"#),
+            Some(ShellAction::StartDrag)
         );
     }
 

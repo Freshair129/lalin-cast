@@ -9,9 +9,38 @@
 
 use std::sync::Mutex;
 
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
 
 use crate::{MEDIA_LABEL, MEDIA_MIN_HEIGHT, MEDIA_MIN_WIDTH};
+
+/// Rust → `media` page: `{ active }`, emitted every time mini-player mode
+/// is entered or left. `injected.js` shows its mini-player bar (drag
+/// handle + "normal size" button) only while `active` is true — the
+/// undecorated mini window has no title bar of its own to do either.
+pub const MINI_EVENT: &str = "lalin-cast-mini";
+
+#[derive(Clone, Serialize)]
+struct MiniPayload {
+    active: bool,
+}
+
+fn emit_mini(app: &AppHandle, active: bool) {
+    let _ = app.emit_to(MEDIA_LABEL, MINI_EVENT, MiniPayload { active });
+}
+
+/// Starts an OS window drag of the `media` window — only while it is in
+/// mini-player mode, where the window has no title bar to drag by. Called
+/// from the page's mini-player bar via the `start-drag` shell action, so
+/// the remote page needs no window permission of its own.
+pub fn start_drag(app: &AppHandle) {
+    if !is_mini(app) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window(MEDIA_LABEL) {
+        let _ = window.start_dragging();
+    }
+}
 
 /// Fixed mini-player size, in logical pixels (scaled by the target
 /// monitor's DPI at toggle time via `LogicalSize`/`mini_position`).
@@ -141,6 +170,7 @@ pub fn toggle_mini(app: &AppHandle) {
         let _ = window.set_position(saved.position);
         let keep_on_top = crate::read_bool_setting_or(app, "keepOnTop", false);
         let _ = window.set_always_on_top(keep_on_top);
+        emit_mini(app, false);
         return;
     }
 
@@ -181,12 +211,21 @@ pub fn toggle_mini(app: &AppHandle) {
     }
     // No monitor info available at all: still shrunk/undecorated/pinned,
     // just left wherever it already was rather than guessing a position.
+    emit_mini(app, true);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{mini_position, MiniPlayerState, SavedGeometry};
+    use super::{mini_position, MiniPayload, MiniPlayerState, SavedGeometry, MINI_EVENT};
     use tauri::{PhysicalPosition, PhysicalSize};
+
+    #[test]
+    fn mini_event_name_and_payload_match_what_injected_js_listens_for() {
+        // injected.js: tauri.event.listen("lalin-cast-mini", …payload.active === true…)
+        assert_eq!(MINI_EVENT, "lalin-cast-mini");
+        let json = serde_json::to_value(MiniPayload { active: true }).unwrap();
+        assert_eq!(json, serde_json::json!({ "active": true }));
+    }
 
     #[test]
     fn places_the_window_at_the_bottom_right_of_a_monitor_at_the_origin() {

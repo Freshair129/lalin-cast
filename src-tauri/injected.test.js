@@ -2426,6 +2426,77 @@ pending.push(
   }),
 );
 
+function mouseEvent(type, fields) {
+  const e = new Event(type);
+  Object.assign(e, fields || {});
+  return e;
+}
+
+pending.push(
+  test("createMiniBar: stays hidden until mini-player mode is on", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const bar = m.createMiniBar(doc, win, {});
+    win.dispatchEvent(mouseEvent("mousemove"));
+    assert.strictEqual(bar.isShown(), false);
+    assert.strictEqual(doc.getElementById(m.MINI_BAR_ID), null, "nothing is built while inactive");
+    bar.setActive(false);
+  }),
+);
+
+pending.push(
+  test("createMiniBar: shows on activation and on mouse movement, hides when mini ends", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const bar = m.createMiniBar(doc, win, { getLang: () => "en" });
+    bar.setActive(true);
+    assert.strictEqual(bar.isShown(), true);
+    const el = doc.getElementById(m.MINI_BAR_ID);
+    assert.ok(el, "bar element is attached to the body");
+    assert.strictEqual(el.children[1].textContent, m.miniBarLabel("en"));
+    assert.ok(win.__timeoutCalls.some((c) => c.ms === m.MINI_BAR_HIDE_MS), "auto-hide is scheduled");
+    bar.setActive(false);
+    assert.strictEqual(bar.isShown(), false);
+    win.dispatchEvent(mouseEvent("mousemove"));
+    assert.strictEqual(bar.isShown(), false, "mouse movement does nothing once mini ends");
+  }),
+);
+
+pending.push(
+  test("createMiniBar: the button restores normal size and the handle starts a drag", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const calls = [];
+    const bar = m.createMiniBar(doc, win, {
+      onRestore: () => calls.push("restore"),
+      onDragStart: () => calls.push("drag")
+    });
+    bar.setActive(true);
+    const el = doc.getElementById(m.MINI_BAR_ID);
+    const [handle, button] = el.children;
+    button.dispatchEvent(mouseEvent("click"));
+    handle.dispatchEvent(mouseEvent("mousedown", { button: 0 }));
+    handle.dispatchEvent(mouseEvent("mousedown", { button: 2 }));
+    assert.deepStrictEqual(calls, ["restore", "drag"], "right-button mousedown does not drag");
+    bar.setActive(false);
+  }),
+);
+
+pending.push(
+  test("miniBarLabel: Thai by default, English when the language is en", () => {
+    assert.ok(m.miniBarLabel("th").includes("ขนาดปกติ"));
+    assert.ok(m.miniBarLabel(undefined).includes("ขนาดปกติ"));
+    assert.ok(m.miniBarLabel("en").includes("Normal size"));
+  }),
+);
+
+pending.push(
+  test("SHELL_ACTIONS: start-drag is whitelisted alongside the existing actions", () => {
+    assert.strictEqual(m.SHELL_ACTIONS.START_DRAG, "start-drag");
+    assert.strictEqual(m.SHELL_ACTIONS.TOGGLE_MINI, "toggle-mini");
+  }),
+);
+
 Promise.all(pending).then(() => {
   const failed = results.filter((r) => !r.ok);
   console.log(`${results.length - failed.length}/${results.length} self-tests passed`);
