@@ -187,6 +187,32 @@
     if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
   };
 
+  // Pointer/mouse events on Lalin Cast's own on-page controls must never reach
+  // YouTube: its page script turns every mousedown into an Enter keydown on the
+  // clicked element from a capture-phase listener, so a click on one of our
+  // buttons also "selected" whatever YouTube item had focus. A listener on the
+  // button itself runs too late to stop that. This registers capture-phase
+  // listeners on the window instead — injected.js runs before YouTube's
+  // scripts, so ours run first — and, for events whose target belongs to one
+  // of our controls (`isOwn`), stops them there and hands them to `onEvent`.
+  const OWN_CONTROL_EVENTS = Object.freeze(["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick"]);
+  const guardOwnControls = (win, isOwn, onEvent) => {
+    if (!win || typeof win.addEventListener !== "function") return;
+    const listener = (e) => {
+      const target = e && e.target;
+      if (!target || !isOwn(target)) return;
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      if (typeof e.stopPropagation === "function") e.stopPropagation();
+      // Never preventDefault a pointer event: that would cancel the mousedown/
+      // mouseup compatibility events the controls act on.
+      if (e.type !== "pointerdown" && e.type !== "pointerup" && typeof e.preventDefault === "function") {
+        e.preventDefault();
+      }
+      onEvent(e, target);
+    };
+    OWN_CONTROL_EVENTS.forEach((type) => win.addEventListener(type, listener, true));
+  };
+
   const bridge = () => window.__TAURI__;
   const invoke = (command, args) => {
     const tauri = bridge();
@@ -1679,26 +1705,17 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
             if (e && typeof e.preventDefault === "function") e.preventDefault();
             dispatchSyntheticKey(doc, "keyup", spec.keyCode);
           });
-          // Mouse: left button presses the key, release (or dragging off the
-          // button) lets it go, so a key can never stay held down. Stopped
-          // here so YouTube's page never sees the click on our button.
-          let mousePressed = false;
-          button.addEventListener("mousedown", (e) => {
-            if (e && e.button !== undefined && e.button !== 0) return;
+          // Mouse presses/releases arrive through the window-level guard
+          // below (see guardOwnControls). Dragging off a held button releases
+          // its key here, so a key can never stay held down.
+          button.addEventListener("mouseleave", (e) => {
+            if (!button.__lalinMousePressed) return;
             stop(e);
-            mousePressed = true;
-            dispatchSyntheticKey(doc, "keydown", spec.keyCode);
-          });
-          const release = (e) => {
-            if (!mousePressed) return;
-            stop(e);
-            mousePressed = false;
+            button.__lalinMousePressed = false;
             dispatchSyntheticKey(doc, "keyup", spec.keyCode);
-          };
-          button.addEventListener("mouseup", release);
-          button.addEventListener("mouseleave", release);
-          button.addEventListener("click", stop);
+          });
         }
+        button.__lalinTouchKeyCode = spec.keyCode;
         overlay.appendChild(button);
         buttons[spec.id] = button;
       });
@@ -1711,6 +1728,17 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     };
 
     const shouldShow = () => enabled && !suppressed && (touched || mouseShown);
+
+    guardOwnControls(win, (target) => typeof target.__lalinTouchKeyCode === "number", (e, button) => {
+      if (e.type === "mousedown") {
+        if (e.button !== undefined && e.button !== 0) return;
+        button.__lalinMousePressed = true;
+        dispatchSyntheticKey(doc, "keydown", button.__lalinTouchKeyCode);
+      } else if (e.type === "mouseup" && button.__lalinMousePressed) {
+        button.__lalinMousePressed = false;
+        dispatchSyntheticKey(doc, "keyup", button.__lalinTouchKeyCode);
+      }
+    });
 
     const render = () => {
       if (!shouldShow()) {
@@ -2649,9 +2677,16 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let button = null;
     let hideTimer = null;
 
-    const swallow = (e) => {
-      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
-    };
+    // All pointer/mouse events on the bar go through the window-level guard
+    // (see guardOwnControls) so YouTube never turns a click here into Enter.
+    guardOwnControls(win, (target) => typeof target.__lalinMiniRole === "string", (e, target) => {
+      if (e.type === "mousedown" && target.__lalinMiniRole === "handle") {
+        if (e.button !== undefined && e.button !== 0) return;
+        onDragStart();
+      } else if (e.type === "click" && target.__lalinMiniRole === "button") {
+        onRestore();
+      }
+    });
 
     const build = () => {
       if (bar) return;
@@ -2667,12 +2702,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       const handle = doc.createElement("div");
       handle.textContent = "Lalin Cast";
       Object.assign(handle.style, { flex: "1", height: "100%", display: "flex", alignItems: "center", cursor: "move" });
-      handle.addEventListener("mousedown", (e) => {
-        swallow(e);
-        if (e && e.button !== undefined && e.button !== 0) return;
-        if (e && typeof e.preventDefault === "function") e.preventDefault();
-        onDragStart();
-      });
+      handle.__lalinMiniRole = "handle";
 
       button = doc.createElement("button");
       if (typeof button.setAttribute === "function") button.setAttribute("type", "button");
@@ -2680,14 +2710,8 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
         cursor: "pointer", border: "0", borderRadius: "4px", padding: "4px 10px",
         background: "#3ea6ff", color: "#000", font: "inherit"
       });
-      button.addEventListener("mousedown", swallow);
-      button.addEventListener("click", (e) => {
-        swallow(e);
-        if (e && typeof e.preventDefault === "function") e.preventDefault();
-        onRestore();
-      });
-
-      bar.addEventListener("click", swallow);
+      button.__lalinMiniRole = "button";
+      bar.__lalinMiniRole = "bar";
       bar.appendChild(handle);
       bar.appendChild(button);
       (doc.body || doc.documentElement).appendChild(bar);
@@ -2858,6 +2882,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       installCss,
+      guardOwnControls,
       createMiniBar,
       miniBarLabel,
       MINI_BAR_ID,

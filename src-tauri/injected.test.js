@@ -2474,9 +2474,10 @@ pending.push(
     bar.setActive(true);
     const el = doc.getElementById(m.MINI_BAR_ID);
     const [handle, button] = el.children;
-    button.dispatchEvent(mouseEvent("click"));
-    handle.dispatchEvent(mouseEvent("mousedown", { button: 0 }));
-    handle.dispatchEvent(mouseEvent("mousedown", { button: 2 }));
+    // Delivered through the window capture guard, like a real click.
+    win.dispatchEvent(eventWithTarget("click", button));
+    win.dispatchEvent(eventWithTarget("mousedown", handle, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", handle, { button: 2 }));
     assert.deepStrictEqual(calls, ["restore", "drag"], "right-button mousedown does not drag");
     bar.setActive(false);
   }),
@@ -2578,10 +2579,10 @@ pending.push(
     const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
     overlay.handleMouseMove();
     const back = overlay.getButton("back");
-    back.dispatchEvent(mouseBtn("mousedown", 0));
-    back.dispatchEvent(mouseBtn("mouseup", 0));
-    back.dispatchEvent(mouseBtn("mousedown", 2));
-    back.dispatchEvent(mouseBtn("mouseup", 2));
+    win.dispatchEvent(eventWithTarget("mousedown", back, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mouseup", back, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", back, { button: 2 }));
+    win.dispatchEvent(eventWithTarget("mouseup", back, { button: 2 }));
     assert.deepStrictEqual(log, ["down:27", "up:27"]);
     win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
   }),
@@ -2595,9 +2596,9 @@ pending.push(
     const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
     overlay.handleMouseMove();
     const ok = overlay.getButton("ok");
-    ok.dispatchEvent(mouseBtn("mousedown", 0));
+    win.dispatchEvent(eventWithTarget("mousedown", ok, { button: 0 }));
     ok.dispatchEvent(mouseBtn("mouseleave"));
-    ok.dispatchEvent(mouseBtn("mouseup", 0));
+    win.dispatchEvent(eventWithTarget("mouseup", ok, { button: 0 }));
     assert.deepStrictEqual(log, ["down:13", "up:13"], "released exactly once");
     win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
   }),
@@ -2615,6 +2616,39 @@ pending.push(
     overlay.setSuppressed(false);
     assert.strictEqual(overlay.isVisible(), true, "the earlier touch pins it on once mini ends");
     win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("guardOwnControls: stops our controls' events before any later listener and leaves the page's alone", () => {
+    // Regression: YouTube turns every mousedown into Enter from a capture
+    // listener, so clicking our Back button also selected the focused item.
+    const win = createStubWin();
+    const ours = makeElement();
+    ours.__mine = true;
+    const theirs = makeElement();
+    const handled = [];
+    m.guardOwnControls(win, (t) => t.__mine === true, (e) => handled.push(e.type));
+    const pageSaw = [];
+    win.addEventListener("mousedown", () => pageSaw.push("mousedown"), true); // registered later, like YouTube
+    win.dispatchEvent(eventWithTarget("mousedown", ours, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", theirs, { button: 0 }));
+    assert.deepStrictEqual(handled, ["mousedown"], "our handler ran for our control only");
+    assert.deepStrictEqual(pageSaw, ["mousedown"], "the page saw only the event on its own element");
+  }),
+);
+
+pending.push(
+  test("guardOwnControls: never cancels pointer events, so mouse compatibility events still fire", () => {
+    const win = createStubWin();
+    const ours = makeElement();
+    ours.__mine = true;
+    m.guardOwnControls(win, (t) => t.__mine === true, () => {});
+    const down = eventWithTarget("pointerdown", ours);
+    let prevented = false;
+    down.preventDefault = () => { prevented = true; };
+    win.dispatchEvent(down);
+    assert.strictEqual(prevented, false);
   }),
 );
 
