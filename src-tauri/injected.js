@@ -301,6 +301,19 @@
     syncLeanbackDeviceId();
   };
 
+  const SURFACE_EARLY_CHECK_MS = 12000;
+  const SURFACE_FINAL_CHECK_MS = 30000;
+
+  // Pure verdict for surface detection. A redirect away from /tv is
+  // reported at any phase; a missing Leanback UI only at the "final" phase,
+  // because Leanback renders its UI well after `load` and, on a slow link,
+  // after the early timer too.
+  const surfaceVerdict = ({ isYouTube, pathname, hasLeanbackDom, phase }) => {
+    if (isYouTube && !String(pathname || "").startsWith("/tv")) return "redirected";
+    if (phase === "final" && !hasLeanbackDom) return "blockedSurface";
+    return null;
+  };
+
   // Surface detection: tells the shell when YouTube redirected away from
   // the TV app, or when the Leanback UI never rendered, so it can show the
   // native "status" window. See docs/plans/W2_LIVING_ROOM_PLAN.md. Emits at
@@ -329,18 +342,15 @@
     const hasLeanbackDom = () =>
       Boolean(document.querySelector('ytlr-app, [class*="ytlr-"], #app'));
 
-    const checkSurface = () => {
+    const checkSurface = (phase) => {
       if (emitted) return;
 
-      const hostname = window.location.hostname || "";
-      const pathname = window.location.pathname || "";
-
-      let kind = null;
-      if (isYouTubeHost(hostname) && !pathname.startsWith("/tv")) {
-        kind = "redirected";
-      } else if (!hasLeanbackDom()) {
-        kind = "blockedSurface";
-      }
+      const kind = surfaceVerdict({
+        isYouTube: isYouTubeHost(window.location.hostname || ""),
+        pathname: window.location.pathname || "",
+        hasLeanbackDom: hasLeanbackDom(),
+        phase
+      });
       if (!kind) return;
 
       const tauri = bridge();
@@ -356,8 +366,14 @@
         .catch(() => {});
     };
 
-    window.addEventListener("load", checkSurface);
-    window.setTimeout(checkSurface, 12000);
+    // `load` fires long before Leanback renders `ytlr-app` (measured at
+    // ~130 ms on a real session), so it may only report a redirect. The
+    // missing-UI verdict waits for SURFACE_FINAL_CHECK_MS; checking it at
+    // `load` showed the "isn't showing the TV surface" window on a page that
+    // was rendering normally.
+    window.addEventListener("load", () => checkSurface("early"));
+    window.setTimeout(() => checkSurface("early"), SURFACE_EARLY_CHECK_MS);
+    window.setTimeout(() => checkSurface("final"), SURFACE_FINAL_CHECK_MS);
   };
 
   const initMark = () => {
@@ -2662,6 +2678,9 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      surfaceVerdict,
+      SURFACE_EARLY_CHECK_MS,
+      SURFACE_FINAL_CHECK_MS,
       DEFAULT_PREFS,
       readPrefs,
       applyPrefsUpdate,

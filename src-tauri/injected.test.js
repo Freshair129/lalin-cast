@@ -2393,6 +2393,39 @@ pending.push(
   }),
 );
 
+pending.push(
+  test("surfaceVerdict: a normal /tv page is never blocked before the final phase", () => {
+    // Regression: `load` fires ~130 ms in, before Leanback renders ytlr-app.
+    // Checking the UI then showed a false "isn't showing the TV surface".
+    const base = { isYouTube: true, pathname: "/tv", hasLeanbackDom: false };
+    assert.strictEqual(m.surfaceVerdict({ ...base, phase: "early" }), null);
+    assert.strictEqual(m.surfaceVerdict({ ...base, phase: "final" }), "blockedSurface");
+    assert.strictEqual(m.surfaceVerdict({ ...base, hasLeanbackDom: true, phase: "final" }), null);
+  }),
+);
+
+pending.push(
+  test("surfaceVerdict: a redirect away from /tv is reported at any phase", () => {
+    for (const phase of ["early", "final"]) {
+      assert.strictEqual(
+        m.surfaceVerdict({ isYouTube: true, pathname: "/", hasLeanbackDom: true, phase }),
+        "redirected"
+      );
+    }
+    assert.strictEqual(
+      m.surfaceVerdict({ isYouTube: false, pathname: "/", hasLeanbackDom: true, phase: "early" }),
+      null
+    );
+  }),
+);
+
+pending.push(
+  test("surface timers: the final check waits well past the early one", () => {
+    assert.ok(m.SURFACE_FINAL_CHECK_MS > m.SURFACE_EARLY_CHECK_MS);
+    assert.ok(m.SURFACE_FINAL_CHECK_MS >= 30000);
+  }),
+);
+
 Promise.all(pending).then(() => {
   const failed = results.filter((r) => !r.ok);
   console.log(`${results.length - failed.length}/${results.length} self-tests passed`);
