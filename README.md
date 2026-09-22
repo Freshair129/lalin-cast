@@ -853,6 +853,24 @@ CI artifact named `lalin-cast-dryrun-installer`, kept for 7 days, meant for a cl
 test before a real tag (see
 [`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`](docs/plans/W10_RELEASE_REHEARSAL_PLAN.md)).
 
+## Known limitations / ข้อจำกัดที่รู้แล้ว
+
+**ภาษาไทย:** **มือถืออาจหลุดการเชื่อมต่อเมื่อเปลี่ยนเพลงหรือวิดีโอจากมือถือ** เชื่อมต่อได้ วิดีโอเล่นบนจอได้
+และมือถือสั่งเปลี่ยนเพลงได้จริง แต่หลังเปลี่ยนเพลง แอป YouTube บนมือถืออาจแสดงว่าหลุดการเชื่อมต่อ
+ขณะที่เพลงยังเล่นต่อบนจอตามปกติ เกิดทั้งเมื่อเชื่อมผ่านรายการ cast บนวงแลน (DIAL) และเมื่อเชื่อมด้วย
+TV code ทดสอบแล้วพบว่า VacuumTube 1.8.2 ซึ่งเป็นต้นฉบับที่ Lalin Cast อ้างอิงก็หลุดแบบเดียวกัน จึงเป็น
+พฤติกรรมของหน้า YouTube TV บนเว็บเมื่อรันนอกทีวีจริง ไม่ใช่ข้อผิดพลาดของ Lalin Cast เอง ระหว่างนี้
+ให้กดเชื่อมต่อจากมือถือใหม่ เพลงที่เล่นอยู่บนจอจะไม่หยุด
+
+**English:** **The phone may lose its connection when you change the song or video from it.**
+Connecting works, the video plays on the screen, and the phone really can change songs — but after
+a change, the YouTube app on the phone may show that it has disconnected, while playback carries
+on normally on the screen. It happens both when connecting from the cast list on the LAN (DIAL) and
+when connecting with a TV code. VacuumTube 1.8.2, the original Lalin Cast is based on, was tested
+and disconnects the same way, so this is how YouTube's TV web page behaves when it runs outside a
+real TV, not a fault in Lalin Cast itself. In the meantime, reconnect from the phone; whatever is
+playing on the screen keeps playing.
+
 ## Support
 
 **ภาษาไทย:** รายงานปัญหาความปลอดภัยแบบส่วนตัวตามขั้นตอนใน [`SECURITY.md`](SECURITY.md) ดูประวัติการ

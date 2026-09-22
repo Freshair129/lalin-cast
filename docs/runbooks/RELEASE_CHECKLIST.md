@@ -1,7 +1,7 @@
 ---
-version: "0.1.14b"
+version: "0.1.15b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-22T18:00:00+07:00,LALIN"
+last_update: "2026-09-22T23:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -78,6 +78,16 @@ tag — if any item is not done, **do not tag**:
         การตรวจ header `MAN` ที่เข้มขึ้น — ผ่าน / **Closed 2026-09-22:** tested with a real phone;
         the YouTube app still discovers Lalin Cast over DIAL after the stricter `MAN` header check —
         passed
+        **หมายเหตุ 2026-09-22 (หลัง PR #25):** การปิดครั้งแรกยืนยันได้แค่ว่ามือถือเห็นเครื่อง ขั้นถัดไป
+        (อ่านสถานะแอปและ launch) ตอบ 504 มาตลอดจนถึง PR #25 ทดสอบซ้ำหลัง PR #25 แล้ว: มือถือเห็นชื่อ
+        Lalin Cast, launch ได้ (201), วิดีโอเล่นบนจอ และมือถือเปลี่ยนเพลงได้ — ผ่าน ส่วนการที่มือถือหลุดหลัง
+        เปลี่ยนเพลงเป็นข้อจำกัดที่รู้แล้ว (VacuumTube 1.8.2 หลุดแบบเดียวกัน ดู README "Known limitations")
+        ไม่ใช่เงื่อนไขที่ทำให้ H22 ไม่ผ่าน / **Note 2026-09-22 (after PR #25):** the first closure only
+        proved the phone lists the device; the next step (reading app status and launching) returned
+        504 until PR #25. Retested after PR #25: the phone shows the Lalin Cast name, launch works
+        (201), video plays on the screen, and the phone can change songs — passed. The phone
+        disconnecting after a song change is a known limitation (VacuumTube 1.8.2 disconnects the same
+        way; see README "Known limitations"), not a reason for H22 to fail
   - [x] H23 — ยืนยันว่าลิงก์ `lalin-cast://` เปิดแอป Lalin Cast ได้จริงจาก Windows Explorer หรือเบราว์เซอร์
         เมื่อเปิดตัวเลือก `deepLinkScheme` ไว้ **และ** เมื่อปิดตัวเลือกนี้ลง scheme ที่จดทะเบียนไว้จะหาย
         ไปจากระบบ (เปิดลิงก์แล้วไม่มีแอปใดถูกเรียก) — confirm a `lalin-cast://` link really opens the
@@ -375,3 +385,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.12b | 2026-09-22 | candidate | Marked human gates H22 and H23 closed: the founder confirmed with a real phone that DIAL discovery still works after the stricter SSDP `MAN` header check (H22), and confirmed both `lalin-cast://` conditions — the link opens the app with `deepLinkScheme` on, and the registered association is gone after turning it off (H23) | uncommitted | LALIN |
 | 0.1.13b | 2026-09-22 | candidate | Marked human gates H24 and H26 closed: the founder confirmed on a real Leanback session that the Shorts shelf/guide tab hide without stealing focus (H24), and confirmed on a real release build that the log file appears, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path (H26); H25 (keep-display-awake) remains open | uncommitted | LALIN |
 | 0.1.14b | 2026-09-22 | candidate | Marked human gate H25 closed: the founder confirmed both conditions — the display/system stays awake during playback with `keepDisplayAwake` on, and sleeps normally again once playback is paused or stopped; the H24-H25 group heading is now fully closed | uncommitted | LALIN |
+| 0.1.15b | 2026-09-22 | candidate | Added a note to human gate H22: its first closure only proved discovery, and DIAL launch returned 504 until PR #25; retested after PR #25 (name shown, launch 201, playback, song change from the phone) it passes, and the phone disconnecting after a song change is recorded as a known limitation shared with VacuumTube 1.8.2 | uncommitted | LALIN |
