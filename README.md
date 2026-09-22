@@ -387,11 +387,20 @@ app restarts.
 [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md) ปิดตัวเลือกนี้ได้จากหน้าต่างการ
 ตั้งค่าเมื่อไรก็ได้
 
+**ใช้กับเมาส์ได้ด้วย:** เมื่อตัวเลือกนี้เปิดอยู่ ขยับเมาส์บนหน้าต่างแล้วปุ่มชุดเดียวกันจะขึ้นมา และซ่อนเองหลังเมาส์หยุด
+3 วินาที คลิกซ้ายที่ปุ่มได้เหมือนกดรีโมท เช่น ปุ่ม "ย้อนกลับ" ใช้กลับจากหน้าเล่นวิดีโอไปหน้าเมนู ปุ่มจะไม่ขึ้นในโหมด
+หน้าต่างเล็กเพราะพื้นที่ไม่พอ
+
 **English:** When "touch overlay" is on (the default) and the app detects the first screen touch,
 Lalin Cast's own on-screen control buttons appear (direction, select, back, play/pause), ported from
 VacuumTube — see [`LALIN_PROVENANCE.md`](LALIN_PROVENANCE.md). Useful on handhelds (ROG Ally, Legion
 Go, and similar) — see [`docs/guides/STEAM_AND_HANDHELD.md`](docs/guides/STEAM_AND_HANDHELD.md). Can
 be turned off at any time from the settings window.
+
+**Works with a mouse too:** while this setting is on, moving the mouse over the window brings up the
+same buttons, which hide again 3 seconds after the mouse stops. Left-click a button to press it like
+a remote — for example "Back" returns from the video player to the menu. The buttons stay hidden in
+the mini-player window, which is too small for them.
 
 ## YouTube page
 

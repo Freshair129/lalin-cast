@@ -155,6 +155,64 @@
     return value.replace(/\/+$/, "") || "/";
   };
 
+  // Installs one of Lalin Cast's own stylesheets into the page, once per id.
+  // YouTube's TV page has a Content-Security-Policy that blocks inline
+  // <style> elements: the element is inserted but the browser never builds a
+  // stylesheet from it (`style.sheet` stays null), so every overlay styled that
+  // way rendered unstyled on the real page. A constructed CSSStyleSheet adopted
+  // by the document is not subject to that check, so it is used whenever the
+  // engine supports it; the <style> element remains only as the fallback for
+  // engines without adoptedStyleSheets (and for the Node test stubs).
+  const installCss = (doc, id, css) => {
+    if (!doc) return;
+    const Sheet = typeof CSSStyleSheet === "function" ? CSSStyleSheet : null;
+    if (Sheet && Array.isArray(doc.adoptedStyleSheets)) {
+      const installed = doc.__lalinCastCss || (doc.__lalinCastCss = new Set());
+      if (installed.has(id)) return;
+      try {
+        const sheet = new Sheet();
+        sheet.replaceSync(css);
+        doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+        installed.add(id);
+        return;
+      } catch {
+        // Fall through to the <style> element below.
+      }
+    }
+    if (typeof doc.getElementById !== "function" || doc.getElementById(id)) return;
+    const style = doc.createElement("style");
+    style.id = id;
+    style.textContent = css;
+    const parent = doc.head || doc.documentElement;
+    if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+  };
+
+  // Pointer/mouse events on Lalin Cast's own on-page controls must never reach
+  // YouTube: its page script turns every mousedown into an Enter keydown on the
+  // clicked element from a capture-phase listener, so a click on one of our
+  // buttons also "selected" whatever YouTube item had focus. A listener on the
+  // button itself runs too late to stop that. This registers capture-phase
+  // listeners on the window instead — injected.js runs before YouTube's
+  // scripts, so ours run first — and, for events whose target belongs to one
+  // of our controls (`isOwn`), stops them there and hands them to `onEvent`.
+  const OWN_CONTROL_EVENTS = Object.freeze(["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick"]);
+  const guardOwnControls = (win, isOwn, onEvent) => {
+    if (!win || typeof win.addEventListener !== "function") return;
+    const listener = (e) => {
+      const target = e && e.target;
+      if (!target || !isOwn(target)) return;
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      if (typeof e.stopPropagation === "function") e.stopPropagation();
+      // Never preventDefault a pointer event: that would cancel the mousedown/
+      // mouseup compatibility events the controls act on.
+      if (e.type !== "pointerdown" && e.type !== "pointerup" && typeof e.preventDefault === "function") {
+        e.preventDefault();
+      }
+      onEvent(e, target);
+    };
+    OWN_CONTROL_EVENTS.forEach((type) => win.addEventListener(type, listener, true));
+  };
+
   const bridge = () => window.__TAURI__;
   const invoke = (command, args) => {
     const tauri = bridge();
@@ -1160,12 +1218,7 @@
     let elements = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(VOLUME_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = VOLUME_STYLE_ID;
-      style.textContent = VOLUME_OSD_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, VOLUME_STYLE_ID, VOLUME_OSD_CSS);
     };
 
     const ensureOsd = () => {
@@ -1414,12 +1467,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   // get-then-create pattern as ensureStyle() in the Volume section above.
   const ensureHideStyle = (doc) => {
     if (!doc || typeof doc.getElementById !== "function") return;
-    if (doc.getElementById(HIDE_STYLE_ID)) return;
-    const style = doc.createElement("style");
-    style.id = HIDE_STYLE_ID;
-    style.textContent = HIDE_STYLE_CSS;
-    const parent = doc.head || doc.documentElement;
-    if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+    installCss(doc, HIDE_STYLE_ID, HIDE_STYLE_CSS);
   };
 
   // The only thing toggling the prefs ever does: set or delete our two
@@ -1544,6 +1592,9 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   const TOUCH_OVERLAY_ID = "lalin-cast-touch-overlay";
   const TOUCH_STYLE_ID = "lalin-cast-touch-style";
   const TOUCH_BUTTON_CLASS = "lalin-cast-touch-button";
+  // Mouse use: the overlay appears on mouse movement and hides again after
+  // this long without movement. A touch still pins it on for the session.
+  const TOUCH_MOUSE_HIDE_MS = 3000;
 
   // Button id -> keyCode dispatched via dispatchSyntheticKey(). back/ok/the
   // four directions match touch-support.js's touchKeyCodeMap and this file's
@@ -1618,15 +1669,18 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
     let enabled = Boolean(opts.initialEnabled);
     let touched = false;
+    let mouseShown = false;
+    let suppressed = false;
+    let mouseHideTimer = null;
     let elements = null;
 
+    const stop = (e) => {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    };
+
     const ensureStyle = () => {
-      if (doc.getElementById(TOUCH_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = TOUCH_STYLE_ID;
-      style.textContent = TOUCH_OVERLAY_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, TOUCH_STYLE_ID, TOUCH_OVERLAY_CSS);
     };
 
     const build = () => {
@@ -1651,7 +1705,17 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
             if (e && typeof e.preventDefault === "function") e.preventDefault();
             dispatchSyntheticKey(doc, "keyup", spec.keyCode);
           });
+          // Mouse presses/releases arrive through the window-level guard
+          // below (see guardOwnControls). Dragging off a held button releases
+          // its key here, so a key can never stay held down.
+          button.addEventListener("mouseleave", (e) => {
+            if (!button.__lalinMousePressed) return;
+            stop(e);
+            button.__lalinMousePressed = false;
+            dispatchSyntheticKey(doc, "keyup", spec.keyCode);
+          });
         }
+        button.__lalinTouchKeyCode = spec.keyCode;
         overlay.appendChild(button);
         buttons[spec.id] = button;
       });
@@ -1663,8 +1727,21 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       return elements;
     };
 
+    const shouldShow = () => enabled && !suppressed && (touched || mouseShown);
+
+    guardOwnControls(win, (target) => typeof target.__lalinTouchKeyCode === "number", (e, button) => {
+      if (e.type === "mousedown") {
+        if (e.button !== undefined && e.button !== 0) return;
+        button.__lalinMousePressed = true;
+        dispatchSyntheticKey(doc, "keydown", button.__lalinTouchKeyCode);
+      } else if (e.type === "mouseup" && button.__lalinMousePressed) {
+        button.__lalinMousePressed = false;
+        dispatchSyntheticKey(doc, "keyup", button.__lalinTouchKeyCode);
+      }
+    });
+
     const render = () => {
-      if (!touched || !enabled) {
+      if (!shouldShow()) {
         if (elements && elements.overlay.style) elements.overlay.style.display = "none";
         return;
       }
@@ -1678,12 +1755,33 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
         touched = true;
         render();
       },
+      // Called on every mousemove over the window. Shows the overlay for
+      // TOUCH_MOUSE_HIDE_MS after the last movement; does nothing while the
+      // pref is off, while suppressed (mini-player), or once a touch has
+      // already pinned it on.
+      handleMouseMove() {
+        if (!enabled || suppressed || touched) return;
+        mouseShown = true;
+        render();
+        if (mouseHideTimer) win.clearTimeout(mouseHideTimer);
+        mouseHideTimer = win.setTimeout(() => {
+          mouseHideTimer = null;
+          mouseShown = false;
+          render();
+        }, TOUCH_MOUSE_HIDE_MS);
+      },
+      // The mini-player window is too small for these buttons; hidden while
+      // it is active, whatever the pref says.
+      setSuppressed(value) {
+        suppressed = value === true;
+        render();
+      },
       setEnabled(value) {
         enabled = Boolean(value);
         render();
       },
       isVisible() {
-        return Boolean(touched && enabled && elements);
+        return Boolean(shouldShow() && elements);
       },
       getButton(id) {
         return elements ? elements.buttons[id] || null : null;
@@ -2104,12 +2202,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let hideTimer = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(SPEED_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = SPEED_STYLE_ID;
-      style.textContent = SPEED_OSD_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, SPEED_STYLE_ID, SPEED_OSD_CSS);
     };
 
     const ensureElement = () => {
@@ -2349,12 +2442,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let elements = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(HELP_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = HELP_STYLE_ID;
-      style.textContent = HELP_STYLE_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, HELP_STYLE_ID, HELP_STYLE_CSS);
     };
 
     const build = () => {
@@ -2589,9 +2677,16 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let button = null;
     let hideTimer = null;
 
-    const swallow = (e) => {
-      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
-    };
+    // All pointer/mouse events on the bar go through the window-level guard
+    // (see guardOwnControls) so YouTube never turns a click here into Enter.
+    guardOwnControls(win, (target) => typeof target.__lalinMiniRole === "string", (e, target) => {
+      if (e.type === "mousedown" && target.__lalinMiniRole === "handle") {
+        if (e.button !== undefined && e.button !== 0) return;
+        onDragStart();
+      } else if (e.type === "click" && target.__lalinMiniRole === "button") {
+        onRestore();
+      }
+    });
 
     const build = () => {
       if (bar) return;
@@ -2607,12 +2702,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       const handle = doc.createElement("div");
       handle.textContent = "Lalin Cast";
       Object.assign(handle.style, { flex: "1", height: "100%", display: "flex", alignItems: "center", cursor: "move" });
-      handle.addEventListener("mousedown", (e) => {
-        swallow(e);
-        if (e && e.button !== undefined && e.button !== 0) return;
-        if (e && typeof e.preventDefault === "function") e.preventDefault();
-        onDragStart();
-      });
+      handle.__lalinMiniRole = "handle";
 
       button = doc.createElement("button");
       if (typeof button.setAttribute === "function") button.setAttribute("type", "button");
@@ -2620,14 +2710,8 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
         cursor: "pointer", border: "0", borderRadius: "4px", padding: "4px 10px",
         background: "#3ea6ff", color: "#000", font: "inherit"
       });
-      button.addEventListener("mousedown", swallow);
-      button.addEventListener("click", (e) => {
-        swallow(e);
-        if (e && typeof e.preventDefault === "function") e.preventDefault();
-        onRestore();
-      });
-
-      bar.addEventListener("click", swallow);
+      button.__lalinMiniRole = "button";
+      bar.__lalinMiniRole = "bar";
       bar.appendChild(handle);
       bar.appendChild(button);
       (doc.body || doc.documentElement).appendChild(bar);
@@ -2698,7 +2782,9 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
     await tauri.event.listen("lalin-cast-mini", (event) => {
       const payload = event?.payload || event;
-      if (state.miniBar) state.miniBar.setActive(Boolean(payload && payload.active === true));
+      const miniActive = Boolean(payload && payload.active === true);
+      if (state.miniBar) state.miniBar.setActive(miniActive);
+      if (state.touchOverlay) state.touchOverlay.setSuppressed(miniActive);
     });
   };
 
@@ -2767,6 +2853,8 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       initialEnabled: state.prefs.touchOverlay
     });
     window.addEventListener("touchstart", () => touchOverlay.handleTouchStart(), { passive: true });
+    window.addEventListener("mousemove", () => touchOverlay.handleMouseMove(), { passive: true });
+    state.touchOverlay = touchOverlay;
 
     // Wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide
     // tabs". The observer runs regardless of the current pref values (it
@@ -2793,6 +2881,8 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      installCss,
+      guardOwnControls,
       createMiniBar,
       miniBarLabel,
       MINI_BAR_ID,
@@ -2830,6 +2920,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       codecAllowed,
       installCodecFilter,
       TOUCH_KEY_CODE_MAP,
+      TOUCH_MOUSE_HIDE_MS,
       touchButtons,
       createTouchOverlay,
       SLEEP_OSD_ID,

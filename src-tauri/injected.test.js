@@ -2474,9 +2474,10 @@ pending.push(
     bar.setActive(true);
     const el = doc.getElementById(m.MINI_BAR_ID);
     const [handle, button] = el.children;
-    button.dispatchEvent(mouseEvent("click"));
-    handle.dispatchEvent(mouseEvent("mousedown", { button: 0 }));
-    handle.dispatchEvent(mouseEvent("mousedown", { button: 2 }));
+    // Delivered through the window capture guard, like a real click.
+    win.dispatchEvent(eventWithTarget("click", button));
+    win.dispatchEvent(eventWithTarget("mousedown", handle, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", handle, { button: 2 }));
     assert.deepStrictEqual(calls, ["restore", "drag"], "right-button mousedown does not drag");
     bar.setActive(false);
   }),
@@ -2494,6 +2495,160 @@ pending.push(
   test("SHELL_ACTIONS: start-drag is whitelisted alongside the existing actions", () => {
     assert.strictEqual(m.SHELL_ACTIONS.START_DRAG, "start-drag");
     assert.strictEqual(m.SHELL_ACTIONS.TOGGLE_MINI, "toggle-mini");
+  }),
+);
+
+pending.push(
+  test("installCss: adopts a constructed stylesheet once per id when the document supports it", () => {
+    // Regression: YouTube's CSP blocks inline <style>, so overlays rendered unstyled.
+    const doc = createStubDoc();
+    doc.adoptedStyleSheets = [];
+    const hadSheet = typeof globalThis.CSSStyleSheet === "function";
+    const made = [];
+    if (!hadSheet) {
+      globalThis.CSSStyleSheet = class { replaceSync(css) { this.css = css; made.push(css); } };
+    }
+    try {
+      m.installCss(doc, "lalin-cast-x-style", ".a{}");
+      m.installCss(doc, "lalin-cast-x-style", ".a{}");
+      assert.strictEqual(doc.adoptedStyleSheets.length, 1, "adopted exactly once");
+      assert.strictEqual(doc.getElementById("lalin-cast-x-style"), null, "no <style> element is used");
+      m.installCss(doc, "lalin-cast-y-style", ".b{}");
+      assert.strictEqual(doc.adoptedStyleSheets.length, 2, "a different id gets its own sheet");
+    } finally {
+      if (!hadSheet) delete globalThis.CSSStyleSheet;
+    }
+  }),
+);
+
+pending.push(
+  test("installCss: falls back to a single <style> element without adoptedStyleSheets", () => {
+    const doc = createStubDoc();
+    m.installCss(doc, "lalin-cast-z-style", ".c{}");
+    m.installCss(doc, "lalin-cast-z-style", ".c{}");
+    const els = doc.head.children.filter((c) => c.id === "lalin-cast-z-style");
+    assert.strictEqual(els.length, 1);
+    assert.strictEqual(els[0].textContent, ".c{}");
+  }),
+);
+
+function mouseBtn(type, button) {
+  const e = new Event(type);
+  e.button = button;
+  return e;
+}
+
+function keyLog(doc) {
+  const log = [];
+  doc.addEventListener("keydown", (e) => log.push(`down:${e.keyCode}`));
+  doc.addEventListener("keyup", (e) => log.push(`up:${e.keyCode}`));
+  return log;
+}
+
+pending.push(
+  test("touch overlay (mouse): mouse movement shows it while enabled, and it schedules its own hide", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    assert.strictEqual(overlay.isVisible(), true);
+    const hide = win.__timeoutCalls.filter((c) => c.ms === m.TOUCH_MOUSE_HIDE_MS).pop();
+    assert.ok(hide, "an auto-hide is scheduled");
+    clearTimeout(hide.id);
+    hide.cb();
+    assert.strictEqual(overlay.isVisible(), false, "hidden again after the idle delay");
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): stays off when the pref is off", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: false });
+    overlay.handleMouseMove();
+    assert.strictEqual(overlay.isVisible(), false);
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay"), null);
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): a left click presses and releases the button's key; other buttons do nothing", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const log = keyLog(doc);
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    const back = overlay.getButton("back");
+    win.dispatchEvent(eventWithTarget("mousedown", back, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mouseup", back, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", back, { button: 2 }));
+    win.dispatchEvent(eventWithTarget("mouseup", back, { button: 2 }));
+    assert.deepStrictEqual(log, ["down:27", "up:27"]);
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): dragging off a held button still releases its key", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const log = keyLog(doc);
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    const ok = overlay.getButton("ok");
+    win.dispatchEvent(eventWithTarget("mousedown", ok, { button: 0 }));
+    ok.dispatchEvent(mouseBtn("mouseleave"));
+    win.dispatchEvent(eventWithTarget("mouseup", ok, { button: 0 }));
+    assert.deepStrictEqual(log, ["down:13", "up:13"], "released exactly once");
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("touch overlay: suppressed in mini-player mode, back when it ends; a touch still pins it on", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.setSuppressed(true);
+    overlay.handleMouseMove();
+    overlay.handleTouchStart();
+    assert.strictEqual(overlay.isVisible(), false, "nothing shows while suppressed");
+    overlay.setSuppressed(false);
+    assert.strictEqual(overlay.isVisible(), true, "the earlier touch pins it on once mini ends");
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("guardOwnControls: stops our controls' events before any later listener and leaves the page's alone", () => {
+    // Regression: YouTube turns every mousedown into Enter from a capture
+    // listener, so clicking our Back button also selected the focused item.
+    const win = createStubWin();
+    const ours = makeElement();
+    ours.__mine = true;
+    const theirs = makeElement();
+    const handled = [];
+    m.guardOwnControls(win, (t) => t.__mine === true, (e) => handled.push(e.type));
+    const pageSaw = [];
+    win.addEventListener("mousedown", () => pageSaw.push("mousedown"), true); // registered later, like YouTube
+    win.dispatchEvent(eventWithTarget("mousedown", ours, { button: 0 }));
+    win.dispatchEvent(eventWithTarget("mousedown", theirs, { button: 0 }));
+    assert.deepStrictEqual(handled, ["mousedown"], "our handler ran for our control only");
+    assert.deepStrictEqual(pageSaw, ["mousedown"], "the page saw only the event on its own element");
+  }),
+);
+
+pending.push(
+  test("guardOwnControls: never cancels pointer events, so mouse compatibility events still fire", () => {
+    const win = createStubWin();
+    const ours = makeElement();
+    ours.__mine = true;
+    m.guardOwnControls(win, (t) => t.__mine === true, () => {});
+    const down = eventWithTarget("pointerdown", ours);
+    let prevented = false;
+    down.preventDefault = () => { prevented = true; };
+    win.dispatchEvent(down);
+    assert.strictEqual(prevented, false);
   }),
 );
 

@@ -160,7 +160,7 @@ const STRINGS = {
       heading: "การควบคุม",
       controllerLabel: "เปิดใช้งานจอยเกม (Gamepad)",
       pauseOnBlurLabel: "หยุดวิดีโอเมื่อหน้าต่างเสียโฟกัส",
-      touchOverlayLabel: "แสดงปุ่มสัมผัสบนหน้าจอ",
+      touchOverlayLabel: "แสดงปุ่มควบคุมบนหน้าจอ (สัมผัสหรือเมาส์)",
     },
     updates: {
       heading: "อัปเดตและเกี่ยวกับ",
@@ -247,7 +247,7 @@ const STRINGS = {
       heading: "Controls",
       controllerLabel: "Enable controller (gamepad)",
       pauseOnBlurLabel: "Pause video when the window loses focus",
-      touchOverlayLabel: "Show on-screen touch controls",
+      touchOverlayLabel: "Show on-screen controls (touch or mouse)",
     },
     updates: {
       heading: "Updates and about",
