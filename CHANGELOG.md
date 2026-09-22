@@ -198,6 +198,19 @@ steps for each release are in
   of at least 3 characters; and masks every URL scheme — the limits that remain are set out in
   `PRIVACY.md`'s log-file section
 
+#### การทดสอบบนอุปกรณ์จริง / real-device testing (PR #25, #27)
+
+- แถบควบคุมของโหมดหน้าต่างเล็ก: ลากย้ายหน้าต่าง และปุ่มกลับสู่ขนาดปกติ เดิมเข้าโหมดนี้แล้วไม่มีทาง
+  กลับออกมา / a mini-player bar with a drag handle and a button back to the normal window; there
+  had been no way out of mini mode
+- ปุ่มควบคุมบนจอใช้กับเมาส์ได้ ไม่ใช่เฉพาะการสัมผัส: ขยับเมาส์แล้วปุ่มขึ้น ซ่อนเองหลังเมาส์หยุด 3
+  วินาที และซ่อนในโหมดหน้าต่างเล็ก / the on-screen controls also work with a mouse, not only touch:
+  moving the mouse shows them, they hide 3 seconds after it stops, and they stay hidden in mini mode
+- README มีหัวข้อ "ข้อจำกัดที่รู้แล้ว" บันทึกว่ามือถือหลุดหลังเปลี่ยนเพลง ซึ่งเกิดกับ VacuumTube 1.8.2
+  เหมือนกัน จึงไม่ใช่อาการเฉพาะของ Lalin Cast (PR #26) / the README now has a "Known limitations"
+  section recording that the phone disconnects after a song change, which VacuumTube 1.8.2 does too,
+  so it is not specific to Lalin Cast (PR #26)
+
 ### Changed
 
 #### Wave 2 — Living-room readiness (`docs/plans/W2_LIVING_ROOM_PLAN.md`)
@@ -237,6 +250,32 @@ steps for each release are in
   a pull request from here on requires the `smoke` job to pass
 
 ### Fixed
+
+#### การทดสอบบนอุปกรณ์จริง / real-device testing (PR #25, #27)
+
+- **แคสจากมือถือใช้งานได้จริง:** คำขอ DIAL ต่อแอป (`GET`/`POST /apps/YouTube`) ตอบ 504 ทุกครั้งมา
+  ตั้งแต่ commit แรก มือถือจึงเห็นชื่อเครื่องแต่ไม่เคยได้ `screenId` กลับไป การเชื่อมต่อเลยหลุดทันที
+  ตอนนี้แต่ละคำขอถูกจองช่องคำตอบไว้ก่อนส่งให้หน้าเว็บ และคำตอบที่มาถึงจะเติมลงช่องที่จองไว้ /
+  **casting from a phone actually works:** DIAL app requests always returned 504 since the first
+  commit, so phones saw the device name but never received a `screenId` and the connection dropped
+  immediately; each request now reserves its response slot before being handed to the page
+- **style ของ Lalin Cast แสดงผลได้บนหน้า YouTube จริง:** Content-Security-Policy ของหน้า YouTube TV
+  บล็อก `<style>` ที่เราแทรก (ใส่ element ได้ แต่ browser ไม่สร้าง stylesheet) ทุกอย่างที่พึ่งวิธีนี้จึง
+  ไม่มี style บนหน้าจริงมาตลอด ได้แก่ ปุ่มควบคุมบนจอ, หน้าต่างคีย์ลัด, OSD เสียง/ความเร็ว และ
+  **การซ่อนชั้น Shorts กับแท็บ Shorts (H24)** ตอนนี้ใช้ `CSSStyleSheet` ที่สร้างเองซึ่ง CSP ข้อนั้น
+  ไม่บล็อก / **Lalin Cast's page styles now apply on the real YouTube page:** the YouTube TV page's
+  CSP blocked our injected `<style>` elements, so everything relying on them — the on-screen
+  controls, the shortcut help window, the volume/speed OSD and **Shorts/guide-tab hiding (H24)** —
+  had been unstyled or inert on the real page; they now use a constructed `CSSStyleSheet`, which
+  that CSP rule does not block
+- **คลิกบนปุ่มของ Lalin Cast ไม่รั่วไปเป็น Enter:** หน้า YouTube แปลงทุก `mousedown` เป็น keydown
+  Enter บน element ที่ถูกคลิกผ่าน listener ใน capture phase การคลิกปุ่มของเราจึงทำให้ YouTube เลือก
+  รายการที่ focus อยู่ไปด้วย / **clicks on Lalin Cast's own controls no longer leak to YouTube as
+  Enter:** the page turned every `mousedown` into an Enter keydown on the clicked element from a
+  capture-phase listener, so clicking one of our buttons also selected whatever item had focus
+- **สถานะ "YouTube ไม่ได้แสดงหน้าจอแบบทีวี" ไม่ขึ้นผิดพลาดตอนโหลด:** เดิมตัดสินตั้งแต่หน้ายังโหลด
+  ไม่เสร็จ ตอนนี้รอถึง 30 วินาทีก่อนสรุป / **the "YouTube isn't showing the TV surface" status no
+  longer fires falsely at load:** the verdict is now deferred up to 30 seconds
 
 #### H2 — การตรวจบนเครื่องสะอาด / clean-machine verification (`docs/runbooks/H2_CLEAN_VM_MATRIX.md`)
 
