@@ -138,7 +138,61 @@ struct PendingResponse {
     body: Vec<u8>,
 }
 
-type ResponseStore = Arc<(Mutex<HashMap<String, PendingResponse>>, Condvar)>;
+/// Pending DIAL app requests, keyed by request id. `handle_http` reserves a
+/// slot (`None`) *before* emitting the request to the page, `dial_respond`
+/// fills it (`Some`), and `wait_for_response` takes it out. A response for
+/// an id that was never reserved, has already been answered, or has timed
+/// out is refused, so the page can never inject a reply to a request that
+/// is not waiting for one.
+type ResponseStore = Arc<(Mutex<HashMap<String, Option<PendingResponse>>>, Condvar)>;
+
+/// Reserves an unanswered slot for `request_id`. Must happen before the
+/// request is emitted to the page. Before this fix nothing reserved a slot at
+/// all, so `dial_respond` refused every answer as "expired" and every DIAL
+/// app request (`GET`/`POST /apps/YouTube`, `DELETE .../run`) timed out with
+/// a 504 — phones could list the device from SSDP and the descriptor, but
+/// never read its app status or launch it.
+fn reserve_response(store: &ResponseStore, request_id: &str) -> bool {
+    let (responses, _) = &**store;
+    match responses.lock() {
+        Ok(mut pending) => {
+            pending.insert(request_id.to_owned(), None);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Removes a reserved slot that will never be answered (for example when
+/// emitting the request to the page failed).
+fn release_response(store: &ResponseStore, request_id: &str) {
+    let (responses, _) = &**store;
+    if let Ok(mut pending) = responses.lock() {
+        pending.remove(request_id);
+    }
+}
+
+/// Fills a reserved, still-unanswered slot. Refuses an unknown id and a
+/// second answer to the same id.
+fn fulfill_response(
+    store: &ResponseStore,
+    request_id: &str,
+    response: PendingResponse,
+) -> Result<(), &'static str> {
+    let (responses, wake) = &**store;
+    let mut pending = responses
+        .lock()
+        .map_err(|_| "DIAL response store is unavailable")?;
+    match pending.get_mut(request_id) {
+        Some(slot @ None) => {
+            *slot = Some(response);
+            wake.notify_all();
+            Ok(())
+        }
+        Some(Some(_)) => Err("DIAL request was already answered"),
+        None => Err("DIAL request has expired"),
+    }
+}
 
 pub struct DialState {
     device_id: Arc<Mutex<String>>,
@@ -342,23 +396,16 @@ pub fn dial_respond(
         return Err("DIAL response body is too large".to_owned());
     }
 
-    let (responses, wake) = &*state.responses;
-    let mut pending = responses
-        .lock()
-        .map_err(|_| "DIAL response store is unavailable".to_owned())?;
-    if !pending.contains_key(&request_id) {
-        return Err("DIAL request has expired".to_owned());
-    }
-    pending.insert(
-        request_id,
+    fulfill_response(
+        &state.responses,
+        &request_id,
         PendingResponse {
             status,
             headers,
             body,
         },
-    );
-    wake.notify_all();
-    Ok(())
+    )
+    .map_err(str::to_owned)
 }
 
 #[tauri::command]
@@ -708,7 +755,12 @@ fn handle_http(stream: &mut TcpStream, app: &AppHandle, state: &RuntimeState) {
                 body: request.body,
                 host: format!("{}:{}", state.info.host, state.info.port),
             };
+            if !reserve_response(&state.responses, &request_id) {
+                write_empty_response(stream, 503);
+                return;
+            }
             if app.emit_to(MEDIA_LABEL, DIAL_EVENT, &dial_request).is_err() {
+                release_response(&state.responses, &request_id);
                 write_empty_response(stream, 503);
                 return;
             }
@@ -951,13 +1003,16 @@ fn wait_for_response(store: &ResponseStore, request_id: &str) -> Option<PendingR
     let deadline = Instant::now() + RESPONSE_WAIT;
     let mut responses = responses.lock().ok()?;
     loop {
-        if let Some(response) = responses.remove(request_id) {
-            return Some(response);
+        if matches!(responses.get(request_id), Some(Some(_))) {
+            return responses.remove(request_id).flatten();
         }
-        let remaining = deadline.checked_duration_since(Instant::now())?;
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            responses.remove(request_id);
+            return None;
+        };
         let (next, result) = wake.wait_timeout(responses, remaining).ok()?;
         responses = next;
-        if result.timed_out() {
+        if result.timed_out() && !matches!(responses.get(request_id), Some(Some(_))) {
             responses.remove(request_id);
             return None;
         }
@@ -1063,6 +1118,10 @@ mod tests {
         DialState, DialStateKind, HttpReadError, Route, RuntimeState, DEFAULT_FRIENDLY_NAME,
         MAX_BODY_BYTES, MAX_HEADER_BYTES,
     };
+    use super::{
+        fulfill_response, release_response, reserve_response, wait_for_response, PendingResponse,
+        ResponseStore,
+    };
     use std::collections::HashMap;
     use std::io::Write;
     use std::net::{Ipv4Addr, TcpListener, TcpStream};
@@ -1070,6 +1129,88 @@ mod tests {
     use std::sync::mpsc;
     use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
+
+    fn empty_store() -> ResponseStore {
+        Arc::new((Mutex::new(HashMap::new()), Condvar::new()))
+    }
+
+    fn ok_response(body: &str) -> PendingResponse {
+        PendingResponse {
+            status: 200,
+            headers: vec![("Content-Type".to_owned(), "text/xml".to_owned())],
+            body: body.as_bytes().to_vec(),
+        }
+    }
+
+    #[test]
+    fn a_reserved_request_can_be_answered_and_the_answer_is_delivered() {
+        // Regression: nothing used to reserve a slot, so every page answer
+        // was refused as expired and every DIAL app request became a 504.
+        let store = empty_store();
+        assert!(reserve_response(&store, "req-1"));
+        let answering = store.clone();
+        let handle =
+            thread::spawn(move || fulfill_response(&answering, "req-1", ok_response("<x/>")));
+        let response = wait_for_response(&store, "req-1").expect("the answer should arrive");
+        assert_eq!(handle.join().unwrap(), Ok(()));
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, b"<x/>");
+        assert!(
+            store.0.lock().unwrap().is_empty(),
+            "the slot is removed once delivered"
+        );
+    }
+
+    #[test]
+    fn an_answer_that_arrives_before_the_waiter_is_still_delivered() {
+        let store = empty_store();
+        assert!(reserve_response(&store, "req-2"));
+        assert_eq!(
+            fulfill_response(&store, "req-2", ok_response("early")),
+            Ok(())
+        );
+        let response = wait_for_response(&store, "req-2").expect("an early answer is kept");
+        assert_eq!(response.body, b"early");
+    }
+
+    #[test]
+    fn an_answer_for_a_request_that_was_never_reserved_is_refused() {
+        let store = empty_store();
+        assert_eq!(
+            fulfill_response(&store, "never-asked", ok_response("x")),
+            Err("DIAL request has expired")
+        );
+        assert!(
+            store.0.lock().unwrap().is_empty(),
+            "a refused answer leaves nothing behind"
+        );
+    }
+
+    #[test]
+    fn a_second_answer_to_the_same_request_is_refused() {
+        let store = empty_store();
+        assert!(reserve_response(&store, "req-3"));
+        assert_eq!(
+            fulfill_response(&store, "req-3", ok_response("first")),
+            Ok(())
+        );
+        assert_eq!(
+            fulfill_response(&store, "req-3", ok_response("second")),
+            Err("DIAL request was already answered")
+        );
+        assert_eq!(wait_for_response(&store, "req-3").unwrap().body, b"first");
+    }
+
+    #[test]
+    fn a_released_request_can_no_longer_be_answered() {
+        let store = empty_store();
+        assert!(reserve_response(&store, "req-4"));
+        release_response(&store, "req-4");
+        assert_eq!(
+            fulfill_response(&store, "req-4", ok_response("late")),
+            Err("DIAL request has expired")
+        );
+    }
 
     fn state() -> RuntimeState {
         RuntimeState {

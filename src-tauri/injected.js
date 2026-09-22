@@ -301,6 +301,19 @@
     syncLeanbackDeviceId();
   };
 
+  const SURFACE_EARLY_CHECK_MS = 12000;
+  const SURFACE_FINAL_CHECK_MS = 30000;
+
+  // Pure verdict for surface detection. A redirect away from /tv is
+  // reported at any phase; a missing Leanback UI only at the "final" phase,
+  // because Leanback renders its UI well after `load` and, on a slow link,
+  // after the early timer too.
+  const surfaceVerdict = ({ isYouTube, pathname, hasLeanbackDom, phase }) => {
+    if (isYouTube && !String(pathname || "").startsWith("/tv")) return "redirected";
+    if (phase === "final" && !hasLeanbackDom) return "blockedSurface";
+    return null;
+  };
+
   // Surface detection: tells the shell when YouTube redirected away from
   // the TV app, or when the Leanback UI never rendered, so it can show the
   // native "status" window. See docs/plans/W2_LIVING_ROOM_PLAN.md. Emits at
@@ -329,18 +342,15 @@
     const hasLeanbackDom = () =>
       Boolean(document.querySelector('ytlr-app, [class*="ytlr-"], #app'));
 
-    const checkSurface = () => {
+    const checkSurface = (phase) => {
       if (emitted) return;
 
-      const hostname = window.location.hostname || "";
-      const pathname = window.location.pathname || "";
-
-      let kind = null;
-      if (isYouTubeHost(hostname) && !pathname.startsWith("/tv")) {
-        kind = "redirected";
-      } else if (!hasLeanbackDom()) {
-        kind = "blockedSurface";
-      }
+      const kind = surfaceVerdict({
+        isYouTube: isYouTubeHost(window.location.hostname || ""),
+        pathname: window.location.pathname || "",
+        hasLeanbackDom: hasLeanbackDom(),
+        phase
+      });
       if (!kind) return;
 
       const tauri = bridge();
@@ -356,8 +366,14 @@
         .catch(() => {});
     };
 
-    window.addEventListener("load", checkSurface);
-    window.setTimeout(checkSurface, 12000);
+    // `load` fires long before Leanback renders `ytlr-app` (measured at
+    // ~130 ms on a real session), so it may only report a redirect. The
+    // missing-UI verdict waits for SURFACE_FINAL_CHECK_MS; checking it at
+    // `load` showed the "isn't showing the TV surface" window on a page that
+    // was rendering normally.
+    window.addEventListener("load", () => checkSurface("early"));
+    window.setTimeout(() => checkSurface("early"), SURFACE_EARLY_CHECK_MS);
+    window.setTimeout(() => checkSurface("final"), SURFACE_FINAL_CHECK_MS);
   };
 
   const initMark = () => {
@@ -2541,8 +2557,112 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   const SHELL_ACTIONS = Object.freeze({
     OPEN_SETTINGS: "open-settings",
     TOGGLE_FULLSCREEN: "toggle-fullscreen",
-    TOGGLE_MINI: "toggle-mini"
+    TOGGLE_MINI: "toggle-mini",
+    START_DRAG: "start-drag"
   });
+
+  // -------------------------------------------------------------------------
+  // Mini-player bar (Lalin Cast original)
+  //
+  // The mini-player window has no title bar, so before this the only ways
+  // back to normal size were Ctrl+Shift+M and the tray menu, and the window
+  // could not be moved at all. While Rust reports mini-player mode on
+  // (`lalin-cast-mini` { active }), a thin bar shows whenever the mouse
+  // moves over the window and hides again after MINI_BAR_HIDE_MS: drag its
+  // left part to move the window (Rust calls start_dragging, so no new
+  // permission), click its button to return to normal size. Our own element
+  // on top of the page; YouTube's DOM is not touched (ADR-004).
+  // -------------------------------------------------------------------------
+  const MINI_BAR_ID = "lalin-cast-mini-bar";
+  const MINI_BAR_HIDE_MS = 2500;
+  const MINI_BAR_TEXT = Object.freeze({ th: "\u2922 ขนาดปกติ", en: "\u2922 Normal size" });
+  const miniBarLabel = (lang) => (lang === "en" ? MINI_BAR_TEXT.en : MINI_BAR_TEXT.th);
+
+  const createMiniBar = (doc, win, options) => {
+    const opts = options || {};
+    const getLang = opts.getLang || (() => "th");
+    const onRestore = opts.onRestore || (() => {});
+    const onDragStart = opts.onDragStart || (() => {});
+
+    let active = false;
+    let bar = null;
+    let button = null;
+    let hideTimer = null;
+
+    const swallow = (e) => {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+    };
+
+    const build = () => {
+      if (bar) return;
+      bar = doc.createElement("div");
+      bar.id = MINI_BAR_ID;
+      Object.assign(bar.style, {
+        position: "fixed", top: "0", left: "0", right: "0", height: "32px",
+        display: "none", alignItems: "center", gap: "8px", padding: "0 8px",
+        background: "rgba(0, 0, 0, 0.72)", color: "#fff", zIndex: "2147483647",
+        font: "13px/1 system-ui, sans-serif", userSelect: "none"
+      });
+
+      const handle = doc.createElement("div");
+      handle.textContent = "Lalin Cast";
+      Object.assign(handle.style, { flex: "1", height: "100%", display: "flex", alignItems: "center", cursor: "move" });
+      handle.addEventListener("mousedown", (e) => {
+        swallow(e);
+        if (e && e.button !== undefined && e.button !== 0) return;
+        if (e && typeof e.preventDefault === "function") e.preventDefault();
+        onDragStart();
+      });
+
+      button = doc.createElement("button");
+      if (typeof button.setAttribute === "function") button.setAttribute("type", "button");
+      Object.assign(button.style, {
+        cursor: "pointer", border: "0", borderRadius: "4px", padding: "4px 10px",
+        background: "#3ea6ff", color: "#000", font: "inherit"
+      });
+      button.addEventListener("mousedown", swallow);
+      button.addEventListener("click", (e) => {
+        swallow(e);
+        if (e && typeof e.preventDefault === "function") e.preventDefault();
+        onRestore();
+      });
+
+      bar.addEventListener("click", swallow);
+      bar.appendChild(handle);
+      bar.appendChild(button);
+      (doc.body || doc.documentElement).appendChild(bar);
+    };
+
+    const hide = () => {
+      if (bar) bar.style.display = "none";
+    };
+
+    const show = () => {
+      if (!active) return;
+      build();
+      button.textContent = miniBarLabel(getLang());
+      bar.style.display = "flex";
+      if (hideTimer) win.clearTimeout(hideTimer);
+      hideTimer = win.setTimeout(hide, MINI_BAR_HIDE_MS);
+    };
+
+    win.addEventListener("mousemove", show, { passive: true });
+
+    return {
+      setActive(next) {
+        active = next === true;
+        if (active) {
+          show();
+        } else {
+          if (hideTimer) win.clearTimeout(hideTimer);
+          hideTimer = null;
+          hide();
+        }
+      },
+      isActive: () => active,
+      isShown: () => Boolean(bar && bar.style.display === "flex")
+    };
+  };
 
   const emitShell = (action) => {
     const tauri = bridge();
@@ -2575,6 +2695,11 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     await initDeepLinkListener(win, tauri);
     await initSleepListener(doc, win, tauri, sleepOsd);
     await initRemoteListener(doc, win, tauri);
+
+    await tauri.event.listen("lalin-cast-mini", (event) => {
+      const payload = event?.payload || event;
+      if (state.miniBar) state.miniBar.setActive(Boolean(payload && payload.active === true));
+    });
   };
 
   const boot = () => {
@@ -2650,6 +2775,12 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     createHideObserver(document, window);
     applyHidePrefsToDocument(document, state.prefs);
 
+    state.miniBar = createMiniBar(document, window, {
+      getLang: () => state.prefs.lang,
+      onRestore: () => emitShell(SHELL_ACTIONS.TOGGLE_MINI),
+      onDragStart: () => emitShell(SHELL_ACTIONS.START_DRAG)
+    });
+
     state.onPrefsChange = (next) => {
       if (next.controllerEnabled) gamepadController.start();
       else gamepadController.stop();
@@ -2662,6 +2793,13 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      createMiniBar,
+      miniBarLabel,
+      MINI_BAR_ID,
+      MINI_BAR_HIDE_MS,
+      surfaceVerdict,
+      SURFACE_EARLY_CHECK_MS,
+      SURFACE_FINAL_CHECK_MS,
       DEFAULT_PREFS,
       readPrefs,
       applyPrefsUpdate,
