@@ -1,6 +1,6 @@
 [package]
 name = "lalin-cast"
-version = "0.2.0"
+version = "0.1.9"
 description = "Lalin Cast — Rust + Tauri v2 Leanback player"
 authors = ["LALIN"]
 license = "Apache-2.0"
