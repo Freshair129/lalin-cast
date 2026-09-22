@@ -1,7 +1,7 @@
 ---
-version: "0.1.10b"
+version: "0.1.11b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-21T20:00:00+07:00,LALIN"
+last_update: "2026-09-22T10:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -102,10 +102,10 @@ tag — if any item is not done, **do not tag**:
         (`<app_local_data_dir>/logs/lalin-cast.log`) really appears, really rotates once it exceeds
         512 KiB (keeping at most two files), and that a sample of its lines contains no TV pairing
         code, cookie, token, URL, or filesystem path anywhere — not even one line
-- [ ] **human gate H28 ปิดแล้ว** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — ถ้าฟีเจอร์ wave 10 รวม
+- [x] **human gate H28 ปิดแล้ว** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — ถ้าฟีเจอร์ wave 10 รวม
       อยู่ในรุ่นนี้ — **human gate H28 is closed** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — if
       wave 10's features are included in this release:
-  - [ ] H28 — ดาวน์โหลด artifact `lalin-cast-dryrun-installer` จาก run ล่าสุดของ
+  - [x] H28 — ดาวน์โหลด artifact `lalin-cast-dryrun-installer` จาก run ล่าสุดของ
         `.github/workflows/release-dryrun.yml` บน commit ที่จะ tag (ถ้า commit นั้นไม่มี run เพราะไม่ได้แตะไฟล์
         ที่เกี่ยวกับการ bundle ให้สั่งรันเองด้วย `workflow_dispatch`) แล้วติดตั้งบนเครื่องสะอาด ยืนยันว่า
         เปิดแอปได้จริง (ตัวติดตั้งนี้**ไม่ได้เซ็นชื่อ** — ใช้ยืนยันแค่ว่า bundle ใช้งานได้ ไม่ใช่การตรวจ
@@ -116,6 +116,13 @@ tag — if any item is not done, **do not tag**:
         clean machine, and confirm the app launches (this installer is **unsigned** — it only
         confirms the bundle works, not the signature verification in step 3 below, which uses only
         the real `release.yml` output)
+        **ปิดแล้ว 2026-09-22:** ทดสอบด้วย artifact จาก run
+        [35601453787](https://github.com/Freshair129/lalin-cast/actions/runs/35601453787) (build ของ
+        commit เดียวกับที่อยู่บน `main`, เวอร์ชัน 0.2.0) ติดตั้งบนเครื่องสะอาดและเปิดแอปได้จริง — ผ่าน /
+        **Closed 2026-09-22:** tested with the artifact from run
+        [35601453787](https://github.com/Freshair129/lalin-cast/actions/runs/35601453787) (built from
+        the same commit as on `main`, version 0.2.0); installed on a clean machine and the app
+        launched — passed
       > หมายเหตุ: H27 เดิม (wave 9 — "notices check ทำ PR แดงจริงเมื่อ lock เปลี่ยนโดยไม่ sync") ถูก
       > แทนที่ด้วยการตรวจอัตโนมัติแล้วตั้งแต่ wave 10: fixture
       > `scripts/fixtures/notices-mismatch/` และ self-test step ในงาน `notices` ของ `ci.yml` พิสูจน์
@@ -125,10 +132,10 @@ tag — if any item is not done, **do not tag**:
       > `scripts/fixtures/notices-mismatch/` fixture and the self-test step in `ci.yml`'s `notices`
       > job prove this on every CI run, so it no longer needs a separate manual item in this
       > checklist
-- [ ] **human gate H29 ปิดแล้ว** (`docs/plans/W11_PORTABLE_PLAN.md`) — ถ้าฟีเจอร์ wave 11 รวมอยู่ในรุ่นนี้
+- [x] **human gate H29 ปิดแล้ว** (`docs/plans/W11_PORTABLE_PLAN.md`) — ถ้าฟีเจอร์ wave 11 รวมอยู่ในรุ่นนี้
       — **human gate H29 is closed** (`docs/plans/W11_PORTABLE_PLAN.md`) — if wave 11's features are
       included in this release:
-  - [ ] H29 — ดาวน์โหลด artifact `lalin-cast-dryrun-portable` จาก run ล่าสุดของ
+  - [x] H29 — ดาวน์โหลด artifact `lalin-cast-dryrun-portable` จาก run ล่าสุดของ
         `.github/workflows/release-dryrun.yml` บน commit ที่จะ tag (ถ้า commit นั้นไม่มี run เพราะไม่ได้แตะไฟล์
         ที่เกี่ยวกับการ bundle ให้สั่งรันเองด้วย `workflow_dispatch`) แตก zip ลง USB บนเครื่องสะอาด เปิดแอป ตั้งค่า
         บางอย่าง ปิดแล้วเปิดใหม่ ยืนยันว่าค่าที่ตั้งยังอยู่ ยืนยันว่า `%APPDATA%\ai.lalin.cast` และ
@@ -140,6 +147,13 @@ tag — if any item is not done, **do not tag**:
         close and reopen it, confirm the setting persisted, confirm
         `%APPDATA%\ai.lalin.cast` and `%LOCALAPPDATA%\ai.lalin.cast` were not created or modified, and
         confirm no new Run key or `HKCU\Software\Classes\lalin-cast` registry entry appears
+        **ปิดแล้ว 2026-09-22:** ทดสอบด้วย artifact จาก run เดียวกับ H28 (เวอร์ชัน 0.2.0) แตก zip ลง USB
+        บนเครื่องสะอาด ตั้งค่าคงอยู่หลังปิดเปิดใหม่ ไม่มีการสร้าง/แก้ `%APPDATA%\ai.lalin.cast` หรือ
+        `%LOCALAPPDATA%\ai.lalin.cast` และไม่มี Run key หรือ `HKCU\Software\Classes\lalin-cast` ใหม่ —
+        ผ่าน / **Closed 2026-09-22:** tested with the same run's artifact (version 0.2.0); extracted
+        the zip to a USB drive on a clean machine, settings persisted across a restart, neither
+        `%APPDATA%\ai.lalin.cast` nor `%LOCALAPPDATA%\ai.lalin.cast` was created or modified, and no
+        new Run key or `HKCU\Software\Classes\lalin-cast` entry appeared — passed
 - [ ] **bump เวอร์ชันใน `src-tauri/Cargo.toml`** (`[package].version`) ให้ตรงกับ `vX.Y.Z` ที่จะ tag
       (ไม่มี prefix `v` ในไฟล์นี้) — เวอร์ชันในแอป (`env!("CARGO_PKG_VERSION")`), User-Agent, DIAL
       identity และหน้าต่าง update จะดึงค่านี้อัตโนมัติ — **bump the version in
@@ -334,3 +348,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.8b | 2026-09-21 | candidate | Wave 12 (U3) repair: moved human gate H30 from section 1 (pre-tag) to section 3 (post-tag verification, right before "switch to published") since it can only close after a real tag exists; fixed the `Get-FileHash` installer example to use the real downloaded asset name `Lalin.Cast_<version>_<arch>-setup.exe` (GitHub turns the space in `productName` into a dot on upload), not the invented `Lalin-Cast_..._-setup.exe` | uncommitted | LALIN |
 | 0.1.9b | 2026-09-21 | candidate | Marked human gate H1 closed: Apache-2.0 chosen (PR #17) and the founder approved PRIVACY.md/TERMS.md; noted that a later change to either document's substance needs re-approval before tagging | uncommitted | LALIN |
 | 0.1.10b | 2026-09-21 | candidate | Marked human gate H4 closed: the founder decided to ship intentionally without Authenticode signing from v0.2.0 until a certificate is purchased, with the accepted SmartScreen consequence and the checksum/updater-signature mitigations recorded | uncommitted | LALIN |
+| 0.1.11b | 2026-09-22 | candidate | Marked human gates H28 and H29 closed: the founder installed the `lalin-cast-dryrun-installer` and extracted the `lalin-cast-dryrun-portable` zip from run 35601453787 (version 0.2.0) on a clean machine and confirmed both pass their acceptance checks | uncommitted | LALIN |
