@@ -1,7 +1,7 @@
 ---
-version: "0.1.15b"
+version: "0.1.16b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-22T23:00:00+07:00,LALIN"
+last_update: "2026-09-23T12:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -111,6 +111,14 @@ tag — if any item is not done, **do not tag**:
         ซ่อนได้จริง และ focus ไม่ตกลงบน element ที่ถูกซ่อน — ผ่าน / **Closed 2026-09-22:** tested on a
         real Leanback session; the Shorts shelf and the guide Shorts tab really hide, and focus never
         lands on a hidden element — passed
+        **ทดสอบซ้ำ 2026-09-23 (หลัง PR #27):** การปิดครั้งแรกเชื่อถือไม่ได้ เพราะ CSP ของหน้า YouTube
+        บล็อก `<style>` ที่ใช้ซ่อน การซ่อนจึงทำงานบนหน้าจริงไม่ได้เลย PR #27 เปลี่ยนไปใช้ constructed
+        stylesheet แล้วทดสอบใหม่บน session Leanback จริง: ชั้น Shorts และแท็บ Shorts ซ่อนได้จริง และ focus
+        ปกติ ไม่ตกลงบน element ที่ถูกซ่อน — ผ่าน / **Retested 2026-09-23 (after PR #27):** the first
+        closure was not trustworthy: YouTube's CSP blocked the `<style>` element the hiding rules
+        relied on, so nothing could hide on the real page. PR #27 switched to a constructed
+        stylesheet; retested on a real Leanback session, the Shorts shelf and the Shorts tab really
+        hide and focus behaves normally, never landing on a hidden element — passed
   - [x] H25 — ยืนยันว่าจอไม่ดับ/เครื่องไม่หลับขณะกำลังเล่นวิดีโอ (`keepDisplayAwake` เปิดอยู่) และจอ
         กลับไปดับ/เครื่องหลับตามปกติเมื่อหยุดหรือ pause การเล่น — confirm the display stays awake while
         a video plays (with `keepDisplayAwake` on), and that the display/system sleeps normally again
@@ -386,3 +394,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.13b | 2026-09-22 | candidate | Marked human gates H24 and H26 closed: the founder confirmed on a real Leanback session that the Shorts shelf/guide tab hide without stealing focus (H24), and confirmed on a real release build that the log file appears, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path (H26); H25 (keep-display-awake) remains open | uncommitted | LALIN |
 | 0.1.14b | 2026-09-22 | candidate | Marked human gate H25 closed: the founder confirmed both conditions — the display/system stays awake during playback with `keepDisplayAwake` on, and sleeps normally again once playback is paused or stopped; the H24-H25 group heading is now fully closed | uncommitted | LALIN |
 | 0.1.15b | 2026-09-22 | candidate | Added a note to human gate H22: its first closure only proved discovery, and DIAL launch returned 504 until PR #25; retested after PR #25 (name shown, launch 201, playback, song change from the phone) it passes, and the phone disconnecting after a song change is recorded as a known limitation shared with VacuumTube 1.8.2 | uncommitted | LALIN |
+| 0.1.16b | 2026-09-23 | candidate | Added a retest note to human gate H24: its first closure could not have been valid because YouTube's CSP blocked the hiding stylesheet; after PR #27 switched to a constructed stylesheet the founder retested on a real Leanback session and Shorts hiding plus focus behaviour pass | uncommitted | LALIN |
