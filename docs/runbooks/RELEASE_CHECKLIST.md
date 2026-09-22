@@ -1,7 +1,7 @@
 ---
-version: "0.1.12b"
+version: "0.1.13b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-22T14:00:00+07:00,LALIN"
+last_update: "2026-09-22T16:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -92,25 +92,34 @@ tag — if any item is not done, **do not tag**:
 - [ ] **human gates H24–H25 ปิดครบแล้ว** (`docs/plans/W8_BOUNDARY_PLAN.md`) — ถ้าฟีเจอร์ wave 8 รวมอยู่
       ในรุ่นนี้ — **human gates H24–H25 are both closed** (`docs/plans/W8_BOUNDARY_PLAN.md`) — if
       wave 8's features are included in this release:
-  - [ ] H24 — ยืนยันบน session Leanback จริงว่าชั้น Shorts (เมื่อเปิด `hideShorts`) และแท็บ Shorts ใน
+  - [x] H24 — ยืนยันบน session Leanback จริงว่าชั้น Shorts (เมื่อเปิด `hideShorts`) และแท็บ Shorts ใน
         แถบนำทาง (เมื่อเปิด `hideGuideTabs`) ซ่อนได้จริง และ focus ไม่เคยตกลงบน element ที่ถูกซ่อนอยู่
         — confirm on a real Leanback session that the Shorts shelf (with `hideShorts` on) and the
         guide Shorts tab (with `hideGuideTabs` on) really do hide, and that focus never lands on a
         hidden element
+        **ปิดแล้ว 2026-09-22:** ทดสอบบน session Leanback จริง — ชั้น Shorts และแท็บ Shorts ในแถบนำทาง
+        ซ่อนได้จริง และ focus ไม่ตกลงบน element ที่ถูกซ่อน — ผ่าน / **Closed 2026-09-22:** tested on a
+        real Leanback session; the Shorts shelf and the guide Shorts tab really hide, and focus never
+        lands on a hidden element — passed
   - [ ] H25 — ยืนยันว่าจอไม่ดับ/เครื่องไม่หลับขณะกำลังเล่นวิดีโอ (`keepDisplayAwake` เปิดอยู่) และจอ
         กลับไปดับ/เครื่องหลับตามปกติเมื่อหยุดหรือ pause การเล่น — confirm the display stays awake while
         a video plays (with `keepDisplayAwake` on), and that the display/system sleeps normally again
         once playback is paused or stopped
-- [ ] **human gate H26 ปิดแล้ว** (`docs/plans/W9_SUPPORTABILITY_PLAN.md`) — ถ้าฟีเจอร์ wave 9 รวมอยู่ใน
+- [x] **human gate H26 ปิดแล้ว** (`docs/plans/W9_SUPPORTABILITY_PLAN.md`) — ถ้าฟีเจอร์ wave 9 รวมอยู่ใน
       รุ่นนี้ — **human gate H26 is closed** (`docs/plans/W9_SUPPORTABILITY_PLAN.md`) — if wave 9's
       features are included in this release:
-  - [ ] H26 — ยืนยันบน release build จริงว่าไฟล์ log (`<app_local_data_dir>/logs/lalin-cast.log`)
+  - [x] H26 — ยืนยันบน release build จริงว่าไฟล์ log (`<app_local_data_dir>/logs/lalin-cast.log`)
         เกิดขึ้นจริง, หมุนเวียนได้จริงเมื่อไฟล์เกิน 512 KiB (เหลือสูงสุดสองไฟล์เท่านั้น), และเปิดหลาย
         บรรทัดตัวอย่างมาตรวจว่าไม่มีรหัสจับคู่ทีวี, cookie, token, URL หรือ path ของระบบไฟล์ปรากฏอยู่เลย
         แม้แต่บรรทัดเดียว — confirm on a real release build that the log file
         (`<app_local_data_dir>/logs/lalin-cast.log`) really appears, really rotates once it exceeds
         512 KiB (keeping at most two files), and that a sample of its lines contains no TV pairing
         code, cookie, token, URL, or filesystem path anywhere — not even one line
+        **ปิดแล้ว 2026-09-22:** ทดสอบบน release build จริง ทั้งสามข้อ — ไฟล์ log เกิดขึ้นจริง, หมุนเวียน
+        เมื่อเกิน 512 KiB เหลือสูงสุดสองไฟล์, และเปิดอ่านหลายบรรทัดตัวอย่างแล้วไม่มีรหัสจับคู่ทีวี, cookie,
+        token, URL หรือ path เลย — ผ่าน / **Closed 2026-09-22:** all three conditions tested on a real
+        release build — the log file really appears, rotates past 512 KiB keeping at most two files,
+        and a sample of its lines contains no TV pairing code, cookie, token, URL, or path — passed
 - [x] **human gate H28 ปิดแล้ว** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — ถ้าฟีเจอร์ wave 10 รวม
       อยู่ในรุ่นนี้ — **human gate H28 is closed** (`docs/plans/W10_RELEASE_REHEARSAL_PLAN.md`) — if
       wave 10's features are included in this release:
@@ -359,3 +368,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.10b | 2026-09-21 | candidate | Marked human gate H4 closed: the founder decided to ship intentionally without Authenticode signing from v0.2.0 until a certificate is purchased, with the accepted SmartScreen consequence and the checksum/updater-signature mitigations recorded | uncommitted | LALIN |
 | 0.1.11b | 2026-09-22 | candidate | Marked human gates H28 and H29 closed: the founder installed the `lalin-cast-dryrun-installer` and extracted the `lalin-cast-dryrun-portable` zip from run 35601453787 (version 0.2.0) on a clean machine and confirmed both pass their acceptance checks | uncommitted | LALIN |
 | 0.1.12b | 2026-09-22 | candidate | Marked human gates H22 and H23 closed: the founder confirmed with a real phone that DIAL discovery still works after the stricter SSDP `MAN` header check (H22), and confirmed both `lalin-cast://` conditions — the link opens the app with `deepLinkScheme` on, and the registered association is gone after turning it off (H23) | uncommitted | LALIN |
+| 0.1.13b | 2026-09-22 | candidate | Marked human gates H24 and H26 closed: the founder confirmed on a real Leanback session that the Shorts shelf/guide tab hide without stealing focus (H24), and confirmed on a real release build that the log file appears, rotates past 512 KiB keeping at most two files, and contains no TV pairing code/cookie/token/URL/path (H26); H25 (keep-display-awake) remains open | uncommitted | LALIN |
