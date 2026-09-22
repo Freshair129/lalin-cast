@@ -1,7 +1,7 @@
 ---
-version: "0.1.11b"
+version: "0.1.12b"
 created_at: "2026-09-20T23:15:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-22T10:00:00+07:00,LALIN"
+last_update: "2026-09-22T14:00:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -66,20 +66,29 @@ tag — if any item is not done, **do not tag**:
         later gates a wave adds (e.g. H13–H17 from wave 5) must also be closed if that wave's
         features are included in this release — see each wave plan's human-gates table under
         `docs/plans/`
-- [ ] **human gates H22–H23 ปิดครบแล้ว** (`docs/plans/W7_DEEPLINK_PLAN.md`) — ถ้าฟีเจอร์ wave 7 รวมอยู่
+- [x] **human gates H22–H23 ปิดครบแล้ว** (`docs/plans/W7_DEEPLINK_PLAN.md`) — ถ้าฟีเจอร์ wave 7 รวมอยู่
       ในรุ่นนี้ — **human gates H22–H23 are both closed** (`docs/plans/W7_DEEPLINK_PLAN.md`) — if
       wave 7's features are included in this release:
-  - [ ] H22 — ยืนยันว่าโทรศัพท์ (iPhone/Android YouTube app) ยังค้นหา Lalin Cast เจอผ่าน DIAL หลังการ
+  - [x] H22 — ยืนยันว่าโทรศัพท์ (iPhone/Android YouTube app) ยังค้นหา Lalin Cast เจอผ่าน DIAL หลังการ
         ตรวจ header `MAN` ของ SSDP M-SEARCH เข้มขึ้น — ถ้าหาไม่เจอ ให้ย้อนการเปลี่ยนแปลงนี้ทันทีก่อน tag
         — confirm phones (iPhone/Android YouTube app) still discover Lalin Cast over DIAL after the
         stricter SSDP M-SEARCH `MAN` header check — if discovery fails, revert this change before
         tagging
-  - [ ] H23 — ยืนยันว่าลิงก์ `lalin-cast://` เปิดแอป Lalin Cast ได้จริงจาก Windows Explorer หรือเบราว์เซอร์
+        **ปิดแล้ว 2026-09-22:** ทดสอบด้วยมือถือจริง — แอป YouTube ยังค้นหา Lalin Cast เจอผ่าน DIAL หลัง
+        การตรวจ header `MAN` ที่เข้มขึ้น — ผ่าน / **Closed 2026-09-22:** tested with a real phone;
+        the YouTube app still discovers Lalin Cast over DIAL after the stricter `MAN` header check —
+        passed
+  - [x] H23 — ยืนยันว่าลิงก์ `lalin-cast://` เปิดแอป Lalin Cast ได้จริงจาก Windows Explorer หรือเบราว์เซอร์
         เมื่อเปิดตัวเลือก `deepLinkScheme` ไว้ **และ** เมื่อปิดตัวเลือกนี้ลง scheme ที่จดทะเบียนไว้จะหาย
         ไปจากระบบ (เปิดลิงก์แล้วไม่มีแอปใดถูกเรียก) — confirm a `lalin-cast://` link really opens the
         Lalin Cast app from Windows Explorer or a browser when the `deepLinkScheme` setting is on,
         **and** that turning the setting back off removes the registered association (opening the
         link no longer launches any app)
+        **ปิดแล้ว 2026-09-22:** ทดสอบครบทั้งสองข้อ — เปิด `deepLinkScheme` แล้วลิงก์ `lalin-cast://`
+        เปิดแอปได้จริง และหลังปิดตัวเลือกแล้ว scheme หายไปจากระบบจริง (เปิดลิงก์แล้วไม่มีแอปถูกเรียก) —
+        ผ่าน / **Closed 2026-09-22:** both conditions tested — with `deepLinkScheme` on, the
+        `lalin-cast://` link really opened the app, and after turning the setting off the registered
+        association was gone (opening the link launched nothing) — passed
 - [ ] **human gates H24–H25 ปิดครบแล้ว** (`docs/plans/W8_BOUNDARY_PLAN.md`) — ถ้าฟีเจอร์ wave 8 รวมอยู่
       ในรุ่นนี้ — **human gates H24–H25 are both closed** (`docs/plans/W8_BOUNDARY_PLAN.md`) — if
       wave 8's features are included in this release:
@@ -349,3 +358,4 @@ to go to winget (not required for every release) — follow the full procedure i
 | 0.1.9b | 2026-09-21 | candidate | Marked human gate H1 closed: Apache-2.0 chosen (PR #17) and the founder approved PRIVACY.md/TERMS.md; noted that a later change to either document's substance needs re-approval before tagging | uncommitted | LALIN |
 | 0.1.10b | 2026-09-21 | candidate | Marked human gate H4 closed: the founder decided to ship intentionally without Authenticode signing from v0.2.0 until a certificate is purchased, with the accepted SmartScreen consequence and the checksum/updater-signature mitigations recorded | uncommitted | LALIN |
 | 0.1.11b | 2026-09-22 | candidate | Marked human gates H28 and H29 closed: the founder installed the `lalin-cast-dryrun-installer` and extracted the `lalin-cast-dryrun-portable` zip from run 35601453787 (version 0.2.0) on a clean machine and confirmed both pass their acceptance checks | uncommitted | LALIN |
+| 0.1.12b | 2026-09-22 | candidate | Marked human gates H22 and H23 closed: the founder confirmed with a real phone that DIAL discovery still works after the stricter SSDP `MAN` header check (H22), and confirmed both `lalin-cast://` conditions — the link opens the app with `deepLinkScheme` on, and the registered association is gone after turning it off (H23) | uncommitted | LALIN |
