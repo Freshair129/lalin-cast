@@ -1566,6 +1566,9 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   const TOUCH_OVERLAY_ID = "lalin-cast-touch-overlay";
   const TOUCH_STYLE_ID = "lalin-cast-touch-style";
   const TOUCH_BUTTON_CLASS = "lalin-cast-touch-button";
+  // Mouse use: the overlay appears on mouse movement and hides again after
+  // this long without movement. A touch still pins it on for the session.
+  const TOUCH_MOUSE_HIDE_MS = 3000;
 
   // Button id -> keyCode dispatched via dispatchSyntheticKey(). back/ok/the
   // four directions match touch-support.js's touchKeyCodeMap and this file's
@@ -1640,7 +1643,15 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
     let enabled = Boolean(opts.initialEnabled);
     let touched = false;
+    let mouseShown = false;
+    let suppressed = false;
+    let mouseHideTimer = null;
     let elements = null;
+
+    const stop = (e) => {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    };
 
     const ensureStyle = () => {
       installCss(doc, TOUCH_STYLE_ID, TOUCH_OVERLAY_CSS);
@@ -1668,6 +1679,25 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
             if (e && typeof e.preventDefault === "function") e.preventDefault();
             dispatchSyntheticKey(doc, "keyup", spec.keyCode);
           });
+          // Mouse: left button presses the key, release (or dragging off the
+          // button) lets it go, so a key can never stay held down. Stopped
+          // here so YouTube's page never sees the click on our button.
+          let mousePressed = false;
+          button.addEventListener("mousedown", (e) => {
+            if (e && e.button !== undefined && e.button !== 0) return;
+            stop(e);
+            mousePressed = true;
+            dispatchSyntheticKey(doc, "keydown", spec.keyCode);
+          });
+          const release = (e) => {
+            if (!mousePressed) return;
+            stop(e);
+            mousePressed = false;
+            dispatchSyntheticKey(doc, "keyup", spec.keyCode);
+          };
+          button.addEventListener("mouseup", release);
+          button.addEventListener("mouseleave", release);
+          button.addEventListener("click", stop);
         }
         overlay.appendChild(button);
         buttons[spec.id] = button;
@@ -1680,8 +1710,10 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       return elements;
     };
 
+    const shouldShow = () => enabled && !suppressed && (touched || mouseShown);
+
     const render = () => {
-      if (!touched || !enabled) {
+      if (!shouldShow()) {
         if (elements && elements.overlay.style) elements.overlay.style.display = "none";
         return;
       }
@@ -1695,12 +1727,33 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
         touched = true;
         render();
       },
+      // Called on every mousemove over the window. Shows the overlay for
+      // TOUCH_MOUSE_HIDE_MS after the last movement; does nothing while the
+      // pref is off, while suppressed (mini-player), or once a touch has
+      // already pinned it on.
+      handleMouseMove() {
+        if (!enabled || suppressed || touched) return;
+        mouseShown = true;
+        render();
+        if (mouseHideTimer) win.clearTimeout(mouseHideTimer);
+        mouseHideTimer = win.setTimeout(() => {
+          mouseHideTimer = null;
+          mouseShown = false;
+          render();
+        }, TOUCH_MOUSE_HIDE_MS);
+      },
+      // The mini-player window is too small for these buttons; hidden while
+      // it is active, whatever the pref says.
+      setSuppressed(value) {
+        suppressed = value === true;
+        render();
+      },
       setEnabled(value) {
         enabled = Boolean(value);
         render();
       },
       isVisible() {
-        return Boolean(touched && enabled && elements);
+        return Boolean(shouldShow() && elements);
       },
       getButton(id) {
         return elements ? elements.buttons[id] || null : null;
@@ -2705,7 +2758,9 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
     await tauri.event.listen("lalin-cast-mini", (event) => {
       const payload = event?.payload || event;
-      if (state.miniBar) state.miniBar.setActive(Boolean(payload && payload.active === true));
+      const miniActive = Boolean(payload && payload.active === true);
+      if (state.miniBar) state.miniBar.setActive(miniActive);
+      if (state.touchOverlay) state.touchOverlay.setSuppressed(miniActive);
     });
   };
 
@@ -2774,6 +2829,8 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       initialEnabled: state.prefs.touchOverlay
     });
     window.addEventListener("touchstart", () => touchOverlay.handleTouchStart(), { passive: true });
+    window.addEventListener("mousemove", () => touchOverlay.handleMouseMove(), { passive: true });
+    state.touchOverlay = touchOverlay;
 
     // Wave 8 — see docs/plans/W8_BOUNDARY_PLAN.md, "ซ่อน Shorts / guide
     // tabs". The observer runs regardless of the current pref values (it
@@ -2838,6 +2895,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
       codecAllowed,
       installCodecFilter,
       TOUCH_KEY_CODE_MAP,
+      TOUCH_MOUSE_HIDE_MS,
       touchButtons,
       createTouchOverlay,
       SLEEP_OSD_ID,

@@ -2531,6 +2531,93 @@ pending.push(
   }),
 );
 
+function mouseBtn(type, button) {
+  const e = new Event(type);
+  e.button = button;
+  return e;
+}
+
+function keyLog(doc) {
+  const log = [];
+  doc.addEventListener("keydown", (e) => log.push(`down:${e.keyCode}`));
+  doc.addEventListener("keyup", (e) => log.push(`up:${e.keyCode}`));
+  return log;
+}
+
+pending.push(
+  test("touch overlay (mouse): mouse movement shows it while enabled, and it schedules its own hide", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    assert.strictEqual(overlay.isVisible(), true);
+    const hide = win.__timeoutCalls.filter((c) => c.ms === m.TOUCH_MOUSE_HIDE_MS).pop();
+    assert.ok(hide, "an auto-hide is scheduled");
+    clearTimeout(hide.id);
+    hide.cb();
+    assert.strictEqual(overlay.isVisible(), false, "hidden again after the idle delay");
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): stays off when the pref is off", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: false });
+    overlay.handleMouseMove();
+    assert.strictEqual(overlay.isVisible(), false);
+    assert.strictEqual(doc.getElementById("lalin-cast-touch-overlay"), null);
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): a left click presses and releases the button's key; other buttons do nothing", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const log = keyLog(doc);
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    const back = overlay.getButton("back");
+    back.dispatchEvent(mouseBtn("mousedown", 0));
+    back.dispatchEvent(mouseBtn("mouseup", 0));
+    back.dispatchEvent(mouseBtn("mousedown", 2));
+    back.dispatchEvent(mouseBtn("mouseup", 2));
+    assert.deepStrictEqual(log, ["down:27", "up:27"]);
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("touch overlay (mouse): dragging off a held button still releases its key", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const log = keyLog(doc);
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.handleMouseMove();
+    const ok = overlay.getButton("ok");
+    ok.dispatchEvent(mouseBtn("mousedown", 0));
+    ok.dispatchEvent(mouseBtn("mouseleave"));
+    ok.dispatchEvent(mouseBtn("mouseup", 0));
+    assert.deepStrictEqual(log, ["down:13", "up:13"], "released exactly once");
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
+pending.push(
+  test("touch overlay: suppressed in mini-player mode, back when it ends; a touch still pins it on", () => {
+    const doc = createStubDoc();
+    const win = createStubWin();
+    const overlay = m.createTouchOverlay(doc, win, { initialEnabled: true });
+    overlay.setSuppressed(true);
+    overlay.handleMouseMove();
+    overlay.handleTouchStart();
+    assert.strictEqual(overlay.isVisible(), false, "nothing shows while suppressed");
+    overlay.setSuppressed(false);
+    assert.strictEqual(overlay.isVisible(), true, "the earlier touch pins it on once mini ends");
+    win.__timeoutCalls.forEach((c) => clearTimeout(c.id));
+  }),
+);
+
 Promise.all(pending).then(() => {
   const failed = results.filter((r) => !r.ok);
   console.log(`${results.length - failed.length}/${results.length} self-tests passed`);
