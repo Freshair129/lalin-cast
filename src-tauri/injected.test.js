@@ -2497,6 +2497,40 @@ pending.push(
   }),
 );
 
+pending.push(
+  test("installCss: adopts a constructed stylesheet once per id when the document supports it", () => {
+    // Regression: YouTube's CSP blocks inline <style>, so overlays rendered unstyled.
+    const doc = createStubDoc();
+    doc.adoptedStyleSheets = [];
+    const hadSheet = typeof globalThis.CSSStyleSheet === "function";
+    const made = [];
+    if (!hadSheet) {
+      globalThis.CSSStyleSheet = class { replaceSync(css) { this.css = css; made.push(css); } };
+    }
+    try {
+      m.installCss(doc, "lalin-cast-x-style", ".a{}");
+      m.installCss(doc, "lalin-cast-x-style", ".a{}");
+      assert.strictEqual(doc.adoptedStyleSheets.length, 1, "adopted exactly once");
+      assert.strictEqual(doc.getElementById("lalin-cast-x-style"), null, "no <style> element is used");
+      m.installCss(doc, "lalin-cast-y-style", ".b{}");
+      assert.strictEqual(doc.adoptedStyleSheets.length, 2, "a different id gets its own sheet");
+    } finally {
+      if (!hadSheet) delete globalThis.CSSStyleSheet;
+    }
+  }),
+);
+
+pending.push(
+  test("installCss: falls back to a single <style> element without adoptedStyleSheets", () => {
+    const doc = createStubDoc();
+    m.installCss(doc, "lalin-cast-z-style", ".c{}");
+    m.installCss(doc, "lalin-cast-z-style", ".c{}");
+    const els = doc.head.children.filter((c) => c.id === "lalin-cast-z-style");
+    assert.strictEqual(els.length, 1);
+    assert.strictEqual(els[0].textContent, ".c{}");
+  }),
+);
+
 Promise.all(pending).then(() => {
   const failed = results.filter((r) => !r.ok);
   console.log(`${results.length - failed.length}/${results.length} self-tests passed`);

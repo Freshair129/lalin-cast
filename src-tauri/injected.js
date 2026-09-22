@@ -155,6 +155,38 @@
     return value.replace(/\/+$/, "") || "/";
   };
 
+  // Installs one of Lalin Cast's own stylesheets into the page, once per id.
+  // YouTube's TV page has a Content-Security-Policy that blocks inline
+  // <style> elements: the element is inserted but the browser never builds a
+  // stylesheet from it (`style.sheet` stays null), so every overlay styled that
+  // way rendered unstyled on the real page. A constructed CSSStyleSheet adopted
+  // by the document is not subject to that check, so it is used whenever the
+  // engine supports it; the <style> element remains only as the fallback for
+  // engines without adoptedStyleSheets (and for the Node test stubs).
+  const installCss = (doc, id, css) => {
+    if (!doc) return;
+    const Sheet = typeof CSSStyleSheet === "function" ? CSSStyleSheet : null;
+    if (Sheet && Array.isArray(doc.adoptedStyleSheets)) {
+      const installed = doc.__lalinCastCss || (doc.__lalinCastCss = new Set());
+      if (installed.has(id)) return;
+      try {
+        const sheet = new Sheet();
+        sheet.replaceSync(css);
+        doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+        installed.add(id);
+        return;
+      } catch {
+        // Fall through to the <style> element below.
+      }
+    }
+    if (typeof doc.getElementById !== "function" || doc.getElementById(id)) return;
+    const style = doc.createElement("style");
+    style.id = id;
+    style.textContent = css;
+    const parent = doc.head || doc.documentElement;
+    if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+  };
+
   const bridge = () => window.__TAURI__;
   const invoke = (command, args) => {
     const tauri = bridge();
@@ -1160,12 +1192,7 @@
     let elements = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(VOLUME_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = VOLUME_STYLE_ID;
-      style.textContent = VOLUME_OSD_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, VOLUME_STYLE_ID, VOLUME_OSD_CSS);
     };
 
     const ensureOsd = () => {
@@ -1414,12 +1441,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
   // get-then-create pattern as ensureStyle() in the Volume section above.
   const ensureHideStyle = (doc) => {
     if (!doc || typeof doc.getElementById !== "function") return;
-    if (doc.getElementById(HIDE_STYLE_ID)) return;
-    const style = doc.createElement("style");
-    style.id = HIDE_STYLE_ID;
-    style.textContent = HIDE_STYLE_CSS;
-    const parent = doc.head || doc.documentElement;
-    if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+    installCss(doc, HIDE_STYLE_ID, HIDE_STYLE_CSS);
   };
 
   // The only thing toggling the prefs ever does: set or delete our two
@@ -1621,12 +1643,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let elements = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(TOUCH_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = TOUCH_STYLE_ID;
-      style.textContent = TOUCH_OVERLAY_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, TOUCH_STYLE_ID, TOUCH_OVERLAY_CSS);
     };
 
     const build = () => {
@@ -2104,12 +2121,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let hideTimer = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(SPEED_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = SPEED_STYLE_ID;
-      style.textContent = SPEED_OSD_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, SPEED_STYLE_ID, SPEED_OSD_CSS);
     };
 
     const ensureElement = () => {
@@ -2349,12 +2361,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
     let elements = null;
 
     const ensureStyle = () => {
-      if (doc.getElementById(HELP_STYLE_ID)) return;
-      const style = doc.createElement("style");
-      style.id = HELP_STYLE_ID;
-      style.textContent = HELP_STYLE_CSS;
-      const parent = doc.head || doc.documentElement;
-      if (parent && typeof parent.appendChild === "function") parent.appendChild(style);
+      installCss(doc, HELP_STYLE_ID, HELP_STYLE_CSS);
     };
 
     const build = () => {
@@ -2793,6 +2800,7 @@ html[data-lalin-hide-guide-tabs="true"] .${HIDE_GUIDE_TAB_CLASS} { display: none
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      installCss,
       createMiniBar,
       miniBarLabel,
       MINI_BAR_ID,
