@@ -236,6 +236,19 @@ steps for each release are in
   consecutive green runs on PR #9 and PR #10, so `continue-on-error: true` has been removed — merging
   a pull request from here on requires the `smoke` job to pass
 
+### Fixed
+
+#### H2 — การตรวจบนเครื่องสะอาด / clean-machine verification (`docs/runbooks/H2_CLEAN_VM_MATRIX.md`)
+
+- หน้าต่าง "ตรวจสอบอัปเดตไม่สำเร็จ" แสดงข้อความที่แปลแล้วเสมอ ข้อความดิบจากไลบรารีอัปเดตย้ายไปอยู่
+  บรรทัดรายละเอียดตัวเล็กใต้ข้อความหลัก เดิมข้อความดิบถูกใช้แทนข้อความที่แปลไว้ ผู้ใช้ภาษาไทยจึงเห็น
+  ศัพท์เทคนิคภาษาอังกฤษอย่าง "Could not fetch a valid release JSON from the remote" ทุกครั้งที่ตรวจ
+  อัปเดตไม่สำเร็จ เช่น ตอนเน็ตหลุด / the "update check failed" window now always shows the
+  translated message, with the update library's raw error demoted to a small detail line beneath it.
+  The raw error used to replace the translated body, so users — including Thai users — only ever saw
+  English technical text such as "Could not fetch a valid release JSON from the remote" whenever a
+  check failed, for example while offline
+
 ### Security
 
 #### H0 — Release readiness (`docs/plans/H0_RELEASE_READINESS_PLAN.md`)

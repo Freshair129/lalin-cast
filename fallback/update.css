@@ -92,6 +92,19 @@ p.muted {
   overflow-y: auto;
 }
 
+/* The raw error from the update library, shown under the translated message
+   for support purposes: quiet, secondary, and never the first thing read. */
+.detail-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: -2px;
+  word-break: break-word;
+}
+
+.detail-text[hidden] {
+  display: none;
+}
+
 .error-text {
   color: var(--danger);
   background: var(--danger-bg);

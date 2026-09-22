@@ -283,7 +283,15 @@ function renderUpToDate(doc, strings, data) {
 function renderError(doc, strings, data) {
   showOnly(doc, "state-error");
   setText(doc, "error-title", strings.error.title);
-  setText(doc, "error-body", data.message || strings.error.defaultBody);
+  // The translated message is always the one the reader sees. The raw error
+  // from the update library is English-only technical text ("Could not fetch a
+  // valid release JSON from the remote"), so it goes underneath as a quiet
+  // detail line that helps when someone sends a screenshot — it must never
+  // replace the translated body, which is what this used to do.
+  setText(doc, "error-body", data.body || strings.error.defaultBody);
+  const detail = typeof data.message === "string" ? data.message.trim() : "";
+  setText(doc, "error-detail", detail);
+  setHidden(doc, "error-detail", detail === "");
   setText(doc, "close-btn-error", strings.error.close);
 }
 
@@ -305,7 +313,8 @@ function render(doc, win, strings, data) {
       renderError(doc, strings, data);
       break;
     default:
-      renderError(doc, strings, { message: strings.error.unknownState });
+      // Already translated, so it belongs in the body, not the detail line.
+      renderError(doc, strings, { body: strings.error.unknownState });
       break;
   }
 }
