@@ -12,6 +12,9 @@
 const assert = require("assert");
 const { init } = require("./update.js");
 
+// Must match strings.en.error.defaultBody in update.js.
+const STRINGS_EN_ERROR_BODY = "Could not check for updates right now. Please try again later.";
+
 // ---------------------------------------------------------------------------
 // Minimal stub DOM
 // ---------------------------------------------------------------------------
@@ -51,6 +54,7 @@ function createStubDom() {
     "state-error",
     "error-title",
     "error-body",
+    "error-detail",
     "close-btn-error",
     "state-no-tauri",
     "no-tauri-title",
@@ -211,7 +215,10 @@ pending.push(
 );
 
 pending.push(
-  test("error state shows only that section with the provided message", () => {
+  test("error state shows only that section, translated body, raw error as detail", () => {
+    // Regression (H2/M5): the raw message used to replace the translated body,
+    // so users only ever saw English technical text like
+    // "Could not fetch a valid release JSON from the remote".
     const { doc, elements } = createStubDom();
     const { tauri } = makeTauriStub();
     const win = makeWindowStub({ lang: "en", state: "error", message: "boom" }, tauri);
@@ -219,7 +226,49 @@ pending.push(
     assert.strictEqual(elements["state-error"].hidden, false);
     assert.strictEqual(elements["state-available"].hidden, true);
     assert.strictEqual(elements["state-uptodate"].hidden, true);
-    assert.strictEqual(elements["error-body"].textContent, "boom");
+    assert.strictEqual(elements["error-body"].textContent, STRINGS_EN_ERROR_BODY);
+    assert.strictEqual(elements["error-detail"].textContent, "boom");
+    assert.strictEqual(elements["error-detail"].hidden, false);
+  }),
+);
+
+pending.push(
+  test("error state in Thai shows the Thai body, not the English library text", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub(
+      { lang: "th", state: "error", message: "Could not fetch a valid release JSON from the remote" },
+      tauri,
+    );
+    init(doc, win);
+    assert.ok(
+      /[฀-๿]/.test(elements["error-body"].textContent),
+      "the body is Thai text, not the library's English message",
+    );
+    assert.ok(!elements["error-body"].textContent.includes("release JSON"));
+    assert.ok(elements["error-detail"].textContent.includes("release JSON"));
+  }),
+);
+
+pending.push(
+  test("error state with no message hides the detail line entirely", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "error" }, tauri);
+    init(doc, win);
+    assert.strictEqual(elements["error-body"].textContent, STRINGS_EN_ERROR_BODY);
+    assert.strictEqual(elements["error-detail"].hidden, true);
+    assert.strictEqual(elements["error-detail"].textContent, "");
+  }),
+);
+
+pending.push(
+  test("error state with a blank message hides the detail line", () => {
+    const { doc, elements } = createStubDom();
+    const { tauri } = makeTauriStub();
+    const win = makeWindowStub({ lang: "en", state: "error", message: "   " }, tauri);
+    init(doc, win);
+    assert.strictEqual(elements["error-detail"].hidden, true);
   }),
 );
 
@@ -231,6 +280,9 @@ pending.push(
     init(doc, win);
     assert.strictEqual(elements["state-error"].hidden, false);
     assert.ok(elements["error-body"].textContent.length > 0);
+    // The unknown-state text is already translated, so it is the body and
+    // there is no raw error to show underneath.
+    assert.strictEqual(elements["error-detail"].hidden, true);
   }),
 );
 
