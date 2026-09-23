@@ -1,7 +1,7 @@
 ---
-version: "0.1.0b"
+version: "0.2.0b"
 created_at: "2026-09-23T14:00:00+07:00,LALIN,uncommitted"
-last_update: "2026-09-23T14:00:00+07:00,LALIN"
+last_update: "2026-09-23T17:30:00+07:00,LALIN"
 status: "candidate"
 superseded_by: null
 attributes:
@@ -14,11 +14,11 @@ attributes:
 
 ## สถานะ / Status
 
-**CANDIDATE — ยังไม่มีแถวไหนถูกรัน.** ไฟล์นี้แตกงานของ human gate **H2** ใน
+**ช่วง A ผ่านครบแล้วเมื่อ 2026-09-23** (M1–M5, M7) เหลือ M6 ที่ทำได้หลัง publish release แรกเท่านั้น ไฟล์นี้แตกงานของ human gate **H2** ใน
 `docs/runbooks/RELEASE_CHECKLIST.md` ออกเป็นแถวที่ทดสอบได้จริง H2 จะปิดได้ก็ต่อเมื่อทุกแถวที่ไม่ได้
 ทำเครื่องหมาย *(หลัง tag)* ผ่านครบ
 
-**CANDIDATE — no row has been run yet.** This file breaks human gate **H2** from
+**Phase A passed on 2026-09-23** (M1-M5, M7); only M6 remains, and it can only run after the first release is published. This file breaks human gate **H2** from
 `docs/runbooks/RELEASE_CHECKLIST.md` into rows that can actually be executed. H2 closes when every
 row not marked *(post-tag)* has passed.
 
@@ -180,6 +180,22 @@ start-with-Windows และ deep link **ไม่เขียน registry เ�
 
 **ผ่านเมื่อ:** ครบทุกข้อ
 
+**ผลจริง 2026-09-23 — ผ่าน หลังแก้บั๊กที่แถวนี้เป็นคนพบ**
+
+รอบแรก **ไม่ผ่าน**: หน้าต่างแสดงข้อความดิบจากไลบรารีอัปเดต
+`update check failed: Could not fetch a valid release JSON from the remote` เป็นข้อความหลัก
+สาเหตุคือ `fallback/update.js` เขียน `data.message || strings.error.defaultBody` โดยตั้งใจให้
+ข้อความดิบเป็นตัวเสริม แต่ `src-tauri/src/updater.rs` ส่ง `message: Some(error)` มาเสมอ ข้อความ
+ที่แปลไว้จึงเป็นโค้ดตายที่ไม่เคยถูกแสดงเลย และผู้ใช้จะเจอทุกครั้งที่เน็ตหลุด ไม่ใช่เฉพาะก่อนมี release
+แก้ใน PR #29 (ข้อความที่แปลเป็นตัวหลักเสมอ ข้อความดิบไปอยู่บรรทัดรายละเอียด)
+
+รอบสองด้วย installer ที่มีการแก้ — ผ่านครบทุกข้อ:
+- การตรวจตอนเริ่มโปรแกรมเงียบ ไม่มีหน้าต่างเด้ง
+- กดตรวจเองแล้วขึ้นหน้าต่างที่อ่านรู้เรื่อง ข้อความหลักเป็นข้อความที่แปลแล้ว (แอปตั้งภาษาอังกฤษ
+  จึงเห็นข้อความอังกฤษที่เราเขียนเอง ไม่ใช่ของไลบรารี) ข้อความดิบอยู่บรรทัดเล็กสีจางข้างล่าง
+- log ไม่มี path หรือชื่อบัญชีผู้ใช้
+- โหมดพกพาไม่ตรวจอัปเดตตอนเริ่มโปรแกรม
+
 #### M7 — ถอนการติดตั้ง / uninstall
 
 1. ถอนการติดตั้งจาก Settings → Apps
@@ -189,6 +205,13 @@ start-with-Windows และ deep link **ไม่เขียน registry เ�
 4. ไม่มี process `lalin-cast.exe` ค้าง
 
 **ผ่านเมื่อ:** ถอนได้สะอาดและพฤติกรรมเรื่องข้อมูลผู้ใช้ตรงกับ PRIVACY.md
+
+**ผลจริง 2026-09-23 — ผ่าน** ถอนการติดตั้งได้สะอาด ไม่มี process ค้าง
+
+**ข้อที่ยังไม่ได้ตรวจ:** ผู้ทดสอบไม่ได้ดูว่า `%APPDATA%\ai.lalin.cast` และ
+`%LOCALAPPDATA%\ai.lalin.cast` ถูกลบไปด้วยหรือยังอยู่ ทั้งสองแบบยอมรับได้และไม่กระทบผู้ใช้
+เพราะ `PRIVACY.md` ข้อ 12 บอกวิธีลบโฟลเดอร์ทั้งสองด้วยมืออยู่แล้ว แต่ถ้าการถอนการติดตั้งลบให้เองจริง
+ควรเขียนเพิ่มใน PRIVACY.md ว่าเป็นแบบนั้น ตรวจได้ทุกเมื่อโดยเปิดสองโฟลเดอร์นั้นดู
 
 ### ช่วง B — หลัง publish release แรก *(post-tag)*
 
@@ -211,8 +234,8 @@ start-with-Windows และ deep link **ไม่เขียน registry เ�
 | M2 | เครื่องที่สอง | 2026-09-23 | ✅ ผ่าน | store อยู่ใน %APPDATA%, ไม่มี lalin-cast-data ข้าง exe บน F:, ค่าคงอยู่หลังรีสตาร์ต |
 | M3 | เครื่องที่สอง | 2026-09-23 | ✅ ผ่าน | ข้อมูลอยู่ข้าง exe, ไม่แตะ registry ทั้งสองสวิตช์, ลบแล้วสะอาด |
 | M4 | เครื่องที่สอง | 2026-09-23 | ✅ ผ่าน | ติดตั้งทับได้ ค่า settings จาก M2 ไม่หาย |
-| M5 | | | ⬜ | |
-| M7 | | | ⬜ | |
+| M5 | เครื่องที่สอง | 2026-09-23 | ✅ ผ่าน (รอบสอง) | รอบแรกพบข้อความ error ไม่ผ่าน i18n แก้ใน PR #29 แล้วทดสอบซ้ำผ่าน |
+| M7 | เครื่องที่สอง | 2026-09-23 | ✅ ผ่าน | ถอนสะอาด ไม่มี process ค้าง; ยังไม่ได้ตรวจว่าโฟลเดอร์ข้อมูลถูกลบหรือคงไว้ |
 | M6 *(post-tag)* | | | ⬜ | |
 
 เมื่อ M1–M5 และ M7 ผ่านครบ ให้ติ๊ก H2 ใน `docs/runbooks/RELEASE_CHECKLIST.md` พร้อมหมายเหตุลงวันที่ที่
@@ -222,4 +245,5 @@ start-with-Windows และ deep link **ไม่เขียน registry เ�
 
 | version | date | status | change | commit | by |
 |---|---|---|---|---|---|
+| 0.2.0b | 2026-09-23 | candidate | บันทึกผล M1–M5 และ M7 ว่าผ่านบนเครื่องจริงเครื่องที่สอง; M5 รอบแรกไม่ผ่านเพราะข้อความ error ไม่ผ่าน i18n แก้ใน PR #29 แล้วทดสอบซ้ำผ่าน | uncommitted | LALIN |
 | 0.1.0b | 2026-09-23 | candidate | เอกสารแรก: แตก H2 เป็น M1–M7, บันทึกว่า endpoint ของ updater ชี้ไป release ที่ยังไม่มี จึงต้องแยก M6 ไว้หลัง publish, และบันทึกว่าเครื่อง dev ไม่มี Hyper-V/Sandbox/VirtualBox | uncommitted | LALIN |
