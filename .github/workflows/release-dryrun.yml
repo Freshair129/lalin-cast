@@ -122,7 +122,7 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "size_mib=$sizeMiB"
 
       - name: Upload unsigned installer artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-installer
           path: ${{ steps.find-installer.outputs.path }}
@@ -137,7 +137,7 @@ jobs:
         run: scripts/release/New-PortableZip.ps1 -ExePath "src-tauri/target/x86_64-pc-windows-msvc/release/lalin-cast.exe" -ReadmePath packaging/portable/README-PORTABLE.txt -OutputDir "${{ runner.temp }}" -Version "${{ steps.read-version.outputs.version }}" -Arch x64
 
       - name: Upload portable zip artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-portable
           path: ${{ steps.build-portable-zip.outputs.path }}
@@ -151,7 +151,7 @@ jobs:
         run: scripts/release/Write-Checksums.ps1 -Files "${{ steps.find-installer.outputs.path }}","${{ steps.build-portable-zip.outputs.path }}" -OutputPath "${{ runner.temp }}\Lalin-Cast_${{ steps.read-version.outputs.version }}_x64_SHA256SUMS.txt" -GitHubAssetNames
 
       - name: Upload checksum artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-checksums
           path: ${{ runner.temp }}\Lalin-Cast_${{ steps.read-version.outputs.version }}_x64_SHA256SUMS.txt
@@ -252,7 +252,7 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "size_mib=$sizeMiB"
 
       - name: Upload unsigned installer artifact (arm64)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-installer-arm64
           path: ${{ steps.find-installer.outputs.path }}
@@ -267,7 +267,7 @@ jobs:
         run: scripts/release/New-PortableZip.ps1 -ExePath "src-tauri/target/aarch64-pc-windows-msvc/release/lalin-cast.exe" -ReadmePath packaging/portable/README-PORTABLE.txt -OutputDir "${{ runner.temp }}" -Version "${{ steps.read-version.outputs.version }}" -Arch arm64
 
       - name: Upload portable zip artifact (arm64)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-portable-arm64
           path: ${{ steps.build-portable-zip.outputs.path }}
@@ -279,7 +279,7 @@ jobs:
         run: scripts/release/Write-Checksums.ps1 -Files "${{ steps.find-installer.outputs.path }}","${{ steps.build-portable-zip.outputs.path }}" -OutputPath "${{ runner.temp }}\Lalin-Cast_${{ steps.read-version.outputs.version }}_arm64_SHA256SUMS.txt" -GitHubAssetNames
 
       - name: Upload checksum artifact (arm64)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lalin-cast-dryrun-checksums-arm64
           path: ${{ runner.temp }}\Lalin-Cast_${{ steps.read-version.outputs.version }}_arm64_SHA256SUMS.txt
